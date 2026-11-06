@@ -3,6 +3,6 @@ plugins {
     id 'org.gradle.toolchains.foojay-resolver-convention' version '1.0.0'
 }
 
-rootProject.name = 'uferry'
+rootProject.name = 'bitferry'
 
 include 'bitferry', 'bitferry-cli', 'bitferry-gui', 'bitferry-app'

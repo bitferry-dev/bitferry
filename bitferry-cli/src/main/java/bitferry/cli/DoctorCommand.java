@@ -23,7 +23,6 @@ public final class DoctorCommand implements Callable<Integer> {
         System.out.printf("java.vendor:     %s%n", System.getProperty("java.vendor"));
         System.out.printf("java.home:       %s%n", System.getProperty("java.home"));
         System.out.printf("main module:     %s%n", DoctorCommand.class.getModule().getName());
-        System.out.printf("sun.java.command:%s%n", System.getProperty("sun.java.command"));
 
         List<String> inputArgs = ManagementFactory.getRuntimeMXBean().getInputArguments();
         System.out.println("JVM input arguments:");

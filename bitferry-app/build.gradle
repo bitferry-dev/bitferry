@@ -27,7 +27,7 @@ dependencies {
 // ---------------------------------------------------------------- target selection
 
 def targetProperty = providers.gradleProperty('target').getOrElse('native')
-def knownTargets = ['native', 'windows-x64', 'linux-x64', 'macos-x64', 'macos-aarch64']
+def knownTargets = ['native', 'windows-x64', 'linux-x64', 'linux-aarch64', 'macos-x64', 'macos-aarch64']
 if (!(targetProperty in knownTargets)) {
     throw new GradleException("Unknown -Ptarget '$targetProperty' (expected: ${knownTargets.join(', ')})")
 }
@@ -37,15 +37,24 @@ def cross = targetProperty != 'native'
 def hostSuffix = OperatingSystem.current().windows ? 'windows-x64'
         : OperatingSystem.current().macOsX
         ? (System.getProperty('os.arch') == 'aarch64' ? 'macos-aarch64' : 'macos-x64')
-        : 'linux-x64'
+        : (System.getProperty('os.arch') == 'aarch64' ? 'linux-aarch64' : 'linux-x64')
 
 def platformName = cross ? targetProperty : hostSuffix
 
-// Zulu 25 (same build as the toolchain) used as the source of jmods for cross-targets.
+// Zulu build pinned as the source of jmods for cross-targets; its embedded java version
+// must match the toolchain major version (gradle.properties: bitferry.java). The exact
+// update build of the auto-provisioned toolchain itself is whatever matching Zulu 25 the
+// foojay resolver returns.
 def zuluArtifact = 'zulu25.38.107-ca-jdk25.0.5'
+def toolchainMajor = providers.gradleProperty('bitferry.java').getOrElse('25')
+if (!zuluArtifact.contains("jdk${toolchainMajor}.")) {
+    throw new GradleException("Zulu artifact '$zuluArtifact' does not match the toolchain " +
+            "major version $toolchainMajor (gradle.properties: bitferry.java)")
+}
 def zuluJdkUrl = [
         'windows-x64'   : "https://cdn.azul.com/zulu/bin/${zuluArtifact}-win_x64.zip",
         'linux-x64'     : "https://cdn.azul.com/zulu/bin/${zuluArtifact}-linux_x64.tar.gz",
+        'linux-aarch64' : "https://cdn.azul.com/zulu/bin/${zuluArtifact}-linux_aarch64.tar.gz",
         'macos-x64'     : "https://cdn.azul.com/zulu/bin/${zuluArtifact}-macosx_x64.zip",
         'macos-aarch64' : "https://cdn.azul.com/zulu/bin/${zuluArtifact}-macosx_aarch64.zip",
 ][platformName]
@@ -60,9 +69,9 @@ def trainable = !cross
 
 def imageBaseDir = layout.buildDirectory.dir('image')
 // native: the runtime image is generated directly in imageDir
-// cross : the plugin appends "<launcher-name>-<platformName>" to imageDir
+// cross : the plugin appends "<primary-launcher-name>-<platformName>" to imageDir
 def runtimeImageDir = cross
-        ? imageBaseDir.get().dir("bitferry-gui-${platformName}").asFile
+        ? imageBaseDir.get().dir("bitferry-${platformName}").asFile
         : imageBaseDir.get().dir("bitferry-${platformName}").asFile
 
 def javaBin = new File(runtimeImageDir, OperatingSystem.current().windows ? 'bin/java.exe' : 'bin/java')
@@ -75,26 +84,28 @@ def jpackageImageDir = layout.buildDirectory.dir('jpackage').get().dir('bitferry
 jlink {
     imageDir = cross ? imageBaseDir.get().asFile : runtimeImageDir
 
-    moduleName = 'bitferry.gui'
-    mainClass = 'bitferry.gui.BitferryGui'
+    // The primary launch root doubles as the jpackage main launcher: naming it 'bitferry'
+    // — like the app image — makes the jpackage main launcher and the CLI launcher the same
+    // (jpackage forbids an --add-launcher sharing the main image name).
+    moduleName = 'bitferry.cli'
+    mainClass = 'bitferry.cli.BitferryCli'
 
     options = ['--compress', 'zip-6', '--strip-debug', '--no-header-files', '--no-man-pages']
 
     launcher {
-        name = 'bitferry-gui'
+        name = 'bitferry'
         // {{BIN_DIR}} resolves to the image bin dir in jlink start scripts and
         // to $APPDIR/.. in jpackage launcher configs.
-        jvmArgs = ["-XX:AOTCache={{BIN_DIR}}/../lib/aot/gui.aot",
-                   "--enable-native-access=javafx.graphics"]
+        jvmArgs = ["-XX:AOTCache={{BIN_DIR}}/../lib/aot/cli.aot"]
         unixScriptTemplate = file('src/packaging/unixStartScript.txt')
     }
     secondaryLauncher {
-        name = 'bitferry-cli'
-        moduleName = 'bitferry.cli'
-        mainClass = 'bitferry.cli.BitferryCli'
-        jvmArgs = ["-XX:AOTCache={{BIN_DIR}}/../lib/aot/cli.aot"]
+        name = 'bitferry-gui'   // only the GUI launcher is suffixed
+        moduleName = 'bitferry.gui'
+        mainClass = 'bitferry.gui.BitferryGui'
+        jvmArgs = ["-XX:AOTCache={{BIN_DIR}}/../lib/aot/gui.aot",
+                   "--enable-native-access=javafx.graphics"]
         unixScriptTemplate = file('src/packaging/unixStartScript.txt')
-        winConsole = true
     }
 
     if (cross) {
@@ -144,6 +155,8 @@ tasks.register('trainCliAot', Exec) {
     dependsOn tasks.named('jlink')
     onlyIf { trainable }
     outputs.file cliAotCache
+    // Retrain when the image is relinked; without this a stale cache survives a relink.
+    inputs.file new File(runtimeImageDir, 'lib/modules')
     doFirst { aotDir.mkdirs() }
     commandLine javaBin.absolutePath,
             '-XX:AOTCacheOutput=' + cliAotCache.absolutePath,
@@ -165,6 +178,8 @@ tasks.register('trainGuiAot', Exec) {
     dependsOn tasks.named('jlink')
     onlyIf { trainable }
     outputs.file guiAotCache
+    // Retrain when the image is relinked; without this a stale cache survives a relink.
+    inputs.file new File(runtimeImageDir, 'lib/modules')
     ignoreExitValue = guiHeadless
     doFirst { aotDir.mkdirs() }
     def cmd = [javaBin.absolutePath,

@@ -10,18 +10,19 @@ def target = providers.gradleProperty('target').getOrElse('native')
 def hostClassifier = OperatingSystem.current().windows ? 'win'
         : OperatingSystem.current().macOsX
         ? (System.getProperty('os.arch') == 'aarch64' ? 'mac-aarch64' : 'mac')
-        : 'linux'
+        : (System.getProperty('os.arch') == 'aarch64' ? 'linux-aarch64' : 'linux')
 
 def targetClassifiers = [
         'windows-x64'  : 'win',
         'linux-x64'    : 'linux',
+        'linux-aarch64': 'linux-aarch64',
         'macos-x64'    : 'mac',
         'macos-aarch64': 'mac-aarch64',
 ]
 
 def javafxClassifier = target == 'native' ? hostClassifier : targetClassifiers[target]
 if (!javafxClassifier) {
-    throw new GradleException("Unknown -Ptarget '$target' (expected native, windows-x64, linux-x64, macos-x64, macos-aarch64)")
+    throw new GradleException("Unknown -Ptarget '$target' (expected native, windows-x64, linux-x64, linux-aarch64, macos-x64, macos-aarch64)")
 }
 
 dependencies {

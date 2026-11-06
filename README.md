@@ -1,4 +1,4 @@
-# packferry — bitferry distribution
+# bitferry distribution
 
 A Gradle build that assembles [bitferry](bitferry), a small JPMS library, plus two frontends —
 a picocli CLI and a JavaFX GUI — into **one platform-specific runtime tree** with CLI and GUI
@@ -32,12 +32,12 @@ Module names use dots — hyphens are not legal in Java module names.
 
 ```
 bitferry-app/build/image/bitferry-<platform>/     # jlink tree
-    bin/bitferry-cli, bin/bitferry-gui            # launcher scripts (+ .bat on Windows)
+    bin/bitferry, bin/bitferry-gui                # launcher scripts (+ .bat on Windows)
     bin/java                                      # the runtime JVM
     lib/aot/cli.aot, lib/aot/gui.aot              # trained AOT caches
 
 bitferry-app/build/jpackage/bitferry/             # jpackage app-image (native platform only)
-    bin/bitferry-cli, bin/bitferry-gui            # native launchers
+    bin/bitferry, bin/bitferry-gui                # native launchers
     lib/runtime/…                                 # the jlink tree, caches included
     lib/aot/…                                     # caches mirrored for $APPDIR lookup
 ```
@@ -48,7 +48,7 @@ bitferry-app/build/jpackage/bitferry/             # jpackage app-image (native p
 exercising each frontend (`run` with sample cargo; the GUI in `--train` mode, which shows
 a window, dispatches a fleet and exits on first frame). The caches land in `lib/aot/`
 inside the image tree, and every launcher passes `-XX:AOTCache=…` pointing there.
-`bitferry-cli doctor` prints the resolved cache path and whether it is in use.
+`bitferry doctor` prints the resolved cache path and whether it is in use.
 
 Measured on the reference machine (Zulu 25, Linux x64): CLI startup `--version`
 **~140 ms with cache vs ~360 ms without**.
@@ -60,7 +60,7 @@ Force it with `-PaotGuiHeadless=force|never`.
 
 ### Cross-building
 
-`-Ptarget=windows-x64|linux-x64|macos-x64|macos-aarch64` (default `native` = build host)
+`-Ptarget=windows-x64|linux-x64|linux-aarch64|macos-x64|macos-aarch64` (default `native` = build host)
 downloads the matching Zulu 25 JDK via `jdkDownload` and links a tree for that platform
 with the platform's JavaFX natives from Maven Central. JDKs are cached in
 `~/.gradle/jdks/bitferry/` (shared across checkouts, outside the project tree).
@@ -80,5 +80,8 @@ Two things cannot be cross-built and require running the build **on** the target
 Logging: the library logs through SLF4J; both frontends ship logback with a `logback.xml`
 in their resources (logs to stderr, `bitferry.*` at DEBUG).
 
-Dependency versions live in `gradle/libs.versions.toml`; the toolchain/JavaFX/Zulu
-versions are pinned in `bitferry-app/build.gradle` and `settings.gradle`.
+Dependency versions live in `gradle/libs.versions.toml`; the JavaFX version is pinned
+there too. The toolchain major version is pinned as `bitferry.java` in `gradle.properties`,
+and the exact Zulu build used for cross-build jmods is pinned in `bitferry-app/build.gradle`
+(which verifies the two agree — the exact update build of the auto-provisioned toolchain
+is whatever matching Zulu the foojay resolver returns).

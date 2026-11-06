@@ -1,5 +1,4 @@
 [versions]
-java = "25"
 slf4j = "2.0.20"
 logback = "1.6.6"
 picocli = "4.7.7"
