@@ -49,6 +49,8 @@ def zuluJdkUrl = [
         'macos-x64'     : "https://cdn.azul.com/zulu/bin/${zuluArtifact}-macosx_x64.zip",
         'macos-aarch64' : "https://cdn.azul.com/zulu/bin/${zuluArtifact}-macosx_aarch64.zip",
 ][platformName]
+// e.g. zulu25.38.107-ca-jdk25.0.5-win_x64 - unique per version and platform
+def zuluDistName = zuluJdkUrl.substring(zuluJdkUrl.lastIndexOf('/') + 1)replaceAll(/\.(zip|tar\.gz)$/, '')
 
 // AOT caches can only be trained by executing the image JVM, which is possible
 // solely when the target platform matches the build host.
@@ -98,7 +100,9 @@ jlink {
     if (cross) {
         targetPlatform(platformName) {
             jdkHome = jdkDownload(zuluJdkUrl) {
-                downloadDir = rootProject.file(".gradle/jdks/${platformName}").absolutePath
+                // Shared across checkouts, outside the project tree; keyed by the
+                // Zulu artifact so version bumps re-download instead of reusing stale bits.
+                downloadDir = new File(gradle.gradleUserHomeDir, "jdks/bitferry/${zuluDistName}").absolutePath
             }
         }
     }

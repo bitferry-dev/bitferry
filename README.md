@@ -62,7 +62,8 @@ Force it with `-PaotGuiHeadless=force|never`.
 
 `-Ptarget=windows-x64|linux-x64|macos-x64|macos-aarch64` (default `native` = build host)
 downloads the matching Zulu 25 JDK via `jdkDownload` and links a tree for that platform
-with the platform's JavaFX natives from Maven Central. JDKs are cached in `.gradle/jdks/`.
+with the platform's JavaFX natives from Maven Central. JDKs are cached in
+`~/.gradle/jdks/bitferry/` (shared across checkouts, outside the project tree).
 
 Two things cannot be cross-built and require running the build **on** the target platform:
 
