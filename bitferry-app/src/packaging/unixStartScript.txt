@@ -1,0 +1,16 @@
+#!/bin/sh
+SCRIPT_NAME=\$(basename "\$0")
+APP_NAME=\${SCRIPT_NAME%.sh}
+
+# Resolve the real bin dir of this image, so launchers also work when found via PATH.
+DIR="\$(CDPATH= cd -- "\$(dirname -- "\$0")" && pwd -- )"
+
+<% if ( System.properties['BADASS_CDS_ARCHIVE_FILE_LINUX'] ) { %>
+CDS_ARCHIVE_FILE="<%= System.properties['BADASS_CDS_ARCHIVE_FILE_LINUX'] %>"
+CDS_JVM_OPTS="-XX:ArchiveClassesAtExit=\$CDS_ARCHIVE_FILE"
+if [ -f "\$CDS_ARCHIVE_FILE" ]; then
+    CDS_JVM_OPTS="-XX:SharedArchiveFile=\$CDS_ARCHIVE_FILE"
+fi
+<% } %>
+
+exec "\$DIR/java" \$CDS_JVM_OPTS ${jvmArgs} -m ${moduleName}/${mainClassName} ${args} "\$@"

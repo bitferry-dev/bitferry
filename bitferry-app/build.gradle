@@ -1,0 +1,213 @@
+// Distribution project: assembles a single platform-specific runtime tree from the
+// bitferry.cli and bitferry.gui modules, trains the JDK 25 AOT caches inside that
+// tree and (on the build host platform) wraps it into a jpackage app-image with
+// native launchers.
+//
+//   ./gradlew :bitferry-app:jlink                      # plain jlink tree (works cross-platform)
+//   ./gradlew :bitferry-app:jpackageImage              # + jpackage app-image with native launchers (host platform only)
+//   ./gradlew :bitferry-app:dist                       # everything applicable for the current -Ptarget
+//   ./gradlew :bitferry-app:dist -Ptarget=windows-x64  # cross-build a windows-x64 jlink tree
+
+plugins {
+    id 'application'
+    id 'org.beryx.jlink' version '4.2.0'
+}
+
+import org.gradle.internal.os.OperatingSystem
+
+// NOTE: no application.mainClass here — javac would embed a ModuleMainClass attribute for
+// bitferry.gui.BitferryGui into this (aggregate) module, producing an invalid descriptor.
+// The launch roots are declared in the jlink block below.
+
+dependencies {
+    implementation project(':bitferry-cli')
+    implementation project(':bitferry-gui')
+}
+
+// ---------------------------------------------------------------- target selection
+
+def targetProperty = providers.gradleProperty('target').getOrElse('native')
+def knownTargets = ['native', 'windows-x64', 'linux-x64', 'macos-x64', 'macos-aarch64']
+if (!(targetProperty in knownTargets)) {
+    throw new GradleException("Unknown -Ptarget '$targetProperty' (expected: ${knownTargets.join(', ')})")
+}
+
+def cross = targetProperty != 'native'
+
+def hostSuffix = OperatingSystem.current().windows ? 'windows-x64'
+        : OperatingSystem.current().macOsX
+        ? (System.getProperty('os.arch') == 'aarch64' ? 'macos-aarch64' : 'macos-x64')
+        : 'linux-x64'
+
+def platformName = cross ? targetProperty : hostSuffix
+
+// Zulu 25 (same build as the toolchain) used as the source of jmods for cross-targets.
+def zuluArtifact = 'zulu25.38.107-ca-jdk25.0.5'
+def zuluJdkUrl = [
+        'windows-x64'   : "https://cdn.azul.com/zulu/bin/${zuluArtifact}-win_x64.zip",
+        'linux-x64'     : "https://cdn.azul.com/zulu/bin/${zuluArtifact}-linux_x64.tar.gz",
+        'macos-x64'     : "https://cdn.azul.com/zulu/bin/${zuluArtifact}-macosx_x64.zip",
+        'macos-aarch64' : "https://cdn.azul.com/zulu/bin/${zuluArtifact}-macosx_aarch64.zip",
+][platformName]
+
+// AOT caches can only be trained by executing the image JVM, which is possible
+// solely when the target platform matches the build host.
+def trainable = !cross
+
+// ---------------------------------------------------------------- image locations
+
+def imageBaseDir = layout.buildDirectory.dir('image')
+// native: the runtime image is generated directly in imageDir
+// cross : the plugin appends "<launcher-name>-<platformName>" to imageDir
+def runtimeImageDir = cross
+        ? imageBaseDir.get().dir("bitferry-gui-${platformName}").asFile
+        : imageBaseDir.get().dir("bitferry-${platformName}").asFile
+
+def javaBin = new File(runtimeImageDir, OperatingSystem.current().windows ? 'bin/java.exe' : 'bin/java')
+def aotDir = new File(runtimeImageDir, 'lib/aot')
+
+def jpackageImageDir = layout.buildDirectory.dir('jpackage').get().dir('bitferry').asFile
+
+// ---------------------------------------------------------------- jlink / jpackage
+
+jlink {
+    imageDir = cross ? imageBaseDir.get().asFile : runtimeImageDir
+
+    moduleName = 'bitferry.gui'
+    mainClass = 'bitferry.gui.BitferryGui'
+
+    options = ['--compress', 'zip-6', '--strip-debug', '--no-header-files', '--no-man-pages']
+
+    launcher {
+        name = 'bitferry-gui'
+        // {{BIN_DIR}} resolves to the image bin dir in jlink start scripts and
+        // to $APPDIR/.. in jpackage launcher configs.
+        jvmArgs = ["-XX:AOTCache={{BIN_DIR}}/../lib/aot/gui.aot",
+                   "--enable-native-access=javafx.graphics"]
+        unixScriptTemplate = file('src/packaging/unixStartScript.txt')
+    }
+    secondaryLauncher {
+        name = 'bitferry-cli'
+        moduleName = 'bitferry.cli'
+        mainClass = 'bitferry.cli.BitferryCli'
+        jvmArgs = ["-XX:AOTCache={{BIN_DIR}}/../lib/aot/cli.aot"]
+        unixScriptTemplate = file('src/packaging/unixStartScript.txt')
+        winConsole = true
+    }
+
+    if (cross) {
+        targetPlatform(platformName) {
+            jdkHome = jdkDownload(zuluJdkUrl) {
+                downloadDir = rootProject.file(".gradle/jdks/${platformName}").absolutePath
+            }
+        }
+    }
+
+    jpackage {
+        imageName = 'bitferry'
+        skipInstaller = true        // file trees only - no platform packages/archives
+        vendor = 'Bitferry'
+        // jpackage must run on the target platform, so it is only wired up for native builds.
+    }
+}
+
+// No archives of the image tree, please.
+tasks.named('jlinkZip') { enabled = false }
+tasks.named('distZip') { enabled = false }
+tasks.named('distTar') { enabled = false }
+
+// jpackage is restricted to native builds (it must execute target-platform binaries
+// to copy the runtime and produce launchers).
+tasks.named('jpackageImage') {
+    onlyIf { !cross }
+}
+tasks.named('jpackage') {
+    onlyIf { !cross }
+}
+
+// ---------------------------------------------------------------- AOT training
+//
+// Training runs the image's own java with -XX:AOTCacheOutput, exercising each
+// frontend so the cache covers its startup classes. The cache lands in
+// <image>/lib/aot and the launchers reference it via -XX:AOTCache.
+
+def cliAotCache = new File(aotDir, 'cli.aot')
+def guiAotCache = new File(aotDir, 'gui.aot')
+
+tasks.register('trainCliAot', Exec) {
+    group = 'bitferry'
+    description = 'Trains the AOT cache for bitferry-cli inside the runtime image.'
+    dependsOn tasks.named('jlink')
+    onlyIf { trainable }
+    outputs.file cliAotCache
+    doFirst { aotDir.mkdirs() }
+    commandLine javaBin.absolutePath,
+            '-XX:AOTCacheOutput=' + cliAotCache.absolutePath,
+            '-m', 'bitferry.cli/bitferry.cli.BitferryCli',
+            'run', '--from', 'alpha', '--to', 'omega',
+            '--cargo', 'amphorae:250:olive oil', '--cargo', 'ingots:700:bronze', '--cargo', 'silk:60'
+}
+
+// GUI training opens a window briefly. Monocle is not part of the OpenJFX Maven artifacts,
+// so on headless builds the training run is allowed to fail at toolkit init - the AOT cache
+// is still written and covers JVM/module/JavaFX startup classes (use xvfb-run for full coverage).
+def guiHeadlessMode = providers.gradleProperty('aotGuiHeadless').getOrElse('auto') // auto|force|never
+def hasDisplay = System.getenv('DISPLAY') != null || System.getenv('WAYLAND_DISPLAY') != null
+def guiHeadless = guiHeadlessMode == 'force' || (guiHeadlessMode == 'auto' && !hasDisplay)
+
+tasks.register('trainGuiAot', Exec) {
+    group = 'bitferry'
+    description = 'Trains the AOT cache for bitferry-gui inside the runtime image (opens a window briefly).'
+    dependsOn tasks.named('jlink')
+    onlyIf { trainable }
+    outputs.file guiAotCache
+    ignoreExitValue = guiHeadless
+    doFirst { aotDir.mkdirs() }
+    def cmd = [javaBin.absolutePath,
+               '-XX:AOTCacheOutput=' + guiAotCache.absolutePath,
+               '--enable-native-access=javafx.graphics']
+    cmd += ['-m', 'bitferry.gui/bitferry.gui.BitferryGui', '--train']
+    commandLine cmd
+    if (guiHeadless) {
+        doLast {
+            logger.warn('bitferry-gui AOT training ran without a display: the toolkit init fails, '
+                    + 'so the cache covers startup classes only. Run under a display (or xvfb-run) for full coverage.')
+        }
+    }
+}
+
+// The caches must exist before jpackage copies the runtime image into the app-image,
+// and jpackage's $APPDIR-relative lookup expects them next to the app lib dir.
+tasks.named('jpackageImage') {
+    dependsOn 'trainCliAot', 'trainGuiAot'
+}
+
+tasks.register('copyAotCachesToJpackageImage', Copy) {
+    group = 'bitferry'
+    description = 'Mirrors the trained AOT caches to the jpackage app-image lib dir.'
+    dependsOn tasks.named('jpackageImage')
+    onlyIf { trainable }
+    from aotDir
+    into new File(jpackageImageDir, 'lib/aot')
+}
+
+// ---------------------------------------------------------------- lifecycle
+
+def projectVersion = project.version.toString()
+
+tasks.register('dist') {
+    group = 'build'
+    description = "Builds the full distribution for target '${platformName}' (jlink tree + AOT caches${trainable ? ' + jpackage app-image' : ''})."
+    if (trainable) {
+        dependsOn 'copyAotCachesToJpackageImage'
+    } else {
+        dependsOn tasks.named('jlink')
+    }
+    doLast {
+        def deliverables = trainable
+                ? ["jlink tree:       $runtimeImageDir", "jpackage app-image: $jpackageImageDir"]
+                : ["jlink tree:       $runtimeImageDir (cross-built, no AOT caches — train on the target)"]
+        logger.lifecycle("bitferry ${projectVersion} [${platformName}] deliverables:")
+        deliverables.each { logger.lifecycle("  ${it}") }
+    }
+}

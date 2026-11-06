@@ -1,0 +1,43 @@
+import org.gradle.internal.os.OperatingSystem
+
+plugins {
+    id 'application'
+}
+
+// The JavaFX classifier must match the distribution target, which defaults to the build host.
+def target = providers.gradleProperty('target').getOrElse('native')
+
+def hostClassifier = OperatingSystem.current().windows ? 'win'
+        : OperatingSystem.current().macOsX
+        ? (System.getProperty('os.arch') == 'aarch64' ? 'mac-aarch64' : 'mac')
+        : 'linux'
+
+def targetClassifiers = [
+        'windows-x64'  : 'win',
+        'linux-x64'    : 'linux',
+        'macos-x64'    : 'mac',
+        'macos-aarch64': 'mac-aarch64',
+]
+
+def javafxClassifier = target == 'native' ? hostClassifier : targetClassifiers[target]
+if (!javafxClassifier) {
+    throw new GradleException("Unknown -Ptarget '$target' (expected native, windows-x64, linux-x64, macos-x64, macos-aarch64)")
+}
+
+dependencies {
+    implementation project(':bitferry')
+
+    // The classifier pulls javafx-base/graphics/controls natives for the target platform.
+    // The no-classifier artifacts are empty stubs, so all modules are declared explicitly.
+    def javafxVersion = libs.versions.javafx.get()
+    implementation "org.openjfx:javafx-base:$javafxVersion:$javafxClassifier"
+    implementation "org.openjfx:javafx-graphics:$javafxVersion:$javafxClassifier"
+    implementation "org.openjfx:javafx-controls:$javafxVersion:$javafxClassifier"
+
+    implementation libs.logback.classic
+}
+
+application {
+    mainModule = 'bitferry.gui'
+    mainClass = 'bitferry.gui.BitferryGui'
+}

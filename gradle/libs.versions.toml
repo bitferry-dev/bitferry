@@ -1,0 +1,15 @@
+[versions]
+java = "25"
+slf4j = "2.0.20"
+logback = "1.6.6"
+picocli = "4.7.7"
+javafx = "27.0.1"
+jlink-plugin = "4.2.0"
+
+[libraries]
+slf4j-api = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
+logback-classic = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
+picocli = { module = "info.picocli:picocli", version.ref = "picocli" }
+
+[plugins]
+jlink = { id = "org.beryx.jlink", version.ref = "jlink-plugin" }

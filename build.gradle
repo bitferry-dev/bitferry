@@ -1,0 +1,26 @@
+plugins {
+    id 'base'
+}
+
+allprojects {
+    group = 'io.bitferry'
+    version = '0.1.0'
+
+    repositories {
+        mavenCentral()
+    }
+}
+
+subprojects {
+    plugins.withId('java') {
+        java {
+            toolchain {
+                languageVersion = providers.gradleProperty('bitferry.java')
+                        .map { JavaLanguageVersion.of(it as int) }
+                        .orElse(JavaLanguageVersion.of(25))
+                // Zulu builds are used for compiling, running, jlink and jpackage
+                vendor = JvmVendorSpec.AZUL
+            }
+        }
+    }
+}
