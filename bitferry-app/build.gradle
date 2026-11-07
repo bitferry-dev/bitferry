@@ -106,6 +106,10 @@ jlink {
         jvmArgs = ["-XX:AOTCache={{BIN_DIR}}/../lib/aot/gui.aot",
                    "--enable-native-access=javafx.graphics"]
         unixScriptTemplate = file('src/packaging/unixStartScript.txt')
+        // A top-level --win-console is inherited by --add-launcher launchers unless overridden;
+        // this keeps the GUI launcher a GUI-subsystem executable on Windows. jpackage ignores
+        // the win-console property on other platforms.
+        winConsole = false
     }
 
     if (cross) {
@@ -123,6 +127,12 @@ jlink {
         skipInstaller = true        // file trees only - no platform packages/archives
         vendor = 'Bitferry'
         // jpackage must run on the target platform, so it is only wired up for native builds.
+        // Without --win-console the main launcher is a GUI-subsystem executable and the CLI
+        // produces no console output on Windows. The option is Windows-only jpackage syntax,
+        // and since jpackageImage only runs for the host platform, the target check suffices.
+        if (platformName == 'windows-x64') {
+            imageOptions = ['--win-console']
+        }
     }
 }
 
@@ -135,6 +145,24 @@ tasks.named('distTar') { enabled = false }
 // to copy the runtime and produce launchers).
 tasks.named('jpackageImage') {
     onlyIf { !cross }
+    // The plugin maps {{BIN_DIR}} to "$APPDIR\.." in jpackage launcher configs, where $APPDIR
+    // is the dir holding the .cfg (<image>/app on Windows). The -XX:AOTCache={{BIN_DIR}}/../lib/aot
+    // launcher args therefore resolve one level above the app image and miss the mirrored caches
+    // in <image>/lib/aot. Rewrite the generated Windows configs to point inside the image; the
+    // Linux layout (<image>/lib/app) already resolves correctly by construction.
+    if (OperatingSystem.current().windows) {
+        doLast {
+            def cfgDir = new File(jpackageImageDir, 'app')
+            cfgDir.listFiles()?.findAll { it.name.endsWith('.cfg') }?.each { cfg ->
+                cfg.text = cfg.text
+                        // top-level --java-options (main launcher): the backslash survives
+                        .replace('$APPDIR\\..', '$APPDIR')
+                        // add-launcher java-options (GUI launcher): the properties parsing
+                        // of the launcher prop file drops the backslash
+                        .replace('$APPDIR..', '$APPDIR')
+            }
+        }
+    }
 }
 tasks.named('jpackage') {
     onlyIf { !cross }
