@@ -41,6 +41,10 @@ def hostSuffix = OperatingSystem.current().windows ? 'windows-x64'
 
 def platformName = cross ? targetProperty : hostSuffix
 
+// Every windows-* target shares the jpackage launcher layout, launcher subsystem and
+// executable naming, regardless of architecture.
+def windowsTarget = platformName.startsWith('windows')
+
 // Zulu build pinned as the source of jmods for cross-targets; its embedded java version
 // must match the toolchain major version (gradle.properties: bitferry.java). The exact
 // update build of the auto-provisioned toolchain itself is whatever matching Zulu 25 the
@@ -92,11 +96,24 @@ jlink {
 
     options = ['--compress', 'zip-6', '--strip-debug', '--no-header-files', '--no-man-pages']
 
+    // jpackage launchers cannot set environment variables; the launcher-native vehicle is a
+    // system property, and bitferry.BackupEngines prefers it over the RCLONE/RESTIC
+    // environment variables: a packaged deployment always drives the engines it was built
+    // with, while bare `java -m` runs against a jlink tree — which set no java options —
+    // fall back to those variables. {{BIN_DIR}} resolves to the image bin dir in jlink start
+    // scripts and to $APPDIR/.. in jpackage launcher configs — in both cases the tools land
+    // at <image>/bin, next to the launchers. The expansion is performed by the launcher
+    // binary itself, so wrappers around the app-image (AppImage, Flatpak, Snap) inherit the
+    // properties unchanged.
+    def bundledToolExeSuffix = windowsTarget ? '.exe' : ''
+    def bundledToolProps = ["-Dbitferry.rclone={{BIN_DIR}}/../bin/rclone${bundledToolExeSuffix}",
+                            "-Dbitferry.restic={{BIN_DIR}}/../bin/restic${bundledToolExeSuffix}"]
+
     launcher {
         name = 'bitferry'
         // {{BIN_DIR}} resolves to the image bin dir in jlink start scripts and
         // to $APPDIR/.. in jpackage launcher configs.
-        jvmArgs = ["-XX:AOTCache={{BIN_DIR}}/../lib/aot/cli.aot"]
+        jvmArgs = ["-XX:AOTCache={{BIN_DIR}}/../lib/aot/cli.aot"] + bundledToolProps
         unixScriptTemplate = file('src/packaging/unixStartScript.txt')
     }
     secondaryLauncher {
@@ -104,7 +121,7 @@ jlink {
         moduleName = 'bitferry.gui'
         mainClass = 'bitferry.gui.BitferryGui'
         jvmArgs = ["-XX:AOTCache={{BIN_DIR}}/../lib/aot/gui.aot",
-                   "--enable-native-access=javafx.graphics"]
+                   "--enable-native-access=javafx.graphics"] + bundledToolProps
         unixScriptTemplate = file('src/packaging/unixStartScript.txt')
         // A top-level --win-console is inherited by --add-launcher launchers unless overridden;
         // this keeps the GUI launcher a GUI-subsystem executable on Windows. jpackage ignores
@@ -130,7 +147,7 @@ jlink {
         // Without --win-console the main launcher is a GUI-subsystem executable and the CLI
         // produces no console output on Windows. The option is Windows-only jpackage syntax,
         // and since jpackageImage only runs for the host platform, the target check suffices.
-        if (platformName == 'windows-x64') {
+        if (windowsTarget) {
             imageOptions = ['--win-console']
         }
     }
@@ -146,10 +163,10 @@ tasks.named('distTar') { enabled = false }
 tasks.named('jpackageImage') {
     onlyIf { !cross }
     // The plugin maps {{BIN_DIR}} to "$APPDIR\.." in jpackage launcher configs, where $APPDIR
-    // is the dir holding the .cfg (<image>/app on Windows). The -XX:AOTCache={{BIN_DIR}}/../lib/aot
-    // launcher args therefore resolve one level above the app image and miss the mirrored caches
-    // in <image>/lib/aot. Rewrite the generated Windows configs to point inside the image; the
-    // Linux layout (<image>/lib/app) already resolves correctly by construction.
+    // is the dir holding the .cfg (<image>/app on Windows). The {{BIN_DIR}}/.. launcher args
+    // (AOT cache, bundled rclone/restic properties) therefore resolve one level above the app
+    // image and miss their in-image targets. Rewrite the generated Windows configs to point
+    // inside the image; the Linux layout (<image>/lib/app) already resolves correctly.
     if (OperatingSystem.current().windows) {
         doLast {
             def cfgDir = new File(jpackageImageDir, 'app')
@@ -173,6 +190,159 @@ tasks.named('jpackage') {
 // Training runs the image's own java with -XX:AOTCacheOutput, exercising each
 // frontend so the cache covers its startup classes. The cache lands in
 // <image>/lib/aot and the launchers reference it via -XX:AOTCache.
+
+// ---------------------------------------------------------------- bundled backup engines
+//
+// The bitferry frontends drive the rclone and restic executables, so both ship inside the
+// image: they are downloaded for the target platform, verified against the pinned SHA-256
+// checksums below (cross-checked against the official SHA256SUMS when this list was written)
+// and placed into <image>/bin as plain executables. Bumping a toolVersions entry changes the
+// archive URLs and therefore the download cache keys, so new versions re-download naturally.
+
+def toolVersions = [rclone: '1.76.0', restic: '0.19.1']
+
+// platformName -> tool -> [archive URL, pinned SHA-256, entry path in archive, target name, format]
+def toolSpecs = [
+    'windows-x64': [
+        rclone: ["https://downloads.rclone.org/v${toolVersions.rclone}/rclone-v${toolVersions.rclone}-windows-amd64.zip",
+                 '8b4fd2737ade4e70c057ef4a49deb7cffe94b0fb9d7587c189d149823f21a1dc',
+                 "rclone-v${toolVersions.rclone}-windows-amd64/rclone.exe", 'rclone.exe', 'zip'],
+        restic: ["https://github.com/restic/restic/releases/download/v${toolVersions.restic}/restic_${toolVersions.restic}_windows_amd64.zip",
+                 'da948ad707ed690426473aaba2046cd61f8f90f6f0e7dab6be0d5796531de67d',
+                 "restic_${toolVersions.restic}_windows_amd64.exe", 'restic.exe', 'zip'],
+    ],
+    'linux-x64': [
+        rclone: ["https://downloads.rclone.org/v${toolVersions.rclone}/rclone-v${toolVersions.rclone}-linux-amd64.zip",
+                 'b00f00b3266c3764413afe599d3ec316f6f43b3e0ea8a0bc1d186d2133e46df7',
+                 "rclone-v${toolVersions.rclone}-linux-amd64/rclone", 'rclone', 'zip'],
+        restic: ["https://github.com/restic/restic/releases/download/v${toolVersions.restic}/restic_${toolVersions.restic}_linux_amd64.bz2",
+                 'f415415624dcc452f2a02b8c33641791a8c6d6d3b65bbb3543fcf9a25151585c',
+                 'restic', 'restic', 'bz2'],
+    ],
+    'linux-aarch64': [
+        rclone: ["https://downloads.rclone.org/v${toolVersions.rclone}/rclone-v${toolVersions.rclone}-linux-arm64.zip",
+                 'ee169016675e23a69d77240565133ff7dbc9b33d16fa8f7053d4af39f1eaeb78',
+                 "rclone-v${toolVersions.rclone}-linux-arm64/rclone", 'rclone', 'zip'],
+        restic: ["https://github.com/restic/restic/releases/download/v${toolVersions.restic}/restic_${toolVersions.restic}_linux_arm64.bz2",
+                 'a5f64aaab53d51e311fa3829124c5b703f2d14cf187d8640b6be3b2b49376465',
+                 'restic', 'restic', 'bz2'],
+    ],
+    'macos-x64': [
+        rclone: ["https://downloads.rclone.org/v${toolVersions.rclone}/rclone-v${toolVersions.rclone}-osx-amd64.zip",
+                 '4f5835733d52b818340f97b1fc0348a70461534d123363a183ca2b660219595a',
+                 "rclone-v${toolVersions.rclone}-osx-amd64/rclone", 'rclone', 'zip'],
+        restic: ["https://github.com/restic/restic/releases/download/v${toolVersions.restic}/restic_${toolVersions.restic}_darwin_amd64.bz2",
+                 'c38d579622cf602f665234c5a8c315030b6cf70656028fe6dc29a786b60e5f35',
+                 'restic', 'restic', 'bz2'],
+    ],
+    'macos-aarch64': [
+        rclone: ["https://downloads.rclone.org/v${toolVersions.rclone}/rclone-v${toolVersions.rclone}-osx-arm64.zip",
+                 'e72dc90b70f4947a7b72b61bde4a4fbba5777b2874fb448951ffdde67ebd0ab7',
+                 "rclone-v${toolVersions.rclone}-osx-arm64/rclone", 'rclone', 'zip'],
+        restic: ["https://github.com/restic/restic/releases/download/v${toolVersions.restic}/restic_${toolVersions.restic}_darwin_arm64.bz2",
+                 '7be0a144ccc377880f294204aa271d76e4b79554b42a751151d425ce6ebac143',
+                 'restic', 'restic', 'bz2'],
+    ],
+]
+if (!(platformName in toolSpecs.keySet())) {
+    throw new GradleException("No pinned rclone/restic artifacts for target '$platformName' (expected: ${toolSpecs.keySet().sort().join(', ')})")
+}
+
+static String sha256Hex(File file) {
+    def digest = java.security.MessageDigest.getInstance('SHA-256')
+    file.withInputStream { stream ->
+        def buf = new byte[64 * 1024]
+        int n
+        while ((n = stream.read(buf)) != -1) {
+            digest.update(buf, 0, n)
+        }
+    }
+    digest.digest().collect { String.format('%02x', it & 0xff) }.join()
+}
+
+def toolsBinDir = new File(runtimeImageDir, 'bin')
+
+tasks.register('fetchTools') {
+    group = 'bitferry'
+    description = "Downloads, verifies and installs the pinned rclone/restic executables for ${platformName} into the image bin dir."
+    dependsOn tasks.named('jlink')
+    outputs.files toolSpecs[platformName].values().collect { new File(toolsBinDir, it[3]) }
+    doLast {
+        def cacheDir = new File(gradle.gradleUserHomeDir,
+                "jdks/bitferry/tools/${toolVersions.rclone}-${toolVersions.restic}")
+        toolSpecs[platformName].each { tool, spec ->
+            def (url, pinnedSha256, entryPath, targetName, format) = spec
+            def archive = new File(cacheDir, url.substring(url.lastIndexOf('/') + 1))
+            if (!archive.isFile()) {
+                archive.parentFile.mkdirs()
+                logger.lifecycle("Downloading $tool for ${platformName} from $url")
+                def result = providers.exec {
+                    commandLine 'curl', '-fsSL', '--retry', '3', '--connect-timeout', '30',
+                                '-o', archive.absolutePath, url
+                    ignoreExitValue = true
+                }.result.get()
+                if (result.exitCode != 0) {
+                    throw new GradleException("Failed to download $url (curl exit ${result.exitCode})")
+                }
+            }
+            def actualSha256 = sha256Hex(archive)
+            if (actualSha256 != pinnedSha256) {
+                archive.delete()
+                throw new GradleException("SHA-256 mismatch for ${archive.name}: " +
+                        "expected $pinnedSha256, got $actualSha256 (archive deleted; rerun to re-download)")
+            }
+            def extractDir = new File(temporaryDir, tool)
+            extractDir.mkdirs()
+            def unpacked = format == 'zip'
+                    ? new File(extractDir, entryPath)
+                    : new File(extractDir, 'unpacked')
+            if (format == 'zip') {
+                ant.unzip(src: archive, dest: extractDir)
+            } else {
+                ant.bunzip2(src: archive, destfile: unpacked)
+            }
+            if (!unpacked.isFile()) {
+                throw new GradleException("The $tool archive does not contain the expected entry '$entryPath'")
+            }
+            def target = new File(toolsBinDir, targetName)
+            target.parentFile.mkdirs()
+            java.nio.file.Files.copy(unpacked.toPath(), target.toPath(),
+                    java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+            if (!OperatingSystem.current().windows) {
+                ant.chmod(file: target, perm: '755')
+            }
+            logger.lifecycle("Placed $tool ${toolVersions[tool]} into ${target}")
+        }
+    }
+}
+
+// jpackage wraps the runtime image into <image>/runtime (or lib/runtime), which would bury
+// the tools and duplicate them. Mirror them to the app-image bin dir instead — next to the
+// native launchers — and drop the copy jpackage made inside the packaged runtime.
+tasks.register('copyToolsToJpackageImage') {
+    group = 'bitferry'
+    description = 'Places the bundled rclone/restic executables into the jpackage app-image bin dir.'
+    dependsOn tasks.named('jpackageImage'), tasks.named('fetchTools')
+    onlyIf { trainable }
+    def appImageToolsBinDir = new File(jpackageImageDir, 'bin')
+    def packagedRuntimeBinDir = new File(jpackageImageDir,
+            windowsTarget ? 'runtime/bin' : 'lib/runtime/bin')
+    doLast {
+        toolSpecs[platformName].values().each { spec ->
+            def targetName = spec[3]
+            def src = new File(toolsBinDir, targetName)
+            def dst = new File(appImageToolsBinDir, targetName)
+            dst.parentFile.mkdirs()
+            java.nio.file.Files.copy(src.toPath(), dst.toPath(),
+                    java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+            if (!OperatingSystem.current().windows) {
+                ant.chmod(file: dst, perm: '755')
+            }
+            new File(packagedRuntimeBinDir, targetName).delete()
+        }
+    }
+}
+
 
 def cliAotCache = new File(aotDir, 'cli.aot')
 def guiAotCache = new File(aotDir, 'gui.aot')
@@ -223,19 +393,57 @@ tasks.register('trainGuiAot', Exec) {
     }
 }
 
-// The caches must exist before jpackage copies the runtime image into the app-image,
-// and jpackage's $APPDIR-relative lookup expects them next to the app lib dir.
+// The caches and the bundled rclone/restic executables must exist before jpackage copies
+// the runtime image into the app-image; jpackage's $APPDIR-relative lookup expects the
+// caches next to the app lib dir.
 tasks.named('jpackageImage') {
-    dependsOn 'trainCliAot', 'trainGuiAot'
+    dependsOn 'trainCliAot', 'trainGuiAot', 'fetchTools'
 }
 
 tasks.register('copyAotCachesToJpackageImage', Copy) {
     group = 'bitferry'
     description = 'Mirrors the trained AOT caches to the jpackage app-image lib dir.'
-    dependsOn tasks.named('jpackageImage')
+    dependsOn tasks.named('jpackageImage'), 'copyToolsToJpackageImage'
     onlyIf { trainable }
     from aotDir
     into new File(jpackageImageDir, 'lib/aot')
+}
+
+// ---------------------------------------------------------------- Windows installer (WiX)
+//
+// Packages the jpackage app-image into a per-user MSI (installs to
+// %LOCALAPPDATA%\Programs\Bitferry, user PATH included). WiX drives the harvest via
+// <Files> wildcards, so no generated fragment is needed. Requires the wix tool on PATH
+// (dotnet tool install --global wix) and only ever runs for the native Windows host.
+
+def wixSourceDir = file('src/packaging/wix')
+def msiFile = layout.buildDirectory.dir('installer')
+        .get().file("bitferry-${project.version}-${platformName}.msi").asFile
+
+tasks.register('msi', Exec) {
+    group = 'bitferry'
+    description = 'Builds the per-user Windows MSI installer (WiX) from the jpackage app-image.'
+    dependsOn 'copyAotCachesToJpackageImage'
+    onlyIf { !cross && OperatingSystem.current().windows }
+    inputs.dir jpackageImageDir
+    inputs.dir wixSourceDir
+    outputs.file msiFile
+    doFirst {
+        msiFile.parentFile.mkdirs()
+        try {
+            providers.exec { commandLine 'wix', '--version' }.standardOutput.asText.get()
+        } catch (Exception e) {
+            throw new GradleException("The 'wix' tool is not available on PATH. " +
+                    'Install it with: dotnet tool install --global wix', e)
+        }
+    }
+    commandLine (['wix', 'build',
+                  '-arch', 'x64',
+                  '-acceptEula', 'wix7',
+                  '-d', "imageDir=${jpackageImageDir.absolutePath}",
+                  '-d', "productVersion=${project.version}",
+                  '-o', msiFile.absolutePath] +
+            wixSourceDir.listFiles().findAll { it.name.endsWith('.wxs') }*.absolutePath)
 }
 
 // ---------------------------------------------------------------- lifecycle
@@ -244,16 +452,23 @@ def projectVersion = project.version.toString()
 
 tasks.register('dist') {
     group = 'build'
-    description = "Builds the full distribution for target '${platformName}' (jlink tree + AOT caches${trainable ? ' + jpackage app-image' : ''})."
+    description = "Builds the full distribution for target '${platformName}' (jlink tree + AOT caches${trainable ? ' + jpackage app-image' : ''}${trainable && OperatingSystem.current().windows ? ' + Windows MSI' : ''})."
     if (trainable) {
         dependsOn 'copyAotCachesToJpackageImage'
+        if (OperatingSystem.current().windows) {
+            dependsOn 'msi'
+        }
     } else {
         dependsOn tasks.named('jlink')
+        dependsOn 'fetchTools'
     }
     doLast {
         def deliverables = trainable
                 ? ["jlink tree:       $runtimeImageDir", "jpackage app-image: $jpackageImageDir"]
                 : ["jlink tree:       $runtimeImageDir (cross-built, no AOT caches — train on the target)"]
+        if (trainable && OperatingSystem.current().windows) {
+            deliverables += "Windows installer:  $msiFile"
+        }
         logger.lifecycle("bitferry ${projectVersion} [${platformName}] deliverables:")
         deliverables.each { logger.lifecycle("  ${it}") }
     }

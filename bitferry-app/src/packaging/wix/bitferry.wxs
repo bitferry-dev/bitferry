@@ -1,0 +1,68 @@
+<!--
+  Per-user Windows MSI for the bitferry jpackage app-image, built by the
+  :bitferry-app:msi Gradle task (wix build -dimageDir=... -dproductVersion=...).
+
+  Intended for user-guided installs: no wizard dialogs (the default basic MSI UI shows
+  progress and completion only). Installs the whole app-image tree to
+  %LOCALAPPDATA%\Programs\Bitferry, puts that directory (where the bitferry.exe CLI
+  launcher lives) on the user PATH and adds a Start Menu shortcut for the GUI launcher.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+
+    <Package Name="Bitferry"
+             Manufacturer="Bitferry"
+             Version="$(productVersion)"
+             UpgradeCode="E670508D-7FA6-45D2-B325-74A5857BC80E"
+             Scope="perUser"
+             Compressed="yes">
+
+        <!-- The UpgradeCode is stable across versions; regenerate only for a fork. -->
+
+        <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
+        <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+
+        <StandardDirectory Id="LocalAppDataFolder">
+            <Directory Id="ProgramsDir" Name="Programs">
+                <Directory Id="INSTALLFOLDER" Name="Bitferry">
+
+                    <!-- the two native launchers -->
+                    <Files Include="$(imageDir)\bitferry.exe" />
+                    <Files Include="$(imageDir)\bitferry-gui.exe" />
+
+                    <!-- bundled rclone/restic engines -->
+                    <Files Include="$(imageDir)\bin\**" Subdirectory="bin" />
+
+                    <!-- launcher configs, mirrored AOT caches, packaged runtime -->
+                    <Files Include="$(imageDir)\app\**" Subdirectory="app" />
+                    <Files Include="$(imageDir)\lib\**" Subdirectory="lib" />
+                    <Files Include="$(imageDir)\runtime\**" Subdirectory="runtime" />
+
+                    <!-- prepend the launcher directory to the user PATH, so the bundled
+                         engines take precedence over any other installations -->
+                    <Component Id="UserPathComponent">
+                        <Environment Id="PATH" Name="PATH" Value="[INSTALLFOLDER]"
+                                     Part="first" Action="set" System="no" Permanent="no" />
+                        <RegistryValue Root="HKMU" Key="Software\Bitferry\Installer"
+                                       Name="UserPathComponent" Type="integer" Value="1" KeyPath="yes" />
+                    </Component>
+
+                </Directory>
+            </Directory>
+        </StandardDirectory>
+
+        <!-- the GUI shortcut lives in the Start Menu's program list, like any application -->
+        <StandardDirectory Id="ProgramMenuFolder">
+            <Component Id="GuiShortcutComponent">
+                <Shortcut Id="BitferryGuiShortcut"
+                          Name="Bitferry"
+                          Description="Bitferry GUI"
+                          Target="[INSTALLFOLDER]bitferry-gui.exe"
+                          WorkingDirectory="INSTALLFOLDER" />
+                <RegistryValue Root="HKMU" Key="Software\Bitferry\Installer"
+                               Name="GuiShortcut" Type="integer" Value="1" KeyPath="yes" />
+            </Component>
+        </StandardDirectory>
+
+    </Package>
+
+</Wix>
