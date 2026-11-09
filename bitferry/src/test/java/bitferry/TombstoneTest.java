@@ -109,6 +109,35 @@ class TombstoneTest {
   }
 
   @Test
+  void deletionSurvivesThePeerVanishingMidFlight() throws IOException {
+    Task task = bindTask();
+    manager.commit();
+
+    // Both volumes are restored and the deletion is issued; the peer volume then
+    // vanishes before the commit (its storage never receives the tombstone)
+    Manager live = new Manager();
+    live.restore(List.of(dir.resolve("first"), dir.resolve("second")));
+    live.task(task.tag()).delete();
+
+    // Only the surviving volume commits; the vanished one keeps the stale plain copy
+    live.selectVolumes(List.of(first.tag())).getFirst().commit();
+
+    // The peer returns: the tombstone (bumped timestamp) wins over the plain copy -
+    // the deleted task does not resurrect - and is collected once the both volumes
+    // are visible again
+    Manager returned = new Manager();
+    returned.restore(List.of(dir.resolve("first"), dir.resolve("second")));
+    Task conflict = returned.task(task.tag());
+    assertNotNull(conflict);
+    assertTrue(conflict.isDeleted());
+    assertTrue(returned.selectTasks().isEmpty());
+
+    returned.commit();
+    assertFalse(Storage.readJson(dir.resolve("first").resolve(Bitferry.STORAGE)).has("tasks"));
+    assertFalse(Storage.readJson(dir.resolve("second").resolve(Bitferry.STORAGE)).has("tasks"));
+  }
+
+  @Test
   void tombstoneIsCollectedOnceAllVolumesAreVisible() throws IOException {
     Task task = bindTask();
     manager.commit();

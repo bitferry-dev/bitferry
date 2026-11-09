@@ -203,16 +203,13 @@ public class Manager {
     return xs;
   }
 
-  /// Probe the specified roots for the volumes restoring the discovered ones. The user's
-  /// home directory and the directory list specified through the BITFERRY_PATH environment
-  /// variable are always probed in addition to the specified roots.
-  /// TODO probe the mounted file systems (the psutil.disk_partitions() equivalent).
+  /// Probe the specified roots for the volumes restoring the discovered ones. Only the
+  /// specified roots are probed: the global probing policy (the user's home directory,
+  /// the BITFERRY_PATH directories, the mounted file systems) is a caller's concern -
+  /// the CLI composes it in CliUtils.restoreManager keeping the direct Manager use
+  /// (the tests, the embedders) isolated from the host environment.
   public Manager restore(List<Path> roots) {
-    List<Path> probed = new ArrayList<>(roots);
-    String env = System.getenv("BITFERRY_PATH");
-    if (env != null) probed.addAll(Arrays.stream(env.split(Pattern.quote(File.pathSeparator))).map(Path::of).toList());
-    probed.add(Path.of(System.getProperty("user.home")));
-    for (Path root : probed.stream().map(Bitferry::canonicalize).distinct().toList()) {
+    for (Path root : roots.stream().map(Bitferry::canonicalize).distinct().toList()) {
       if (!java.nio.file.Files.isRegularFile(root.resolve(Bitferry.STORAGE))) {
         LOG.log(Level.DEBUG, () -> "no volume storage found in '" + root + "'");
         continue;
@@ -231,16 +228,39 @@ public class Manager {
     return this;
   }
 
+  /// The mount points of the presently mounted file systems — the
+  /// psutil.disk_partitions() equivalent built upon the module file stores. The
+  /// file store's textual form carries the mount point as {@code mount (source)}.
+  /// No filtering is applied: the skip lists are operating system specific, while
+  /// the probe itself is a single stat per mount - the false positives are next
+  /// to free and the false negatives lose the volumes.
+  public static List<Path> mountPoints() {
+    List<Path> mounts = new ArrayList<>();
+    for (FileStore store : FileSystems.getDefault().getFileStores()) {
+      Path mount = mountPoint(store);
+      if (mount != null) mounts.add(mount);
+    }
+    return mounts;
+  }
+
+  /// Extract the mount point out of the file store's textual {@code mount (source)} form.
+  static Path mountPoint(FileStore store) {
+    String text = store.toString();
+    int separator = text.indexOf(" (");
+    return separator <= 0 ? null : Path.of(text.substring(0, separator));
+  }
+
   /// Probe the specified roots for the volumes restoring the discovered ones.
   public Manager restore(Path... roots) {
     return restore(Arrays.asList(roots));
   }
 
-  /// Commit all the live volumes raising [BitferryError] on a caught failure of any of them.
+  /// Commit all the live volumes raising [BitferryError] on a caught failure of any of
+  /// them. The garbage collection is deliberately not performed here: the freshly
+  /// recorded tombstones must persist within this commit (collecting them beforehand
+  /// would drop the deletion markers before they ever reach the storages) - the
+  /// physical tombstone removal happens at the following restore.
   public Manager commit() {
-    // The tombstones whose referred volumes have all become visible are collected
-    // first so that their removal materializes within this commit
-    collectGarbage();
     List<String> problems = new ArrayList<>();
     for (Volume volume : volumes.values()) {
       if (!volume.isLive()) continue;

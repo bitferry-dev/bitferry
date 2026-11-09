@@ -138,7 +138,9 @@ class TaskTest {
     Synchronize task = new Synchronize(manager, source(), destination(), null, List.of(), List.of());
     assertTrue(volume.isModified());
     task.delete();
-    assertFalse(task.isLive());
+    // The tombstone: the task stays live (the marker must persist) yet invisible
+    assertTrue(task.isDeleted());
+    assertTrue(task.isLive());
     assertTrue(volume.staleTasks().isEmpty());
     assertTrue(volume.intactTasks().isEmpty());
   }

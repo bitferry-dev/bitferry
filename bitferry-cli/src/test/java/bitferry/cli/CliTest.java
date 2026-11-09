@@ -140,8 +140,17 @@ class CliTest {
     int code3 = cmd.execute("--path", volDir.toString(), "delete", "task", task.tag());
     assertEquals(0, code3, () -> "stderr: " + err.toString());
 
+    // The tombstone persists in the storage until the garbage collection removes it,
+    // while the task itself is invisible for all the operations
     Manager afterDelete = new Manager().restore(volDir);
-    assertTrue(afterDelete.tasks().values().stream().noneMatch(t -> t.tag().equals(task.tag())));
+    Task leftover = afterDelete.task(task.tag());
+    assertNotNull(leftover);
+    assertTrue(leftover.isDeleted());
+    assertTrue(afterDelete.selectTasks().isEmpty());
+    // The garbage collection physically removes the tombstone upon the following commit
+    afterDelete.commit();
+    Manager finalState = new Manager().restore(volDir);
+    assertTrue(finalState.tasks().values().stream().noneMatch(t -> t.tag().equals(task.tag())));
   }
 
   @Test

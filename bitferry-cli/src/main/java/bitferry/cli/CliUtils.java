@@ -5,8 +5,10 @@ import bitferry.endpoint.*;
 import bitferry.task.*;
 import java.io.*;
 import java.nio.charset.*;
+import java.nio.file.*;
 import java.util.*;
 import java.util.logging.*;
+import java.util.regex.*;
 import picocli.CommandLine.Help.*;
 import picocli.CommandLine.Model.*;
 
@@ -76,14 +78,18 @@ public final class CliUtils {
   }
 
   /// Create, configure and restore a Manager instance by probing available volumes.
+  /// The probing policy of the CLI: the explicit --path roots, the BITFERRY_PATH
+  /// directories, the user's home directory and all the mounted file systems.
   public static Manager restoreManager(CommonOptions opts) {
     Manager m = createManager(opts);
-    if (opts.paths != null && !opts.paths.isEmpty()) {
-      m.restore(opts.paths);
-    } else {
-      m.restore();
+    List<Path> roots = opts.paths == null ? new ArrayList<>() : new ArrayList<>(opts.paths);
+    String env = System.getenv("BITFERRY_PATH");
+    if (env != null && !env.isBlank()) {
+      for (String entry : env.split(Pattern.quote(File.pathSeparator))) roots.add(Path.of(entry));
     }
-    return m;
+    roots.add(Path.of(System.getProperty("user.home")));
+    roots.addAll(Manager.mountPoints());
+    return m.restore(roots);
   }
 
   /// Configure root logging level corresponding to the specified verbosity.

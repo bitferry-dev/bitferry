@@ -191,26 +191,16 @@ public abstract class Task {
     generation = Math.max(source.generation(), destination.generation()) + 1;
   }
 
-  /// Mark the task for deletion. When all the referred volumes are registered the task
-  /// is deleted physically (dropped from their storages upon the commit); otherwise a
-  /// deletion marker (tombstone) is recorded instead: the marked task becomes invisible
-  /// for all the operations and is removed physically once the absent volumes are
-  /// restored and the garbage collection gathers the tombstone.
+  /// Mark the task for deletion by recording the deletion marker (the tombstone): the
+  /// marked task becomes invisible for all the operations immediately while the marker
+  /// travels through all the referring storages, winning the conflicting restorations
+  /// over the plain copies by its bumped timestamp. The physical removal is performed
+  /// by the garbage collection once all the referred volumes are visible - the deferral
+  /// keeps the deletion resilient against the volumes disappearing mid-flight: the
+  /// stale plain copies of the vanished storages lose the conflict upon the return.
   public void delete() {
-    List<String> absent = referredVolumes().stream().filter(vtag -> manager.volume(vtag) == null).toList();
-    if (absent.isEmpty()) {
-      live = false;
-      commitState = CommitState.DELETED;
-      touch();
-    } else {
-      // The tombstone travels with the task descriptor carrying the bumped timestamp,
-      // winning the conflicting restorations over the plain copies in the other storages
-      deleted = true;
-      touch();
-      for (String vtag : absent) {
-        LOG.log(Level.WARNING, "the absent volume #{0} still holds the plain descriptor of the deleted task #{1}; a deletion marker is recorded instead and the task is removed physically once the volume is restored", vtag, tag);
-      }
-    }
+    deleted = true;
+    touch();
   }
 
   /// Physically remove the collected (garbage) tombstone from the storages of all

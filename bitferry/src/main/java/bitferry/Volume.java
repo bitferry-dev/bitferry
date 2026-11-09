@@ -40,6 +40,12 @@ public final class Volume {
   private boolean live = true;
   private boolean wipe;
 
+  // The identity (source/type pair) of the file system the root resides on, captured
+  // at the discovery time and re-checked before every durable storage operation: the
+  // identity change means the volume has disappeared (the mount dropped) and the
+  // writes would silently materialize on the parent file system.
+  private final String fileStore;
+
   // Password tokens of the encrypted tasks keyed by the task tags (see vault providers)
   private final Map<String, String> vault = new LinkedHashMap<>();
 
@@ -51,6 +57,7 @@ public final class Volume {
     this.manager = manager;
     this.tag = Tags.newTag();
     this.root = Bitferry.canonicalize(root);
+    this.fileStore = fileStoreId(this.root);
     this.modified = true;
     this.commitState = CommitState.PRISTINE;
     touch();
@@ -80,6 +87,7 @@ public final class Volume {
     this.tag = tag;
     this.mtime = modified;
     this.root = Bitferry.canonicalize(root);
+    this.fileStore = fileStoreId(this.root);
     this.modified = false;
     this.commitState = CommitState.LIVE;
     if (vault != null) this.vault.putAll(vault);
@@ -230,6 +238,7 @@ public final class Volume {
       }
       case LIVE -> { // Dump the volume storage
         if (isModified() || manager.force) {
+          checkPresence();
           try {
             // The actual storage writing time is stored, not the in-memory modification time
             mtime = OffsetDateTime.now().truncatedTo(java.time.temporal.ChronoUnit.MICROS);
@@ -249,6 +258,7 @@ public final class Volume {
         break loop;
       }
       case DELETED -> {
+        checkPresence();
         if (manager.simulate) {
           LOG.log(Level.INFO, () -> "simulated volume #" + tag + " storage removal");
         } else if (wipe) {
@@ -303,6 +313,28 @@ public final class Volume {
     } catch (IOException e) {
       throw new BitferryError("volume #" + tag + " directory wiping failure", e);
     }
+  }
+
+  /// The identity of the file system the specified directory resides on (the source
+  /// and type pair), or null when it cannot be resolved (e.g. the directory has
+  /// disappeared).
+  private static String fileStoreId(Path directory) {
+    try {
+      FileStore store = Files.getFileStore(directory);
+      return store.name() + "/" + store.type();
+    } catch (IOException e) {
+      return null;
+    }
+  }
+
+  /// Detect the disappeared volume: the root resolving to a different (or no) file
+  /// system than at the discovery time. The stale mount point directories left by the
+  /// unclean removals would otherwise silently materialize the volume files on the
+  /// parent file system.
+  private void checkPresence() {
+    String current = fileStoreId(root);
+    if (fileStore != null && !fileStore.equals(current))
+      throw new BitferryError("volume #" + tag + " root '" + root + "' has disappeared (its file system is no longer " + fileStore + ")");
   }
 
   private static void deleteRecursively(Path dir) {
