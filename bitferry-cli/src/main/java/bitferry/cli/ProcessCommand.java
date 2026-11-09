@@ -1,0 +1,68 @@
+package bitferry.cli;
+
+import bitferry.*;
+import bitferry.task.*;
+import java.io.*;
+import java.util.*;
+import java.util.concurrent.*;
+import picocli.CommandLine.*;
+import picocli.CommandLine.Help.*;
+import picocli.CommandLine.Model.*;
+
+/// Process tasks matched by specified (partial) tags, or all intact tasks if no tags given.
+@Command(name = "process", aliases = {"x"}, mixinStandardHelpOptions = true, description = "Process tasks matched by specified (partial) tags.")
+public class ProcessCommand implements Callable<Integer>, HasCommonOptions {
+
+  // Explicit no-arg constructor: the command classes are instantiated
+  // reflectively by picocli.
+  public ProcessCommand() {}
+
+  @Mixin
+  CommonOptions options = new CommonOptions();
+
+  @Spec
+  CommandSpec spec;
+
+  @Parameters(arity = "0..*", description = "Tags matching tasks to process.", paramLabel = "TAGS")
+  List<String> tags;
+
+  @Override
+  public CommonOptions commonOptions() {
+    return options;
+  }
+
+  @Override
+  public Integer call() {
+    PrintWriter out = spec != null ? spec.commandLine().getOut() : new PrintWriter(System.out, true);
+    CommonOptions opts = CliUtils.resolveOptions(spec, options);
+    Manager m = CliUtils.restoreManager(opts);
+    Map<String, Task> tasks = m.selectTasks(tags);
+    // An empty selection succeeds silently
+    if (tasks.isEmpty()) return 0;
+    int n = tasks.size();
+    boolean outcome = true;
+    int i = 0;
+    for (Task t : tasks.values()) {
+      i++;
+      if (!m.quiet) {
+        String line = String.format("@|bold [%d/%d]|@ @|cyan #%s|@  %s", i, n, t.tag(), CliUtils.formatTask(t));
+        out.println(Ansi.AUTO.string(line));
+      }
+      boolean ok = t.process(null);
+      outcome = ok && outcome;
+      if (!m.quiet) {
+        String status = ok ? "@|green     ✓ success|@" : "@|red     ✗ failure|@";
+        out.println(Ansi.AUTO.string(status));
+      }
+    }
+    if (!m.quiet) {
+      out.println();
+      String summary = outcome
+        ? String.format("@|green All %d task(s) processed successfully.|@", n)
+        : String.format("@|red Some of the %d task(s) failed to process.|@", n);
+      out.println(Ansi.AUTO.string(summary));
+    }
+    return outcome ? 0 : 1;
+  }
+}
+

@@ -12,3 +12,6 @@ bin/
 
 # OS
 .DS_Store
+
+# ZCode session artifacts
+.zcode/

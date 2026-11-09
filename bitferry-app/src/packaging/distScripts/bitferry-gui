@@ -10,4 +10,4 @@ else
     JAVACMD=java
 fi
 exec "$JAVACMD" $JAVA_OPTS --enable-native-access=javafx.graphics \
-        --module-path "$DIR/../lib" -m bitferry.gui/bitferry.gui.BitferryGui "$@"
+        --module-path "$DIR/../lib" -m bitferry.gui/bitferry.gui.Main "$@"

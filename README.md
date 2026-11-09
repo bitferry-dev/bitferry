@@ -6,16 +6,16 @@ launchers, **AOT-trained** with the JDK 25 [AOT cache](https://openjdk.org/jeps/
 
 - **Toolchain**: Java 25, Azul **Zulu** — auto-provisioned through the [foojay resolver](https://plugins.gradle.org/plugin/org.gradle.toolchains.foojay-resolver-convention); no local JDK 25 install needed.
 - **Runtime images**: [beryx badass-jlink](https://github.com/beryx/badass-jlink-plugin) drives `jlink` and `jpackage`.
-- **Packaging**: a `jlink` tree, a `jpackage` **app-image** with native launchers, a platform-neutral **zip / tar.gz** bundling the bitferry modules, their small jar dependencies (picocli, slf4j/logback) and cross-platform launchers for distro packaging (the Java/JavaFX runtimes and the rclone/restic engines are the packager's dependencies), a per-user **MSI installer** on Windows ([WiX](https://wixtoolset.org)) and a single-file **AppImage** on Linux. No per-module archives.
+- **Packaging**: a `jlink` tree, a `jpackage` **app-image** with native launchers, a platform-neutral **zip / tar.gz** bundling the bitferry modules, their small jar dependencies (picocli, Jackson) and cross-platform launchers for distro packaging (the Java/JavaFX runtimes and the rclone/restic engines are the packager's dependencies), a per-user **MSI installer** on Windows ([WiX](https://wixtoolset.org)) and a single-file **AppImage** on Linux. No per-module archives.
 - **Bundled engines**: the [rclone](https://rclone.org) and [restic](https://restic.net) executables the frontends drive ship inside the image — downloaded per target platform and SHA-256-verified at build time (see below).
 
 ## Modules
 
 | Gradle project  | JPMS module    | What it is                                                       |
 |-----------------|---------------|------------------------------------------------------------------|
-| `bitferry`      | `bitferry`    | the library: ferry dispatch API, logging via SLF4J (API only)    |
-| `bitferry-cli`  | `bitferry.cli`| CLI frontend: picocli commands `run`, `doctor`; logback backend  |
-| `bitferry-gui`  | `bitferry.gui`| JavaFX frontend; logback backend                                 |
+| `bitferry`      | `bitferry`    | the library: volumes, tasks, vault and the `.bitferry` storage (Jackson-based) |
+| `bitferry-cli`  | `bitferry.cli`| CLI frontend: picocli commands (`info`, `create`, `delete`, `process`); java.util.logging |
+| `bitferry-gui`  | `bitferry.gui`| JavaFX frontend; java.util.logging                               |
 | `bitferry-app`  | `bitferry.app`| distribution: jlink/jpackage/AOT assembly (aggregate module)     |
 
 Module names use dots — hyphens are not legal in Java module names.
@@ -25,7 +25,7 @@ Module names use dots — hyphens are not legal in Java module names.
 ```bash
 ./gradlew :bitferry-app:dist                 # everything for the build host platform
 ./gradlew :bitferry-app:jlink                # just the jlink tree
-./gradlew :bitferry-app:portableZip          # the three bitferry module jars (distro packaging)
+./gradlew :bitferry-app:bundle               # zip + tar.gz jar archive with launchers (distro packaging)
 ./gradlew :bitferry-app:jpackageImage        # jpackage app-image with native launchers
 ./gradlew :bitferry-app:msi                  # per-user Windows MSI (WiX; Windows host only)
 ./gradlew :bitferry-app:appimage             # single-file Linux AppImage (Linux host only)
@@ -54,7 +54,7 @@ bitferry-app/build/installer/
     bitferry-<version>-linux-<arch>.AppImage      # single-file AppImage (Linux host only)
 
 bitferry-app/build/distributions/                 # joint jar archive (target-independent)
-    bitferry-<version>.zip, .tar.gz               # bin/ launchers (sh+bat) + lib/ with bitferry + picocli/slf4j/logback
+    bitferry-<version>.zip, .tar.gz               # bin/ launchers (sh+bat) + lib/ with bitferry + picocli/Jackson
 ```
 
 ### Bundled backup engines
@@ -66,16 +66,17 @@ release — and places them into `<image>/bin`, which every deliverable carries 
 directly, the app-image via `copyToolsToJpackageImage`, the MSI via its `bin\` harvest).
 Archives are cached in `~/.gradle/jdks/bitferry/tools/`, keyed by the pinned versions.
 
-Every launcher (jlink script and jpackage config) passes `-Dbitferry.rclone` /
-`-Dbitferry.restic` pointing at the bundled executables. jpackage launchers cannot define
-environment variables — the cfg format only knows `app.mainmodule`, `app.mainjar`,
-`app.mainclass`, `app.classpath`, `arguments` and `java-options` — so the packaged
-locations travel as system properties, expanded by the launcher binary itself and
-therefore intact under AppImage/Flatpak/Snap wrappers on Linux. `bitferry.BackupEngines`
-resolves the engines with those properties taking priority over the `RCLONE` / `RESTIC`
-environment variables: bare `java -m` runs against a jlink tree set no java options and
-fall back to the variables. `bitferry doctor` prints the resolved locations and their
-origin.
+Every deployment resolves the engines at runtime through `bitferry.task.ExecutorSupport`,
+in strict priority order:
+
+1. the launcher-provided `-Dbitferry.rclone` / `-Dbitferry.restic` system properties —
+   every packaged launcher passes them pointing at the bundled executables, so packaged
+   deployments always drive the engines they were built with;
+2. the `RCLONE` / `RESTIC` environment overrides;
+3. the distribution-bundled executables found relative to the running runtime image (the
+   jlink image's `bin/`, the jpackage image root, the AppImage root);
+4. the bare name for the PATH lookup — a bare `java -m` run without the environment falls
+   back to whatever `rclone`/`restic` is on PATH.
 
 To bump a tool: change the version in `toolVersions`, update its five pinned hashes (one
 per platform) with the new release's `SHA256SUMS`, and rebuild — the new archive URL fails
@@ -115,16 +116,15 @@ dispatches the two frontends: an argument of `-g` / `--gui` (any position) launc
 GUI, everything else — including no arguments — runs the CLI:
 
 ```bash
-./build/installer/bitferry-0.1.0-linux-x64.AppImage doctor                  # CLI
+./build/installer/bitferry-0.1.0-linux-x64.AppImage info                    # CLI
 ./build/installer/bitferry-0.1.0-linux-x64.AppImage --gui                   # GUI
-./build/installer/bitferry-0.1.0-linux-x64.AppImage run --from a --to b --cargo tea:80
 ```
 
 The bundled engines and AOT caches keep working from the read-only squashfs mount: the
-jpackage launcher expands the packaged locations relative to the mounted image itself
-(see "Bundled backup engines"), and `bitferry doctor` inside the AppImage reports them as
-present. Running the AppImage needs `libfuse2` (or its `--appimage-extract-and-run`
-fallback on machines without it).
+engine resolution searches relative to the running runtime image (see "Bundled backup
+engines"), so it finds `bin/rclone`/`bin/restic` inside the mounted tree. Running the
+AppImage needs `libfuse2` (or its `--appimage-extract-and-run` fallback on machines
+without it).
 
 #### Installing (desktop/PATH integration)
 
@@ -152,10 +152,9 @@ GitHub-published SHA-256 digests.
 ### AOT training
 
 `trainCliAot` / `trainGuiAot` run the **image's own JVM** with `-XX:AOTCacheOutput`,
-exercising each frontend (`run` with sample cargo; the GUI in `--train` mode, which shows
-a window, dispatches a fleet and exits on first frame). The caches land in `lib/aot/`
+exercising each frontend (the CLI's default `info` action; the GUI in `--train` mode,
+which shows a window and exits on first frame). The caches land in `lib/aot/`
 inside the image tree, and every launcher passes `-XX:AOTCache=…` pointing there.
-`bitferry doctor` prints the resolved cache path and whether it is in use.
 
 Measured on the reference machine (Zulu 25, Linux x64): CLI startup `--version`
 **~140 ms with cache vs ~360 ms without**.
@@ -187,12 +186,13 @@ untrained until the target builds its own.
 ## Development
 
 ```bash
-./gradlew :bitferry-cli:run --args="run --from a --to b --cargo tea:80"
+./gradlew :bitferry-cli:run --args="info"
 ./gradlew :bitferry-gui:run
 ```
 
-Logging: the library logs through SLF4J; both frontends ship logback with a `logback.xml`
-in their resources (logs to stderr, `bitferry.*` at DEBUG).
+Logging: the library is logging-free (the domain returns results and errors); the CLI
+reports through `java.util.logging` (verbosity via the common options), and so does the
+GUI placeholder.
 
 Dependency versions live in `gradle/libs.versions.toml`; the JavaFX version is pinned
 there too. The toolchain major version is pinned as `bitferry.java` in `gradle.properties`,

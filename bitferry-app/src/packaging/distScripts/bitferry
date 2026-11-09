@@ -9,4 +9,4 @@ if [ -n "$JAVA_HOME" ]; then
 else
     JAVACMD=java
 fi
-exec "$JAVACMD" $JAVA_OPTS --module-path "$DIR/../lib" -m bitferry.cli/bitferry.cli.BitferryCli "$@"
+exec "$JAVACMD" $JAVA_OPTS --module-path "$DIR/../lib" -m bitferry.cli/bitferry.cli.Main "$@"

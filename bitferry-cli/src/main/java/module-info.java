@@ -1,10 +1,15 @@
+/// The Bitferry command line interface frontend built upon picocli.
 module bitferry.cli {
-    requires bitferry;
-    requires info.picocli;
-    requires org.slf4j;
-    requires ch.qos.logback.classic;
-    requires java.management;
+  // Transitive: the CLI API (CliUtils, the commands) exposes the Manager,
+  // the Endpoint and the Verbosity types of the core module
+  requires transitive bitferry;
+  // Transitive: the CLI API exposes the picocli CommandLine machinery
+  requires transitive info.picocli;
+  // The verbosity handling goes through the java.util.logging root logger
+  requires java.logging;
 
-    // picocli reflectively accesses @Command/@Option members of this module
-    opens bitferry.cli;
+  // The picocli machinery reflects over the command classes (annotations,
+  // injections, the version provider) requiring the deep access
+  exports bitferry.cli;
+  opens bitferry.cli to info.picocli;
 }

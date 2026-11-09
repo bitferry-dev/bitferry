@@ -1,18 +1,25 @@
 plugins {
+    id 'java-library'
     id 'application'
 }
 
 dependencies {
-    implementation project(':bitferry')
-    implementation libs.picocli
+    // The module descriptor requires both transitively (the CLI API exposes the core
+    // types and the picocli machinery), so they travel in the api scope
+    api project(':bitferry')
+    api libs.picocli
 
-    // SLF4J backend: logback-classic ships a real module descriptor (ch.qos.logback.classic)
-    implementation libs.logback.classic
+    testImplementation libs.junit.jupiter
+    testRuntimeOnly libs.junit.platform.launcher
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
 }
 
 application {
     mainModule = 'bitferry.cli'
-    mainClass = 'bitferry.cli.BitferryCli'
+    mainClass = 'bitferry.cli.Main'
 }
 
 // No plain distribution archives: the real deliverables (jlink tree, jpackage app-image,

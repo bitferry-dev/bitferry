@@ -1,6 +1,7 @@
 import org.gradle.internal.os.OperatingSystem
 
 plugins {
+    id 'java-library'
     id 'application'
 }
 
@@ -26,21 +27,21 @@ if (!javafxClassifier) {
 }
 
 dependencies {
-    implementation project(':bitferry')
+    // The module descriptor requires the core and the JavaFX modules, so they travel
+    // in the api scope
+    api project(':bitferry')
 
     // The classifier pulls javafx-base/graphics/controls natives for the target platform.
     // The no-classifier artifacts are empty stubs, so all modules are declared explicitly.
     def javafxVersion = libs.versions.javafx.get()
-    implementation "org.openjfx:javafx-base:$javafxVersion:$javafxClassifier"
-    implementation "org.openjfx:javafx-graphics:$javafxVersion:$javafxClassifier"
-    implementation "org.openjfx:javafx-controls:$javafxVersion:$javafxClassifier"
-
-    implementation libs.logback.classic
+    api "org.openjfx:javafx-base:$javafxVersion:$javafxClassifier"
+    api "org.openjfx:javafx-graphics:$javafxVersion:$javafxClassifier"
+    api "org.openjfx:javafx-controls:$javafxVersion:$javafxClassifier"
 }
 
 application {
     mainModule = 'bitferry.gui'
-    mainClass = 'bitferry.gui.BitferryGui'
+    mainClass = 'bitferry.gui.Main'
 }
 
 // No plain distribution archives: the real deliverables (jlink tree, jpackage app-image,

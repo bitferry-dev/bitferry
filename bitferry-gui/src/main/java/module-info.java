@@ -1,8 +1,7 @@
 module bitferry.gui {
     requires bitferry;
     requires javafx.controls;
-    requires org.slf4j;
-    requires ch.qos.logback.classic;
+    requires java.logging;
 
     // javafx.graphics instantiates the Application subclass reflectively
     opens bitferry.gui to javafx.graphics;
