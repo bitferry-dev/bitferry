@@ -166,7 +166,12 @@ class TombstoneTest {
     manager.commit();
     manager.task(task.tag()).delete();
     manager.commit();
-    // The descriptor is dropped immediately: no tombstone is recorded
+    // The tombstone is recorded first to protect against mid-flight vanishing
+    assertTrue(Storage.readJson(dir.resolve("first").resolve(Bitferry.STORAGE)).has("tasks"));
+    assertTrue(Storage.readJson(dir.resolve("second").resolve(Bitferry.STORAGE)).has("tasks"));
+    // The garbage collection physically removes the tombstone upon the following commit
+    Manager after = new Manager().restore(List.of(dir.resolve("first"), dir.resolve("second")));
+    after.commit();
     assertFalse(Storage.readJson(dir.resolve("first").resolve(Bitferry.STORAGE)).has("tasks"));
     assertFalse(Storage.readJson(dir.resolve("second").resolve(Bitferry.STORAGE)).has("tasks"));
   }

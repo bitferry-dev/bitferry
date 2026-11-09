@@ -270,6 +270,10 @@ public abstract class Task {
   /// Return true on success.
   public boolean process(Consumer<String> output) {
     LOG.log(Level.INFO, () -> "processing task #" + tag);
+    for (String vtag : referredVolumes()) {
+      Volume v = manager.volume(vtag);
+      if (v != null) v.checkPresence();
+    }
     return manager.backendExecutor().run(this, output);
   }
 

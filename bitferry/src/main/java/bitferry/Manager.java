@@ -210,8 +210,13 @@ public class Manager {
   /// (the tests, the embedders) isolated from the host environment.
   public Manager restore(List<Path> roots) {
     for (Path root : roots.stream().map(Bitferry::canonicalize).distinct().toList()) {
-      if (!java.nio.file.Files.isRegularFile(root.resolve(Bitferry.STORAGE))) {
-        LOG.log(Level.DEBUG, () -> "no volume storage found in '" + root + "'");
+      try {
+        if (!java.nio.file.Files.isRegularFile(root.resolve(Bitferry.STORAGE))) {
+          LOG.log(Level.DEBUG, () -> "no volume storage found in '" + root + "'");
+          continue;
+        }
+      } catch (SecurityException e) {
+        LOG.log(Level.DEBUG, () -> "cannot access '" + root + "': " + e.getMessage());
         continue;
       }
       LOG.log(Level.INFO, () -> "probing '" + root + "' for volume");
@@ -236,18 +241,36 @@ public class Manager {
   /// to free and the false negatives lose the volumes.
   public static List<Path> mountPoints() {
     List<Path> mounts = new ArrayList<>();
+    for (Path root : FileSystems.getDefault().getRootDirectories()) {
+      mounts.add(root);
+    }
     for (FileStore store : FileSystems.getDefault().getFileStores()) {
       Path mount = mountPoint(store);
-      if (mount != null) mounts.add(mount);
+      if (mount != null && !mounts.contains(mount)) mounts.add(mount);
     }
     return mounts;
   }
 
-  /// Extract the mount point out of the file store's textual {@code mount (source)} form.
+  /// Extract the mount point out of the file store's textual {@code mount (source)} or
+  /// Windows {@code [label ](drive:)} form.
   static Path mountPoint(FileStore store) {
     String text = store.toString();
-    int separator = text.indexOf(" (");
-    return separator <= 0 ? null : Path.of(text.substring(0, separator));
+    if (!text.endsWith(")")) return null;
+    int open = text.lastIndexOf(" (");
+    if (open > 0) {
+      String inside = text.substring(open + 2, text.length() - 1);
+      if (inside.matches("^[A-Za-z]:.*")) {
+        return Path.of(inside.endsWith("\\") ? inside : inside + "\\");
+      }
+      return Path.of(text.substring(0, open));
+    }
+    if (text.startsWith("(") && text.endsWith(")")) {
+      String inside = text.substring(1, text.length() - 1);
+      if (inside.matches("^[A-Za-z]:.*")) {
+        return Path.of(inside.endsWith("\\") ? inside : inside + "\\");
+      }
+    }
+    return null;
   }
 
   /// Probe the specified roots for the volumes restoring the discovered ones.

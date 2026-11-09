@@ -34,6 +34,9 @@ class ManagerMountsTest {
     assertEquals(Path.of("/run/media/fougas/ROAMING"), Manager.mountPoint(store("/run/media/fougas/ROAMING (/dev/sdd1)", "ntfs3")));
     // The macOS firmlink data volume store
     assertEquals(Path.of("/System/Volumes/Data"), Manager.mountPoint(store("/System/Volumes/Data (apfs)", "apfs")));
+    // The Windows stores with and without label
+    assertEquals(Path.of("C:\\"), Manager.mountPoint(store("SYSTEM (C:)", "NTFS")));
+    assertEquals(Path.of("D:\\"), Manager.mountPoint(store("(D:)", "NTFS")));
     // The text without the mount point suffix is rejected
     assertNull(Manager.mountPoint(store("weird", "btrfs")));
   }
@@ -44,8 +47,9 @@ class ManagerMountsTest {
     // next to free while any skip list would be operating system specific
     List<Path> mounts = Manager.mountPoints();
     assertFalse(mounts.isEmpty());
-    // The root file system is always mounted
-    assertTrue(mounts.contains(Path.of("/")));
+    // At least one root file system is always mounted
+    boolean hasRoot = mounts.stream().anyMatch(p -> p.equals(Path.of("/")) || (p.getRoot() != null && p.getRoot().equals(p)));
+    assertTrue(hasRoot, () -> "Expected at least one filesystem root in mounts: " + mounts);
     // All the mount points are absolute
     for (Path mount : mounts) assertTrue(mount.isAbsolute());
   }

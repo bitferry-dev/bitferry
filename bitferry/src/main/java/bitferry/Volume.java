@@ -44,7 +44,7 @@ public final class Volume {
   // at the discovery time and re-checked before every durable storage operation: the
   // identity change means the volume has disappeared (the mount dropped) and the
   // writes would silently materialize on the parent file system.
-  private final String fileStore;
+  private String fileStore;
 
   // Password tokens of the encrypted tasks keyed by the task tags (see vault providers)
   private final Map<String, String> vault = new LinkedHashMap<>();
@@ -220,7 +220,7 @@ public final class Volume {
     Map<String, String> kept = vault.entrySet().stream()
       .filter(e -> {
         Task task = manager.tasks().get(e.getKey());
-        return task != null && task.isLive();
+        return task != null && task.isLive() && !task.isDeleted();
       })
       .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (a, b) -> a, LinkedHashMap::new));
     return kept.isEmpty() ? null : kept;
@@ -238,7 +238,11 @@ public final class Volume {
       }
       case LIVE -> { // Dump the volume storage
         if (isModified() || manager.force) {
-          checkPresence();
+          if (fileStore == null) {
+            fileStore = fileStoreId(root);
+          } else {
+            checkPresence();
+          }
           try {
             // The actual storage writing time is stored, not the in-memory modification time
             mtime = OffsetDateTime.now().truncatedTo(java.time.temporal.ChronoUnit.MICROS);
@@ -258,7 +262,7 @@ public final class Volume {
         break loop;
       }
       case DELETED -> {
-        checkPresence();
+        if (fileStore != null) checkPresence();
         if (manager.simulate) {
           LOG.log(Level.INFO, () -> "simulated volume #" + tag + " storage removal");
         } else if (wipe) {
@@ -321,7 +325,7 @@ public final class Volume {
   private static String fileStoreId(Path directory) {
     try {
       FileStore store = Files.getFileStore(directory);
-      return store.name() + "/" + store.type();
+      return store.toString() + "@" + store.type();
     } catch (IOException e) {
       return null;
     }
@@ -331,7 +335,7 @@ public final class Volume {
   /// system than at the discovery time. The stale mount point directories left by the
   /// unclean removals would otherwise silently materialize the volume files on the
   /// parent file system.
-  private void checkPresence() {
+  public void checkPresence() {
     String current = fileStoreId(root);
     if (fileStore != null && !fileStore.equals(current))
       throw new BitferryError("volume #" + tag + " root '" + root + "' has disappeared (its file system is no longer " + fileStore + ")");
