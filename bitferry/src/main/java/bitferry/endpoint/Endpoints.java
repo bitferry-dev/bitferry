@@ -19,8 +19,11 @@ import tools.jackson.databind.*;
 /// </ul>
 public final class Endpoints {
 
-  // Bare (or local: prefixed) directory path
-  private static final Pattern LOCAL = Pattern.compile("^\\s*(local:)?(?<root>([a-zA-Z]:)?[^:]*)$");
+  // Explicit local: prefixed directory path (allows any path characters including colons)
+  private static final Pattern EXPLICIT_LOCAL = Pattern.compile("^\\s*local:(?<root>.*)$");
+
+  // Bare directory path to be resolved against volumes
+  private static final Pattern BARE_LOCAL = Pattern.compile("^\\s*(?<root>([a-zA-Z]:)?[^:]*)$");
 
   // Explicitly specified path to be resolved against the intact volumes
   private static final Pattern RESOLVE = Pattern.compile("^\\s*:(?:\\s*?):(?<path>.*)$");
@@ -32,13 +35,13 @@ public final class Endpoints {
 
   /// Parse the specified endpoint specifier with respect to the volumes registered in the manager.
   public static Endpoint parse(Manager manager, String specifier) {
-    Matcher x = LOCAL.matcher(specifier);
+    Matcher x = EXPLICIT_LOCAL.matcher(specifier);
     if (x.matches()) {
-      Path root = Path.of(x.group("root"));
-      // The explicit `local:` prefix yields the plain local form; the bare paths are resolved
-      // against the known volumes exactly like the '::' form (rejected when none matches)
-      if (x.group(1) != null) return new Local(root);
-      return manager.endpoint(root);
+      return new Local(Path.of(x.group("root")));
+    }
+    x = BARE_LOCAL.matcher(specifier);
+    if (x.matches()) {
+      return manager.endpoint(Path.of(x.group("root")));
     }
     x = RESOLVE.matcher(specifier);
     if (x.matches()) return manager.endpoint(Path.of(x.group("path")));

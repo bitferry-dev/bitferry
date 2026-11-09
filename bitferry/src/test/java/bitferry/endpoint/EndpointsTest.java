@@ -84,6 +84,19 @@ class EndpointsTest {
   }
 
   @Test
+  void explicitLocalPrefixSupportsColonsInPath() {
+    if (System.getProperty("os.name", "").toLowerCase().contains("win")) return; // Windows filesystem disallows ':' in path components
+    Local local = assertInstanceOf(Local.class, Endpoints.parse(manager, "local:/path/with:colons/sub"));
+    assertEquals(Bitferry.canonicalize(Path.of("/path/with:colons/sub")), local.root());
+  }
+
+  @Test
+  void explicitLocalPrefixSupportsWindowsDrivePath() {
+    Local local = assertInstanceOf(Local.class, Endpoints.parse(manager, "local:C:\\test\\dir"));
+    assertEquals(Bitferry.canonicalize(Path.of("C:\\test\\dir")), local.root());
+  }
+
+  @Test
   void generationOfTheAbsentVolumeYieldsZero() {
     // The absent volumes contribute nothing to the out-of-date generation dance:
     // e.g. the deletion of a task whose peer volume is not restored must succeed

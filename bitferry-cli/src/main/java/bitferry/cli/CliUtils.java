@@ -42,10 +42,15 @@ public final class CliUtils {
   private static String readPasswordFromTerminal() {
     Console console = System.console();
     if (console == null) throw new BitferryError("password prompting requires an interactive terminal; run the deployed bitferry executable (deploy it with ./gradlew :bitferry-cli:installDist) -- the gradle run task does not attach a terminal to the application, and the piped or redirected standard input is deliberately not accepted");
-    String password = new String(console.readPassword("Password: "));
-    String confirmation = new String(console.readPassword("Repeat password: "));
-    if (!password.equals(confirmation)) throw new BitferryError("passwords do not match");
-    return password;
+    char[] pwdChars = console.readPassword("Password: ");
+    char[] confirmChars = console.readPassword("Repeat password: ");
+    try {
+      if (!Arrays.equals(pwdChars, confirmChars)) throw new BitferryError("passwords do not match");
+      return new String(pwdChars);
+    } finally {
+      if (pwdChars != null) Arrays.fill(pwdChars, '\0');
+      if (confirmChars != null) Arrays.fill(confirmChars, '\0');
+    }
   }
 
   /// Resolve merged common options from the command spec hierarchy.

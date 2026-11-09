@@ -376,7 +376,7 @@ tasks.register('trainCliAot', Exec) {
 // so on headless builds the training run is allowed to fail at toolkit init - the AOT cache
 // is still written and covers JVM/module/JavaFX startup classes (use xvfb-run for full coverage).
 def guiHeadlessMode = providers.gradleProperty('aotGuiHeadless').getOrElse('auto') // auto|force|never
-def hasDisplay = System.getenv('DISPLAY') != null || System.getenv('WAYLAND_DISPLAY') != null
+def hasDisplay = OperatingSystem.current().windows || OperatingSystem.current().macOsX || System.getenv('DISPLAY') != null || System.getenv('WAYLAND_DISPLAY') != null
 def guiHeadless = guiHeadlessMode == 'force' || (guiHeadlessMode == 'auto' && !hasDisplay)
 
 tasks.register('trainGuiAot', Exec) {

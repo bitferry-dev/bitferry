@@ -40,6 +40,9 @@ public final class SystemCommandExecutor implements CommandExecutor {
       builder.redirectErrorStream(true);
       Process process = builder.start();
       try {
+        process.getOutputStream().close();
+      } catch (IOException ignored) {}
+      try {
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
           String line;
           while ((line = reader.readLine()) != null) {

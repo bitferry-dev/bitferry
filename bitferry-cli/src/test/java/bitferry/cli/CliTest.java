@@ -420,4 +420,14 @@ class CliTest {
     assertTrue(operations.contains("backup"));
     assertTrue(operations.contains("restore"));
   }
+
+  @Test
+  void commonOptionsMergeCombinesPaths() {
+    CommonOptions parent = new CommonOptions();
+    parent.paths = List.of(Path.of("/parent/path"));
+    CommonOptions child = new CommonOptions();
+    child.paths = List.of(Path.of("/child/path"));
+    CommonOptions merged = child.merge(parent);
+    assertEquals(List.of(Path.of("/parent/path"), Path.of("/child/path")), merged.paths);
+  }
 }

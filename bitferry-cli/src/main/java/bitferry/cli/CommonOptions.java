@@ -38,10 +38,10 @@ public class CommonOptions {
     merged.debug = this.debug || parent.debug;
     merged.simulate = this.simulate || parent.simulate;
     merged.force = this.force || parent.force;
-    if (this.paths != null) {
-      merged.paths = new ArrayList<>(this.paths);
-    } else if (parent.paths != null) {
-      merged.paths = new ArrayList<>(parent.paths);
+    if (this.paths != null || parent.paths != null) {
+      merged.paths = new ArrayList<>();
+      if (parent.paths != null) merged.paths.addAll(parent.paths);
+      if (this.paths != null) merged.paths.addAll(this.paths);
     }
     return merged;
   }
