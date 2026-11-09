@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Bitferry
+Comment=Backup frontend driving rclone and restic
+Exec=bitferry --gui
+Icon=bitferry
+Categories=Utility;Archiving;
+Keywords=backup;rclone;restic;
+Terminal=false
+StartupWMClass=bitferry-gui

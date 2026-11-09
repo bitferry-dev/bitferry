@@ -1,0 +1,165 @@
+#!/bin/sh
+# AppRun for the bitferry AppImage, packed by the :bitferry-app:appimage Gradle task.
+# The jpackage app-image lives at <AppDir>/usr/app; its launchers expand the packaged
+# locations (bundled rclone/restic, AOT caches) relative to the mounted image itself, so
+# they keep working from the read-only squashfs. $APPDIR is exported for child processes
+# following the AppImage convention; $BITFERRY_APPIMAGE carries the AppImage file itself
+# for the install machinery and diagnostics.
+
+# Dispatch, before anything reaches the CLI:
+#   install / uninstall (first argument) - per-user desktop/PATH integration
+#   -g or --gui (any position)           - the GUI frontend, flag stripped
+#   anything else, incl. no arguments    - the CLI frontend
+
+HERE="$(dirname "$(readlink -f "$0")")"
+export APPDIR="$HERE"
+
+# The type-2 runtime exports $APPIMAGE (the AppImage file path); fall back to $0 for
+# environments that do not. Under --appimage-extract-and-run this resolves to the
+# extracted AppRun, which the install machinery rejects as a non-AppImage.
+if [ -n "$APPIMAGE" ]; then
+    BITFERRY_APPIMAGE=$APPIMAGE
+else
+    BITFERRY_APPIMAGE="$(readlink -f "$0")"
+fi
+export BITFERRY_APPIMAGE
+
+# Fixed per-user install layout (XDG data home, mirroring the Windows MSI's managed tree).
+DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
+MANAGED_DIR="$DATA_HOME/bitferry"
+MANAGED_APPIMAGE="$MANAGED_DIR/bitferry.AppImage"
+BIN_LINK="$HOME/.local/bin/bitferry"
+DESKTOP_ENTRY="$DATA_HOME/applications/bitferry.desktop"
+ICON_FILE="$DATA_HOME/icons/hicolor/256x256/apps/bitferry.png"
+
+install_usage() {
+    cat <<EOF
+usage: $(basename "${BITFERRY_APPIMAGE:-$0}") install
+
+Installs bitferry for the current user (no root):
+  $MANAGED_APPIMAGE - managed copy of this AppImage
+  $BIN_LINK - CLI on PATH (symlink to the copy)
+  $DESKTOP_ENTRY - menu entry launching the GUI
+  $ICON_FILE - application icon
+Re-run install from a newer AppImage to upgrade; uninstall removes everything.
+EOF
+}
+
+uninstall_usage() {
+    cat <<EOF
+usage: $(basename "${BITFERRY_APPIMAGE:-$0}") uninstall
+
+Removes the per-user installation: the managed AppImage copy, the PATH symlink,
+the menu entry and the icon. The AppImage file itself is not touched.
+EOF
+}
+
+install() {
+    case "$1" in
+        -h|--help) install_usage; return 0 ;;
+    esac
+    # Only a real AppImage file can be installed: running through --appimage-extract-and-run
+    # resolves to the extracted AppRun, and a jlink tree has no AppRun machinery at all.
+    if [ ! -f "$BITFERRY_APPIMAGE" ] || [ ! -x "$BITFERRY_APPIMAGE" ] \
+            || [ "$(basename "$BITFERRY_APPIMAGE")" = "AppRun" ]; then
+        echo "install: not running from an AppImage file ($BITFERRY_APPIMAGE)." >&2
+        echo "Run the AppImage itself: ./bitferry-<version>-linux-<arch>.AppImage install" >&2
+        return 1
+    fi
+
+    mkdir -p "$MANAGED_DIR" "$HOME/.local/bin" \
+             "$(dirname "$DESKTOP_ENTRY")" "$(dirname "$ICON_FILE")"
+
+    cp -f "$BITFERRY_APPIMAGE" "$MANAGED_APPIMAGE"
+    chmod 755 "$MANAGED_APPIMAGE"
+    echo "installed:   $MANAGED_APPIMAGE"
+
+    if [ -L "$BIN_LINK" ] || [ ! -e "$BIN_LINK" ]; then
+        ln -sfn "$MANAGED_APPIMAGE" "$BIN_LINK"
+        echo "PATH entry:  $BIN_LINK -> $MANAGED_APPIMAGE"
+    else
+        echo "PATH entry:  $BIN_LINK already exists and is not a bitferry symlink - left untouched" >&2
+    fi
+    case ":$PATH:" in
+        *":$HOME/.local/bin:"*) ;;
+        *) echo "note:        $HOME/.local/bin is not on PATH; add it to your shell profile to use 'bitferry'" >&2 ;;
+    esac
+
+    cp -f "$APPDIR/bitferry.png" "$ICON_FILE"
+    echo "icon:        $ICON_FILE"
+
+    # The packaged entry is the metadata source; only Exec changes - the menu must launch
+    # the managed copy, not whichever file the user ran install from.
+    escaped=$(printf '%s' "$MANAGED_APPIMAGE" | sed -e 's/[&\\|]/\\&/g')
+    sed -e "s|^Exec=.*|Exec=$escaped --gui|" \
+        -e '/^X-AppImage-Integrate=/d' "$APPDIR/bitferry.desktop" > "$DESKTOP_ENTRY"
+    printf 'X-AppImage-Integrate=false\n' >> "$DESKTOP_ENTRY"
+    echo "menu entry:  $DESKTOP_ENTRY"
+
+    if command -v update-desktop-database >/dev/null 2>&1; then
+        update-desktop-database "$(dirname "$DESKTOP_ENTRY")" >/dev/null 2>&1 || true
+    fi
+    echo "Done. Try 'bitferry --version', or find Bitferry in the application menu."
+}
+
+uninstall() {
+    case "$1" in
+        -h|--help) uninstall_usage; return 0 ;;
+    esac
+    if [ -L "$BIN_LINK" ]; then
+        if [ "$(readlink -f "$BIN_LINK")" = "$MANAGED_APPIMAGE" ]; then
+            rm "$BIN_LINK"
+            echo "removed:     $BIN_LINK"
+        else
+            echo "kept:        $BIN_LINK does not point at $MANAGED_APPIMAGE - left untouched" >&2
+        fi
+    fi
+    for stale in "$DESKTOP_ENTRY" "$ICON_FILE" "$MANAGED_APPIMAGE"; do
+        if [ -e "$stale" ]; then
+            rm "$stale"
+            echo "removed:     $stale"
+        fi
+    done
+    rmdir "$MANAGED_DIR" 2>/dev/null || true
+    if command -v update-desktop-database >/dev/null 2>&1; then
+        update-desktop-database "$(dirname "$DESKTOP_ENTRY")" >/dev/null 2>&1 || true
+    fi
+    echo "Done."
+}
+
+case "$1" in
+    install)
+        shift
+        install "$@"
+        exit $?
+        ;;
+    uninstall)
+        shift
+        uninstall "$@"
+        exit $?
+        ;;
+esac
+
+GUI_ARG_NO=""
+i=0
+for arg do
+    i=$((i + 1))
+    if [ -z "$GUI_ARG_NO" ] && { [ "$arg" = "-g" ] || [ "$arg" = "--gui" ]; }; then
+        GUI_ARG_NO=$i
+    fi
+done
+
+if [ -n "$GUI_ARG_NO" ]; then
+    # Rebuild "$@" without that one occurrence: append every kept argument (the for-in
+    # list is the original "$@", expanded once at loop start) and shift the originals off.
+    original_count=$#
+    i=0
+    for arg do
+        i=$((i + 1))
+        [ "$i" = "$GUI_ARG_NO" ] && continue
+        set -- "$@" "$arg"
+    done
+    shift "$original_count"
+    exec "$HERE/usr/app/bin/bitferry-gui" "$@"
+fi
+exec "$HERE/usr/app/bin/bitferry" "$@"

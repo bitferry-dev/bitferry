@@ -27,6 +27,7 @@ public final class DoctorCommand implements Callable<Integer> {
         System.out.printf("main module:     %s%n", DoctorCommand.class.getModule().getName());
         System.out.printf("rclone:          %s%n", describe(BackupEngines.rclone()));
         System.out.printf("restic:          %s%n", describe(BackupEngines.restic()));
+        System.out.printf("appimage:        %s%n", describeAppImage());
 
         List<String> inputArgs = ManagementFactory.getRuntimeMXBean().getInputArguments();
         System.out.println("JVM input arguments:");
@@ -49,5 +50,15 @@ public final class DoctorCommand implements Callable<Integer> {
                 .map(r -> "%s (%s, %s)".formatted(r.path(), r.source(),
                         Files.exists(r.path()) ? "present" : "MISSING"))
                 .orElse("not configured");
+    }
+
+    /** Describes the AppImage file this run executes from, per the AppRun launcher. */
+    private static String describeAppImage() {
+        String appImage = System.getenv("BITFERRY_APPIMAGE");
+        if (appImage == null || appImage.isBlank()) {
+            return "not an AppImage run";
+        }
+        return "%s (%s, %s)".formatted(appImage, "BITFERRY_APPIMAGE",
+                Files.exists(Path.of(appImage)) ? "present" : "MISSING");
     }
 }

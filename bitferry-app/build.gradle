@@ -4,7 +4,10 @@
 // native launchers.
 //
 //   ./gradlew :bitferry-app:jlink                      # plain jlink tree (works cross-platform)
+//   ./gradlew :bitferry-app:portableZip                # + distro jar archive with launchers (target-independent)
 //   ./gradlew :bitferry-app:jpackageImage              # + jpackage app-image with native launchers (host platform only)
+//   ./gradlew :bitferry-app:msi                        # + per-user Windows MSI (WiX; Windows host only)
+//   ./gradlew :bitferry-app:appimage                   # + single-file Linux AppImage (Linux host only)
 //   ./gradlew :bitferry-app:dist                       # everything applicable for the current -Ptarget
 //   ./gradlew :bitferry-app:dist -Ptarget=windows-x64  # cross-build a windows-x64 jlink tree
 
@@ -72,11 +75,9 @@ def trainable = !cross
 // ---------------------------------------------------------------- image locations
 
 def imageBaseDir = layout.buildDirectory.dir('image')
-// native: the runtime image is generated directly in imageDir
-// cross : the plugin appends "<primary-launcher-name>-<platformName>" to imageDir
-def runtimeImageDir = cross
-        ? imageBaseDir.get().dir("bitferry-${platformName}").asFile
-        : imageBaseDir.get().dir("bitferry-${platformName}").asFile
+// Both layouts land at the same path: for native targets the plugin generates the image
+// in <imageDir> directly, for cross targets it appends "-<platformName>" to it.
+def runtimeImageDir = imageBaseDir.get().dir("bitferry-${platformName}").asFile
 
 def javaBin = new File(runtimeImageDir, OperatingSystem.current().windows ? 'bin/java.exe' : 'bin/java')
 def aotDir = new File(runtimeImageDir, 'lib/aot')
@@ -260,6 +261,30 @@ static String sha256Hex(File file) {
     digest.digest().collect { String.format('%02x', it & 0xff) }.join()
 }
 
+// Downloads the file unless it is already cached, then verifies it against the pinned
+// SHA-256 — even on a cache hit, so a corrupted or silently replaced archive fails loudly.
+def downloadPinned = { String label, String url, String pinnedSha256, File archive ->
+    if (!archive.isFile()) {
+        archive.parentFile.mkdirs()
+        logger.lifecycle("Downloading $label from $url")
+        def result = providers.exec {
+            commandLine 'curl', '-fsSL', '--retry', '3', '--connect-timeout', '30',
+                        '-o', archive.absolutePath, url
+            ignoreExitValue = true
+        }.result.get()
+        if (result.exitValue != 0) {
+            archive.delete()   // no half-downloaded file in the cache
+            throw new GradleException("Failed to download $url (curl exit ${result.exitValue})")
+        }
+    }
+    def actualSha256 = sha256Hex(archive)
+    if (actualSha256 != pinnedSha256) {
+        archive.delete()
+        throw new GradleException("SHA-256 mismatch for $label (${archive.name}): " +
+                "expected $pinnedSha256, got $actualSha256 (archive deleted; rerun to re-download)")
+    }
+}
+
 def toolsBinDir = new File(runtimeImageDir, 'bin')
 
 tasks.register('fetchTools') {
@@ -273,24 +298,7 @@ tasks.register('fetchTools') {
         toolSpecs[platformName].each { tool, spec ->
             def (url, pinnedSha256, entryPath, targetName, format) = spec
             def archive = new File(cacheDir, url.substring(url.lastIndexOf('/') + 1))
-            if (!archive.isFile()) {
-                archive.parentFile.mkdirs()
-                logger.lifecycle("Downloading $tool for ${platformName} from $url")
-                def result = providers.exec {
-                    commandLine 'curl', '-fsSL', '--retry', '3', '--connect-timeout', '30',
-                                '-o', archive.absolutePath, url
-                    ignoreExitValue = true
-                }.result.get()
-                if (result.exitCode != 0) {
-                    throw new GradleException("Failed to download $url (curl exit ${result.exitCode})")
-                }
-            }
-            def actualSha256 = sha256Hex(archive)
-            if (actualSha256 != pinnedSha256) {
-                archive.delete()
-                throw new GradleException("SHA-256 mismatch for ${archive.name}: " +
-                        "expected $pinnedSha256, got $actualSha256 (archive deleted; rerun to re-download)")
-            }
+            downloadPinned("$tool for ${platformName}", url, pinnedSha256, archive)
             def extractDir = new File(temporaryDir, tool)
             extractDir.mkdirs()
             def unpacked = format == 'zip'
@@ -299,7 +307,7 @@ tasks.register('fetchTools') {
             if (format == 'zip') {
                 ant.unzip(src: archive, dest: extractDir)
             } else {
-                ant.bunzip2(src: archive, destfile: unpacked)
+                ant.bunzip2(src: archive, dest: unpacked)
             }
             if (!unpacked.isFile()) {
                 throw new GradleException("The $tool archive does not contain the expected entry '$entryPath'")
@@ -308,7 +316,7 @@ tasks.register('fetchTools') {
             target.parentFile.mkdirs()
             java.nio.file.Files.copy(unpacked.toPath(), target.toPath(),
                     java.nio.file.StandardCopyOption.REPLACE_EXISTING)
-            if (!OperatingSystem.current().windows) {
+            if (!windowsTarget) {
                 ant.chmod(file: target, perm: '755')
             }
             logger.lifecycle("Placed $tool ${toolVersions[tool]} into ${target}")
@@ -335,7 +343,7 @@ tasks.register('copyToolsToJpackageImage') {
             dst.parentFile.mkdirs()
             java.nio.file.Files.copy(src.toPath(), dst.toPath(),
                     java.nio.file.StandardCopyOption.REPLACE_EXISTING)
-            if (!OperatingSystem.current().windows) {
+            if (!windowsTarget) {
                 ant.chmod(file: dst, perm: '755')
             }
             new File(packagedRuntimeBinDir, targetName).delete()
@@ -446,17 +454,209 @@ tasks.register('msi', Exec) {
             wixSourceDir.listFiles().findAll { it.name.endsWith('.wxs') }*.absolutePath)
 }
 
+// ---------------------------------------------------------------- Linux AppImage
+//
+// Packages the jpackage app-image into a single-file type-2 AppImage with appimagetool -
+// the Linux counterpart of the MSI above: native Linux host only, wrapping the finished
+// app-image, with the packing tool and its squashfs runtime downloaded and SHA-256-pinned
+// like the backup engines. The tool is executed through --appimage-extract-and-run, so
+// building needs no FUSE. --runtime-file pins the embedded squashfs runtime; without it
+// appimagetool downloads the latest runtime unpinned at build time.
+
+def appImageToolVersion = '1.9.1'
+def appImageRuntimeTag = '20251108'
+
+// AppImage architecture of the native build host. Hashes are the GitHub-published sha256
+// digests of the release assets, cross-checked locally at pin time; bump version/tag and
+// hashes together.
+def appImageArch = System.getProperty('os.arch') == 'aarch64' ? 'aarch64' : 'x86_64'
+def appImageToolSpecs = [
+    x86_64: [
+        tool   : ["https://github.com/AppImage/appimagetool/releases/download/${appImageToolVersion}/appimagetool-x86_64.AppImage",
+                  'ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0'],
+        runtime: ["https://github.com/AppImage/type2-runtime/releases/download/${appImageRuntimeTag}/runtime-x86_64",
+                  '2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d'],
+    ],
+    aarch64: [
+        tool   : ["https://github.com/AppImage/appimagetool/releases/download/${appImageToolVersion}/appimagetool-aarch64.AppImage",
+                  'f0837e7448a0c1e4e650a93bb3e85802546e60654ef287576f46c71c126a9158'],
+        runtime: ["https://github.com/AppImage/type2-runtime/releases/download/${appImageRuntimeTag}/runtime-aarch64",
+                  '00cbdfcf917cc6c0ff6d3347d59e0ca1f7f45a6df1a428a0d6d8a78664d87444'],
+    ],
+]
+
+def appImageCacheDir = new File(gradle.gradleUserHomeDir,
+        "jdks/bitferry/tools/appimagetool/${appImageToolVersion}-${appImageRuntimeTag}")
+def appImageToolFile = new File(appImageCacheDir, "appimagetool-${appImageArch}.AppImage")
+def appImageRuntimeFile = new File(appImageCacheDir, "runtime-${appImageArch}")
+
+def appImageSourceDir = file('src/packaging/appimage')
+def appImageDir = layout.buildDirectory.dir('appimage').get().dir('AppDir').asFile
+def appImageFile = layout.buildDirectory.dir('installer')
+        .get().file("bitferry-${project.version}-${platformName}.AppImage").asFile
+
+tasks.register('fetchAppImageTool') {
+    group = 'bitferry'
+    description = "Downloads and verifies the pinned appimagetool ${appImageToolVersion} and squashfs runtime ${appImageRuntimeTag} for ${appImageArch}."
+    outputs.files appImageToolFile, appImageRuntimeFile
+    doLast {
+        appImageToolSpecs[appImageArch].each { kind, spec ->
+            def (url, pinnedSha256) = spec
+            downloadPinned("appimagetool $kind (${appImageArch})", url, pinnedSha256,
+                    kind == 'tool' ? appImageToolFile : appImageRuntimeFile)
+        }
+        ant.chmod(file: appImageToolFile, perm: '755')
+    }
+}
+
+tasks.register('prepareAppImageDir', Sync) {
+    group = 'bitferry'
+    description = 'Assembles the AppImage AppDir (payload, AppRun, desktop entry, icon) from the jpackage app-image.'
+    dependsOn 'copyAotCachesToJpackageImage'
+    onlyIf { !cross && OperatingSystem.current().linux }
+    // The AppRun/desktop sources and the whole AppDir (including the doLast-written root
+    // files) must be tracked, or source edits slip past up-to-date checks.
+    inputs.dir appImageSourceDir
+    outputs.dir appImageDir
+    from jpackageImageDir
+    into new File(appImageDir, 'usr/app')
+    // jpackage marks runtime legal notices read-only; a re-sync cannot overwrite them in
+    // place, so lay the payload down fresh instead.
+    doFirst { project.delete(new File(appImageDir, 'usr/app')) }
+    doLast {
+        // Static AppRun and desktop entry: AppRun dispatches -g/--gui to the GUI launcher
+        // and everything else to the CLI; Exec=bitferry --gui makes menu launches (after
+        // the desktop-integration rewrite to the AppImage path) open the GUI.
+        ['AppRun', 'bitferry.desktop'].each { name ->
+            java.nio.file.Files.copy(new File(appImageSourceDir, name).toPath(),
+                    new File(appImageDir, name).toPath(),
+                    java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+        }
+        ant.chmod(file: new File(appImageDir, 'AppRun'), perm: '755')
+
+        // Version stamp for the desktop entry: consumed by the AppRun install machinery
+        // (no version parsing in shell) and shown by desktop integration tools.
+        new File(appImageDir, 'bitferry.desktop').withWriterAppend {
+            it.writeLine("X-AppImage-Version=${project.version}")
+        }
+
+        // Placeholder icon: deterministic and headless-safe (plain AWT buffers, no
+        // toolkit). Replace this block with real artwork when it becomes available.
+        def size = 256
+        def img = new java.awt.image.BufferedImage(size, size, java.awt.image.BufferedImage.TYPE_INT_ARGB)
+        def g = img.createGraphics()
+        try {
+            g.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING,
+                    java.awt.RenderingHints.VALUE_ANTIALIAS_ON)
+            g.setColor(new java.awt.Color(0x1f, 0x24, 0x30))   // dark slate
+            g.fillRoundRect(8, 8, size - 16, size - 16, 48, 48)
+            g.setColor(new java.awt.Color(0xe8, 0xa3, 0x3d))   // amber
+            g.setFont(new java.awt.Font(java.awt.Font.SANS_SERIF, java.awt.Font.BOLD, 120))
+            def metrics = g.getFontMetrics()
+            g.drawString('BF', (size - metrics.stringWidth('BF')) / 2,
+                    (size - metrics.height) / 2 + metrics.ascent)
+        } finally {
+            g.dispose()
+        }
+        javax.imageio.ImageIO.write(img, 'png', new File(appImageDir, 'bitferry.png'))
+
+        // AppImage convention: a .DirIcon symlink to the icon for thumbnailers/menu entries.
+        def dirIcon = new File(appImageDir, '.DirIcon')
+        java.nio.file.Files.deleteIfExists(dirIcon.toPath())
+        java.nio.file.Files.createSymbolicLink(dirIcon.toPath(),
+                java.nio.file.Path.of('bitferry.png'))
+    }
+}
+
+tasks.register('appimage', Exec) {
+    group = 'bitferry'
+    description = 'Builds the single-file Linux AppImage from the jpackage app-image.'
+    dependsOn 'prepareAppImageDir', 'fetchAppImageTool'
+    onlyIf { !cross && OperatingSystem.current().linux }
+    inputs.dir appImageSourceDir
+    inputs.dir appImageDir
+    inputs.files appImageToolFile, appImageRuntimeFile
+    outputs.file appImageFile
+    doFirst {
+        appImageFile.parentFile.mkdirs()
+    }
+    // appimagetool cannot always detect the payload architecture (mixed scripts and
+    // binaries in the AppDir), so state it explicitly for the runtime selection.
+    environment 'ARCH', appImageArch
+    commandLine appImageToolFile.absolutePath, '--appimage-extract-and-run',
+            '--no-appstream',                                   // no AppStream metainfo yet
+            '--runtime-file', appImageRuntimeFile.absolutePath,
+            appImageDir.absolutePath, appImageFile.absolutePath
+}
+
+// ---------------------------------------------------------------- joint jar archives
+//
+// A platform-neutral zip/tar.gz for distro packaging: the three bitferry module jars plus
+// their small jar dependencies (picocli, slf4j/logback) and cross-platform launcher
+// scripts. JavaFX is excluded — the packager supplies their own OpenJFX (dropped into
+// lib/, which the launchers put on the module path) — as are the JVM and the rclone/restic
+// engines (located via the RCLONE/RESTIC environment variables, see bitferry.BackupEngines).
+// Everything bundled is target-independent, so the archive names carry no platform suffix.
+
+configurations {
+    jarBundle {
+        canBeConsumed = false
+        canBeResolved = true
+        extendsFrom configurations.runtimeClasspath
+        exclude group: 'org.openjfx'
+    }
+}
+
+def portableDir = layout.buildDirectory.dir('distributions')
+def portableBaseName = "bitferry-${project.version}"
+def portableZipFile = portableDir.get().file("${portableBaseName}.zip").asFile
+def portableTarFile = portableDir.get().file("${portableBaseName}.tar.gz").asFile
+
+def distScriptDir = file('src/packaging/distScripts')
+
+def portableSpec = copySpec {
+    into portableBaseName   // extraction yields bitferry-<version>/{bin,lib}/...
+    into 'lib', {
+        from configurations.jarBundle
+    }
+    into 'bin', {
+        from distScriptDir
+        filePermissions { unix('0755') }   // zip drops source exec bits; force launchers executable
+    }
+}
+
+[Zip, Tar].each { kind ->
+    def kindName = kind.simpleName
+    tasks.register("portable$kindName", kind) {
+        group = 'bitferry'
+        description = 'Bundles the platform-neutral jar archive (bitferry modules + picocli/slf4j/logback; JavaFX and engines come from the packager).'
+        with portableSpec
+        destinationDirectory = portableDir
+        archiveFileName = kindName == 'Zip' ? "${portableBaseName}.zip" : "${portableBaseName}.tar.gz"
+        preserveFileTimestamps = false
+        reproducibleFileOrder = true
+        if (kind == Tar) {
+            compression = 'gzip'
+        }
+    }
+}
+
 // ---------------------------------------------------------------- lifecycle
 
 def projectVersion = project.version.toString()
 
 tasks.register('dist') {
     group = 'build'
-    description = "Builds the full distribution for target '${platformName}' (jlink tree + AOT caches${trainable ? ' + jpackage app-image' : ''}${trainable && OperatingSystem.current().windows ? ' + Windows MSI' : ''})."
+    def linuxHost = OperatingSystem.current().linux
+    description = "Builds the full distribution for target '${platformName}' (jlink tree + portable zip/tar.gz${trainable ? ' + AOT caches + jpackage app-image' : ''}${trainable && OperatingSystem.current().windows ? ' + Windows MSI' : ''}${trainable && linuxHost ? ' + AppImage' : ''})."
+    dependsOn 'portableZip', 'portableTar'
     if (trainable) {
         dependsOn 'copyAotCachesToJpackageImage'
         if (OperatingSystem.current().windows) {
             dependsOn 'msi'
+        }
+        if (linuxHost) {
+            dependsOn 'appimage'
         }
     } else {
         dependsOn tasks.named('jlink')
@@ -466,8 +666,12 @@ tasks.register('dist') {
         def deliverables = trainable
                 ? ["jlink tree:       $runtimeImageDir", "jpackage app-image: $jpackageImageDir"]
                 : ["jlink tree:       $runtimeImageDir (cross-built, no AOT caches — train on the target)"]
+        deliverables += "portable archives:  $portableZipFile, $portableTarFile"
         if (trainable && OperatingSystem.current().windows) {
             deliverables += "Windows installer:  $msiFile"
+        }
+        if (trainable && linuxHost) {
+            deliverables += "AppImage:           $appImageFile"
         }
         logger.lifecycle("bitferry ${projectVersion} [${platformName}] deliverables:")
         deliverables.each { logger.lifecycle("  ${it}") }

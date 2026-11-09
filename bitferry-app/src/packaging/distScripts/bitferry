@@ -1,0 +1,12 @@
+#!/bin/sh
+# bitferry CLI launcher for the distro jar archive: the module path is the archive's
+# lib dir (the packager adds their OpenJFX jars there for the GUI frontend). The
+# backup engines travel via the RCLONE/RESTIC environment variables.
+
+DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -- )
+if [ -n "$JAVA_HOME" ]; then
+    JAVACMD="$JAVA_HOME/bin/java"
+else
+    JAVACMD=java
+fi
+exec "$JAVACMD" $JAVA_OPTS --module-path "$DIR/../lib" -m bitferry.cli/bitferry.cli.BitferryCli "$@"

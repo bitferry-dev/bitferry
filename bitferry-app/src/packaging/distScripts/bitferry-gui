@@ -1,0 +1,13 @@
+#!/bin/sh
+# bitferry-gui launcher for the distro jar archive: the module path is the archive's
+# lib dir - the packager must place their OpenJFX jars there (or extend the module
+# path via JAVA_OPTS).
+
+DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -- )
+if [ -n "$JAVA_HOME" ]; then
+    JAVACMD="$JAVA_HOME/bin/java"
+else
+    JAVACMD=java
+fi
+exec "$JAVACMD" $JAVA_OPTS --enable-native-access=javafx.graphics \
+        --module-path "$DIR/../lib" -m bitferry.gui/bitferry.gui.BitferryGui "$@"

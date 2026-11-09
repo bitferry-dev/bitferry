@@ -14,3 +14,9 @@ application {
     mainModule = 'bitferry.cli'
     mainClass = 'bitferry.cli.BitferryCli'
 }
+
+// No plain distribution archives: the real deliverables (jlink tree, jpackage app-image,
+// MSI/AppImage) are assembled in :bitferry-app. A bare jars+scripts bundle would omit the
+// bundled engines, AOT caches and native launchers and only invite accidental packaging.
+tasks.named('distZip') { enabled = false }
+tasks.named('distTar') { enabled = false }
