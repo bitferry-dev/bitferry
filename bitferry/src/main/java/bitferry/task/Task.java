@@ -312,6 +312,11 @@ public abstract class Task {
     }
   }
 
+  /// Return the backend command lines about to execute for this task.
+  public List<List<String>> commands() {
+    return manager.backendExecutor().commands(this);
+  }
+
   /// Return the task's short descriptor used in the listings.
   public String describe() {
     return operation() + " " + source.describe() + " " + director() + " " + destination.describe();

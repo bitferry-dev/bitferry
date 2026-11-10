@@ -10,7 +10,15 @@ import picocli.CommandLine.Help.*;
 import picocli.CommandLine.Model.*;
 
 /// Print information on available volumes and tasks.
-@Command(name = "info", aliases = {"i"}, mixinStandardHelpOptions = true, description = "Print information on available volumes and tasks.")
+@Command(
+  name = "info",
+  aliases = {"i"},
+  mixinStandardHelpOptions = true,
+  description = "Print information on available volumes and tasks.",
+  subcommands = {
+    InfoTaskCommand.class
+  }
+)
 public class InfoCommand implements Callable<Integer>, HasCommonOptions {
 
   // Explicit no-arg constructor: the command classes are instantiated

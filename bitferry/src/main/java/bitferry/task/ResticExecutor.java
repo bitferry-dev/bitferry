@@ -145,18 +145,12 @@ final class ResticExecutor {
     }
   }
 
-  private boolean runBackup(Backup backup, Consumer<String> output) {
+  List<String> backupCommand(Backup backup) {
     Manager manager = backup.manager();
-    String executable = resolveExecutable();
     String repo = backup.destination().processOpts();
-    Path cwd = Path.of(backup.source().processOpts());
-
-    if (output != null) {
-      output.accept("backing up '" + backup.source().processOpts() + "' into repository '" + repo + "'");
-    }
 
     List<String> cmd = new ArrayList<>();
-    cmd.add(executable);
+    cmd.add(resolveExecutable());
     cmd.add("backup");
     cmd.add(".");
     cmd.add("--tag");
@@ -186,69 +180,58 @@ final class ResticExecutor {
     // Repo
     cmd.add("-r");
     cmd.add(repo);
-
-    Map<String, String> environment = backup.processEnvironment();
-    boolean success = ExecutorSupport.execute(commandExecutor, manager, cmd, cwd, environment, backup.tag(), output);
-    if (!success) return false;
-
-    // Optional integrity check
-    if (backup.check() != null && !backup.check().isEmpty()) {
-      if (output != null) {
-        output.accept("checking repository '" + repo + "'");
-      }
-      List<String> checkCmd = new ArrayList<>();
-      checkCmd.add(executable);
-      checkCmd.add("check");
-      checkCmd.addAll(backup.check());
-      checkCmd.addAll(commonOptions(manager));
-      checkCmd.add("-r");
-      checkCmd.add(repo);
-      if (!ExecutorSupport.execute(commandExecutor, manager, checkCmd, null, environment, backup.tag(), output)) {
-        return false;
-      }
-    }
-
-    // Optional retention forget
-    if (backup.forget() != null && !backup.forget().isEmpty()) {
-      if (output != null) {
-        output.accept("applying retention policy to repository '" + repo + "'");
-      }
-      List<String> forgetCmd = new ArrayList<>();
-      forgetCmd.add(executable);
-      forgetCmd.add("forget");
-      forgetCmd.add("--tag");
-      forgetCmd.add("bitferry," + backup.tag());
-      forgetCmd.addAll(backup.forget());
-      forgetCmd.addAll(commonOptions(manager));
-      if (manager.simulate) {
-        forgetCmd.add("--dry-run");
-      }
-      forgetCmd.add("-r");
-      forgetCmd.add(repo);
-      if (!ExecutorSupport.execute(commandExecutor, manager, forgetCmd, null, environment, backup.tag(), output)) {
-        return false;
-      }
-    }
-
-    return true;
+    return cmd;
   }
 
-  private boolean runRestore(Restore restore, Consumer<String> output) {
-    Manager manager = restore.manager();
-    String executable = resolveExecutable();
-    String repo = restore.source().processOpts();
-    String target = restore.destination().processOpts();
+  List<String> checkCommand(Backup backup) {
+    if (backup.check() == null || backup.check().isEmpty()) return null;
+    Manager manager = backup.manager();
+    List<String> checkCmd = new ArrayList<>();
+    checkCmd.add(resolveExecutable());
+    checkCmd.add("check");
+    checkCmd.addAll(backup.check());
+    checkCmd.addAll(commonOptions(manager));
+    checkCmd.add("-r");
+    checkCmd.add(backup.destination().processOpts());
+    return checkCmd;
+  }
 
-    if (output != null) {
-      output.accept("restoring repository '" + repo + "' into '" + target + "'");
+  List<String> forgetCommand(Backup backup) {
+    if (backup.forget() == null || backup.forget().isEmpty()) return null;
+    Manager manager = backup.manager();
+    List<String> forgetCmd = new ArrayList<>();
+    forgetCmd.add(resolveExecutable());
+    forgetCmd.add("forget");
+    forgetCmd.add("--tag");
+    forgetCmd.add("bitferry," + backup.tag());
+    forgetCmd.addAll(backup.forget());
+    forgetCmd.addAll(commonOptions(manager));
+    if (manager.simulate) {
+      forgetCmd.add("--dry-run");
     }
+    forgetCmd.add("-r");
+    forgetCmd.add(backup.destination().processOpts());
+    return forgetCmd;
+  }
 
+  List<List<String>> commands(Backup backup) {
+    List<List<String>> cmds = new ArrayList<>();
+    cmds.add(backupCommand(backup));
+    List<String> check = checkCommand(backup);
+    if (check != null) cmds.add(check);
+    List<String> forget = forgetCommand(backup);
+    if (forget != null) cmds.add(forget);
+    return cmds;
+  }
+
+  List<String> restoreCommand(Restore restore) {
+    Manager manager = restore.manager();
     List<String> cmd = new ArrayList<>();
-    cmd.add(executable);
+    cmd.add(resolveExecutable());
     cmd.add("restore");
     cmd.add("latest");
     cmd.add("--target");
-    cmd.add(target);
+    cmd.add(restore.destination().processOpts());
 
     for (String inc : restore.include()) {
       cmd.add("--include");
@@ -265,8 +248,63 @@ final class ResticExecutor {
       cmd.add("--dry-run");
     }
     cmd.add("-r");
-    cmd.add(repo);
+    cmd.add(restore.source().processOpts());
+    return cmd;
+  }
 
+  List<List<String>> commands(Restore restore) {
+    return List.of(restoreCommand(restore));
+  }
+
+  private boolean runBackup(Backup backup, Consumer<String> output) {
+    Manager manager = backup.manager();
+    String repo = backup.destination().processOpts();
+    Path cwd = Path.of(backup.source().processOpts());
+
+    if (output != null) {
+      output.accept("backing up '" + backup.source().processOpts() + "' into repository '" + repo + "'");
+    }
+
+    List<String> cmd = backupCommand(backup);
+    Map<String, String> environment = backup.processEnvironment();
+    boolean success = ExecutorSupport.execute(commandExecutor, manager, cmd, cwd, environment, backup.tag(), output);
+    if (!success) return false;
+
+    // Optional integrity check
+    List<String> checkCmd = checkCommand(backup);
+    if (checkCmd != null) {
+      if (output != null) {
+        output.accept("checking repository '" + repo + "'");
+      }
+      if (!ExecutorSupport.execute(commandExecutor, manager, checkCmd, null, environment, backup.tag(), output)) {
+        return false;
+      }
+    }
+
+    // Optional retention forget
+    List<String> forgetCmd = forgetCommand(backup);
+    if (forgetCmd != null) {
+      if (output != null) {
+        output.accept("applying retention policy to repository '" + repo + "'");
+      }
+      if (!ExecutorSupport.execute(commandExecutor, manager, forgetCmd, null, environment, backup.tag(), output)) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  private boolean runRestore(Restore restore, Consumer<String> output) {
+    Manager manager = restore.manager();
+    String repo = restore.source().processOpts();
+    String target = restore.destination().processOpts();
+
+    if (output != null) {
+      output.accept("restoring repository '" + repo + "' into '" + target + "'");
+    }
+
+    List<String> cmd = restoreCommand(restore);
     return ExecutorSupport.execute(commandExecutor, manager, cmd, null, restore.processEnvironment(), restore.tag(), output);
   }
 

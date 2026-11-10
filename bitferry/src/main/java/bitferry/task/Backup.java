@@ -103,4 +103,9 @@ public class Backup extends Restic {
   protected void format() {
     manager.backendExecutor().format(this);
   }
+
+  @Override
+  public List<List<String>> commands() {
+    return manager.backendExecutor().commands(this);
+  }
 }

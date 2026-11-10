@@ -1,6 +1,7 @@
 package bitferry.task;
 
 import java.lang.System.Logger.Level;
+import java.util.List;
 import java.util.function.*;
 
 /// Task processing backend executor spawning the external backend utilities
@@ -36,6 +37,31 @@ public interface Executor {
   /// Perform encryption and backend target conformance validation for rclone tasks upon creation.
   default void conform(Rclone task) {
     conform((Task) task);
+  }
+
+  /// Return the command lines about to execute for the task.
+  default List<List<String>> commands(Task task) {
+    return List.of();
+  }
+
+  /// Return the command lines about to execute for the rclone task.
+  default List<List<String>> commands(Rclone task) {
+    return commands((Task) task);
+  }
+
+  /// Return the command lines about to execute for the backup task.
+  default List<List<String>> commands(Backup task) {
+    return commands((Task) task);
+  }
+
+  /// Return the command lines about to execute for the restore task.
+  default List<List<String>> commands(Restore task) {
+    return commands((Task) task);
+  }
+
+  /// Return the command lines about to execute for the restic task.
+  default List<List<String>> commands(Restic task) {
+    return commands((Task) task);
   }
 
   /// Default system process backend executor.

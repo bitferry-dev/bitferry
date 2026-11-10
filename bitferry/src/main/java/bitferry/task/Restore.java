@@ -51,4 +51,9 @@ public class Restore extends Restic {
     if (volume == null) throw new BitferryError("no volume #" + destinationEndpoint.vtag() + " is registered");
     return volume;
   }
+
+  @Override
+  public List<List<String>> commands() {
+    return manager.backendExecutor().commands(this);
+  }
 }

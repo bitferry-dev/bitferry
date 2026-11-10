@@ -123,6 +123,11 @@ public abstract class Rclone extends Task {
     manager.backendExecutor().conform(this);
   }
 
+  @Override
+  public List<List<String>> commands() {
+    return manager.backendExecutor().commands(this);
+  }
+
   /// The rclone crypt encryption mode base carrying the crypt options and the
   /// obscured password pair stored with the vault provider.
   public abstract static class Encryption {

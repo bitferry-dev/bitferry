@@ -288,6 +288,47 @@ class SystemExecutorTest {
   }
 
   @Test
+  void taskCommandsReturnExpectedCommandLines() {
+    RecordingCommandExecutor recorder = new RecordingCommandExecutor();
+    SystemExecutor executor = new SystemExecutor(recorder);
+    manager.backendExecutor(executor);
+
+    Synchronize sync = new Synchronize(manager, source(), destination(), null, List.of("*.txt"), List.of("*.bak"));
+    List<List<String>> syncCmds = sync.commands();
+    assertEquals(1, syncCmds.size());
+    List<String> cmd = syncCmds.get(0);
+    assertEquals("rclone", cmd.get(0));
+    assertEquals("sync", cmd.get(1));
+    assertTrue(cmd.contains("+ *.txt"));
+    assertTrue(cmd.contains("- *.bak"));
+    assertTrue(cmd.contains("- " + Bitferry.STORAGE));
+
+    Restore restore = new Restore(manager, destination(), volumeRestored(), "secret", null, List.of("docs/**"), List.of("*.tmp"));
+    List<List<String>> restoreCmds = restore.commands();
+    assertEquals(1, restoreCmds.size());
+    List<String> rcmd = restoreCmds.get(0);
+    assertEquals("restic", rcmd.get(0));
+    assertEquals("restore", rcmd.get(1));
+    assertEquals("latest", rcmd.get(2));
+    assertTrue(rcmd.contains("--target"));
+    assertEquals(volumeRestored().processOpts(), rcmd.get(rcmd.indexOf("--target") + 1));
+
+    // Backup with default check and forget
+    Backup backupDefault = new Backup(manager, volumeSource(), destination(), "secret", null, null, "default", "default", List.of(), List.of("*.tmp"));
+    List<List<String>> backupCmds = backupDefault.commands();
+    assertEquals(3, backupCmds.size());
+    assertEquals("backup", backupCmds.get(0).get(1));
+    assertEquals("check", backupCmds.get(1).get(1));
+    assertEquals("forget", backupCmds.get(2).get(1));
+
+    // Backup skipping check and forget
+    Backup backupSkip = new Backup(manager, volumeSource(), destination(), "secret", null, null, "-", "-", List.of(), List.of());
+    List<List<String>> backupSkipCmds = backupSkip.commands();
+    assertEquals(1, backupSkipCmds.size());
+    assertEquals("backup", backupSkipCmds.get(0).get(1));
+  }
+
+  @Test
   void outputCapturingForwardsLinesToConsumer() {
     RecordingCommandExecutor recorder = new RecordingCommandExecutor();
     recorder.simulatedOutput = List.of("Transferred: 10/10", "100%", "Finished in 0.5s");

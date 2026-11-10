@@ -164,8 +164,7 @@ final class RcloneExecutor {
     }
   }
 
-  /// Process the rclone-backed task. Return true on success.
-  boolean run(Rclone rclone, Consumer<String> output) {
+  List<String> command(Rclone rclone) {
     Manager manager = rclone.manager();
     List<String> cmd = new ArrayList<>();
     cmd.add(ExecutorSupport.resolveExecutable("rclone"));
@@ -209,7 +208,16 @@ final class RcloneExecutor {
     // The endpoints (or the crypt tail placing the ':crypt:' remote for the encrypted tasks)
     cmd.addAll(rclone.encryption().processOpts(rclone));
 
-    // The crypt password environment (empty for the unencrypted tasks)
-    return ExecutorSupport.execute(commandExecutor, manager, cmd, null, rclone.processEnvironment(), rclone.tag(), output);
+    return cmd;
+  }
+
+  List<List<String>> commands(Rclone rclone) {
+    return List.of(command(rclone));
+  }
+
+  /// Process the rclone-backed task. Return true on success.
+  boolean run(Rclone rclone, Consumer<String> output) {
+    List<String> cmd = command(rclone);
+    return ExecutorSupport.execute(commandExecutor, rclone.manager(), cmd, null, rclone.processEnvironment(), rclone.tag(), output);
   }
 }

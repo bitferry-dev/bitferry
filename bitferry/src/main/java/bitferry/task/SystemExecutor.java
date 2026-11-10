@@ -2,6 +2,7 @@ package bitferry.task;
 
 import java.lang.System.Logger.Level;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Objects;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -59,6 +60,21 @@ public class SystemExecutor implements Executor {
   @Override
   public void conform(Rclone rclone) {
     rcloneExecutor.conform(rclone);
+  }
+
+  @Override
+  public List<List<String>> commands(Rclone rclone) {
+    return rcloneExecutor.commands(rclone);
+  }
+
+  @Override
+  public List<List<String>> commands(Backup backup) {
+    return resticExecutor.commands(backup);
+  }
+
+  @Override
+  public List<List<String>> commands(Restore restore) {
+    return resticExecutor.commands(restore);
   }
 
   /// @see ExecutorSupport#executableName(String)

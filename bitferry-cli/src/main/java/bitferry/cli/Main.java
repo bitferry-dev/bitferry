@@ -1,6 +1,7 @@
 package bitferry.cli;
 
 import bitferry.*;
+import java.io.*;
 import picocli.*;
 import picocli.CommandLine.Help.*;
 
@@ -27,9 +28,10 @@ public final class Main {
       return 1;
     });
     cmd.setParameterExceptionHandler((ex, args) -> {
-      CommandLine.UnmatchedArgumentException.printSuggestions(ex, System.err);
-      System.err.println(Ansi.AUTO.string("@|bold,red Error:|@ " + ex.getMessage()));
-      System.err.println("Try 'bitferry --help' for usage.");
+      PrintWriter err = ex.getCommandLine() != null ? ex.getCommandLine().getErr() : new PrintWriter(System.err, true);
+      CommandLine.UnmatchedArgumentException.printSuggestions(ex, err);
+      err.println(Ansi.AUTO.string("@|bold,red Error:|@ " + ex.getMessage()));
+      err.println("Try 'bitferry --help' for usage.");
       return 2;
     });
     return cmd;

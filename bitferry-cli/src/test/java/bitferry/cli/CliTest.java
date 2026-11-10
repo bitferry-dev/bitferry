@@ -127,7 +127,7 @@ class CliTest {
     cmd = Main.createCommandLine();
     err = new StringWriter();
     cmd.setErr(new PrintWriter(err));
-    int code = cmd.execute("--path", firstDir.toString(), "process");
+    int code = cmd.execute("--path", firstDir.toString(), "-n", "process");
     assertEquals(0, code, () -> "stderr: " + err.toString());
     assertTrue(err.toString().contains("task(s) skipped"), () -> "stderr: " + err.toString());
   }
@@ -595,6 +595,95 @@ class CliTest {
     cmd.setErr(new PrintWriter(err));
     code = executeWithPassword("brandNewSecret", "--path", volDir.toString(), "create", "task", "restore", "local:" + repoDir, ":" + vtag + ":restored");
     assertEquals(0, code, () -> "stderr: " + err.toString());
+  }
+
+  @Test
+  void infoTaskPrintsCommandLinesForSpecifiedTasks() throws Exception {
+    Path volDir = tempDir.resolve("cli_info_vol");
+    Path dataDir = tempDir.resolve("cli_info_data");
+    Files.createDirectories(volDir);
+    Files.createDirectories(dataDir);
+
+    // Create volume
+    CommandLine cmd = Main.createCommandLine();
+    assertEquals(0, cmd.execute("c", "v", volDir.toString()));
+    String vtag = volumeTag(managerFor(volDir), volDir);
+
+    // Create synchronize task
+    cmd = Main.createCommandLine();
+    StringWriter out = new StringWriter();
+    StringWriter err = new StringWriter();
+    cmd.setOut(new PrintWriter(out));
+    cmd.setErr(new PrintWriter(err));
+    assertEquals(0, cmd.execute("--path", volDir.toString(), "create", "task", "synchronize", ":" + vtag + ":", "local:" + dataDir, "--include", "*.txt"));
+
+    Manager m = managerFor(volDir);
+    Task task = m.tasks().values().iterator().next();
+    String ttag = task.tag();
+
+    // 1. info task <tag> prints rclone sync command
+    cmd = Main.createCommandLine();
+    out = new StringWriter();
+    StringWriter err1 = new StringWriter();
+    cmd.setOut(new PrintWriter(out));
+    cmd.setErr(new PrintWriter(err1));
+    int code = cmd.execute("--path", volDir.toString(), "info", "task", ttag);
+    assertEquals(0, code, () -> "stderr: " + err1.toString());
+    String output = out.toString().trim();
+    assertTrue(output.contains("rclone sync"), () -> "expected rclone sync in: " + output);
+    assertTrue(output.contains("+ *.txt"), () -> "expected + *.txt in: " + output);
+    assertTrue(output.contains("- " + Bitferry.STORAGE), () -> "expected storage exclude in: " + output);
+
+    // 2. Alias: i t <tag>
+    cmd = Main.createCommandLine();
+    out = new StringWriter();
+    StringWriter err2 = new StringWriter();
+    cmd.setOut(new PrintWriter(out));
+    cmd.setErr(new PrintWriter(err2));
+    code = cmd.execute("--path", volDir.toString(), "i", "t", ttag);
+    assertEquals(0, code, () -> "stderr: " + err2.toString());
+    assertEquals(output, out.toString().trim());
+
+    // 3. info task with no tags requires TAGS parameter (exit code 2)
+    cmd = Main.createCommandLine();
+    out = new StringWriter();
+    StringWriter err3 = new StringWriter();
+    cmd.setOut(new PrintWriter(out));
+    cmd.setErr(new PrintWriter(err3));
+    code = cmd.execute("--path", volDir.toString(), "info", "task");
+    assertEquals(2, code);
+    assertTrue(err3.toString().contains("Missing required parameter: 'TAGS'"));
+
+    // 4. info task with non-existent tag fails with exit code 1
+    cmd = Main.createCommandLine();
+    out = new StringWriter();
+    err = new StringWriter();
+    cmd.setOut(new PrintWriter(out));
+    cmd.setErr(new PrintWriter(err));
+    code = cmd.execute("--path", volDir.toString(), "info", "task", "nonexistent");
+    assertEquals(1, code);
+    assertTrue(err.toString().contains("too few entities matching specified tag part <nonexistent>"));
+
+    // 5. Existing 'info' and 'i' without subcommand still print intact volumes/tasks
+    cmd = Main.createCommandLine();
+    out = new StringWriter();
+    err = new StringWriter();
+    cmd.setOut(new PrintWriter(out));
+    cmd.setErr(new PrintWriter(err));
+    code = cmd.execute("--path", volDir.toString(), "info");
+    assertEquals(0, code);
+    assertTrue(out.toString().contains("# Intact volumes"));
+    assertTrue(out.toString().contains("# Intact tasks"));
+
+    cmd = Main.createCommandLine();
+    out = new StringWriter();
+    err = new StringWriter();
+    cmd.setOut(new PrintWriter(out));
+    cmd.setErr(new PrintWriter(err));
+    code = cmd.execute("--path", volDir.toString(), "i");
+    assertEquals(0, code);
+    assertTrue(out.toString().contains("# Intact volumes"));
+    assertTrue(out.toString().contains("# Intact tasks"));
   }
 
   private static boolean available(String executable) {
