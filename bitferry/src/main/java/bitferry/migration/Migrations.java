@@ -3,6 +3,7 @@ package bitferry.migration;
 import bitferry.*;
 import java.util.*;
 import tools.jackson.databind.*;
+import tools.jackson.databind.node.*;
 
 /// Migration pipeline and registry managing schema transitions to the current storage format.
 public final class Migrations {
@@ -21,6 +22,28 @@ public final class Migrations {
   /// Register a migration step in the pipeline.
   public static void register(StorageMigration migration) {
     MIGRATIONS.put(migration.fromVersion(), migration);
+  }
+
+  /// Recursively rename a property key throughout the JSON tree.
+  public static JsonNode renameKey(JsonNode node, String oldKey, String newKey) {
+    if (node == null) return null;
+    if (node.isObject()) {
+      ObjectNode obj = (ObjectNode) node;
+      ObjectNode result = JsonNodeFactory.instance.objectNode();
+      for (Map.Entry<String, JsonNode> entry : obj.properties()) {
+        String key = oldKey.equals(entry.getKey()) ? newKey : entry.getKey();
+        result.set(key, renameKey(entry.getValue(), oldKey, newKey));
+      }
+      return result;
+    } else if (node.isArray()) {
+      ArrayNode arr = (ArrayNode) node;
+      ArrayNode result = JsonNodeFactory.instance.arrayNode();
+      for (JsonNode item : arr) {
+        result.add(renameKey(item, oldKey, newKey));
+      }
+      return result;
+    }
+    return node;
   }
 
   /// Migrate the storage descriptor JSON tree to the current storage version.

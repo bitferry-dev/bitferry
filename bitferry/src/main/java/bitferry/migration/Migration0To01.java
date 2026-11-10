@@ -66,7 +66,7 @@ public final class Migration0To01 implements StorageMigration {
       }
       migrated.set("tasks", taskList);
     }
-    return migrated;
+    return Migrations.renameKey(migrated, "process", "execute");
   }
 
   private ObjectNode migrateTask(String tag, JsonNode taskData) {
@@ -82,29 +82,18 @@ public final class Migration0To01 implements StorageMigration {
     if (taskData.has("exclude")) {
       task.set("exclude", taskData.get("exclude"));
     }
-    if (taskData.has("rclone")) {
-      JsonNode rcloneNode = taskData.get("rclone");
-      if (rcloneNode.isObject()) {
-        ObjectNode rclone = ((ObjectNode) rcloneNode).deepCopy();
-        if (rclone.has("process")) {
-          rclone.set("execute", rclone.remove("process"));
-        }
-        task.set("rclone", rclone);
-      } else {
-        task.set("rclone", rcloneNode);
-      }
+    if (taskData.has("deleted")) {
+      task.set("deleted", taskData.get("deleted"));
     }
-    if (taskData.has("restic")) {
-      JsonNode resticNode = taskData.get("restic");
-      if (resticNode.isObject()) {
-        ObjectNode restic = ((ObjectNode) resticNode).deepCopy();
-        if (restic.has("process")) {
-          restic.set("execute", restic.remove("process"));
-        }
-        task.set("restic", restic);
-      } else {
-        task.set("restic", resticNode);
+
+    for (Map.Entry<String, JsonNode> entry : taskData.properties()) {
+      String key = entry.getKey();
+      if ("task".equals(key) || "modified".equals(key) || "include".equals(key) || "exclude".equals(key)
+          || "deleted".equals(key) || "operation".equals(key) || "source".equals(key) || "destination".equals(key)
+          || "directory".equals(key) || "repository".equals(key) || KNOWN_OPERATIONS.contains(key)) {
+        continue;
       }
+      task.set(key, entry.getValue());
     }
 
     String foundOp = null;

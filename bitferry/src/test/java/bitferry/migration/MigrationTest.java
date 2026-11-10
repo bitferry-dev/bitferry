@@ -218,6 +218,40 @@ class MigrationTest {
       Task.strings(task.serialize().get("rclone").get("encrypt"), false));
   }
 
+  @Test
+  void storageKeyProcessIsGloballyRenamedToExecute() {
+    String jsonWithProcess = """
+      {
+        "bitferry": "0",
+        "volume": "d2f10024",
+        "tasks": {
+          "89e1c119": {
+            "synchronize": {
+              "source": {"local": {"root": "/data/work"}},
+              "destination": {"bitferry": {"volume": "d2f10024", "path": "backup"}}
+            },
+            "rclone": {
+              "process": ["--metadata", "--links"]
+            },
+            "custom_backend": {
+              "process": ["--custom-opt"]
+            }
+          }
+        }
+      }
+      """;
+    JsonNode node = Storage.mapper().readTree(jsonWithProcess);
+    JsonNode migrated = Migrations.migrate(node);
+    assertEquals("0.1", migrated.get("bitferry").asString());
+    JsonNode tasks = migrated.get("tasks");
+    assertTrue(tasks.isArray());
+    JsonNode task = tasks.get(0);
+    assertEquals(List.of("--metadata", "--links"), Task.strings(task.get("rclone").get("execute"), false));
+    assertFalse(task.get("rclone").has("process"));
+    assertEquals(List.of("--custom-opt"), Task.strings(task.get("custom_backend").get("execute"), false));
+    assertFalse(task.get("custom_backend").has("process"));
+  }
+
   private static JsonNode findTask(JsonNode tasks, String tag) {
     for (JsonNode t : tasks) {
       if (tag.equals(t.get("task").asString())) return t;
