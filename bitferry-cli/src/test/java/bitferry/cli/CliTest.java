@@ -732,6 +732,103 @@ class CliTest {
     assertTrue(out.toString().contains("All 1 task(s) executed successfully."));
   }
 
+  @Test
+  void createBackupWithAtProfilesAndShorthands() throws IOException {
+    Path volDir = tempDir.resolve("backup_profiles_vol");
+    Path repoDir = tempDir.resolve("backup_profiles_repo");
+    Files.createDirectories(volDir);
+    Files.createDirectories(repoDir);
+
+    assertEquals(0, cmd.execute("create", "volume", volDir.toString()));
+    String vtag = volumeTag(managerFor(volDir), volDir);
+
+    // 1. Create backup with explicit @-prefixed profiles: -F @default -C @full
+    int code = executeWithPassword("pass1", "--path", volDir.toString(),
+      "create", "task", "backup", ":" + vtag + ":", "local:" + repoDir, "-a", "-F", "@default", "-C", "@full");
+    assertEquals(0, code, () -> "stderr: " + err.toString());
+
+    Manager m = managerFor(volDir);
+    Backup task1 = (Backup) m.tasks().values().iterator().next();
+    assertEquals(Backup.FORGET.get("default"), Task.strings(task1.serialize().get("restic").get("forget"), false));
+    assertEquals(Backup.CHECK.get("full"), Task.strings(task1.serialize().get("restic").get("check"), false));
+    assertEquals(List.of("--no-cache"), Task.strings(task1.serialize().get("restic").get("execute"), false));
+
+    // Delete task1 to test shorthand creation cleanly
+    assertEquals(0, cmd.execute("--path", volDir.toString(), "delete", "task", task1.tag()));
+
+    // 2. Create backup with shorthands -f -c
+    code = executeWithPassword("pass1", "--path", volDir.toString(),
+      "create", "task", "backup", ":" + vtag + ":", "local:" + repoDir, "-a", "-f", "-c");
+    assertEquals(0, code, () -> "stderr: " + err.toString());
+
+    m = managerFor(volDir);
+    Backup task2 = (Backup) m.selectTasks().values().iterator().next();
+    assertEquals(Backup.FORGET.get("default"), Task.strings(task2.serialize().get("restic").get("forget"), false));
+    assertEquals(Backup.CHECK.get("default"), Task.strings(task2.serialize().get("restic").get("check"), false));
+
+    // Delete task2
+    assertEquals(0, cmd.execute("--path", volDir.toString(), "delete", "task", task2.tag()));
+
+    // 3. Create backup with directly specified raw options without @
+    code = executeWithPassword("pass1", "--path", volDir.toString(),
+      "create", "task", "backup", ":" + vtag + ":", "local:" + repoDir, "-a",
+      "-F", "--prune,--keep-daily,7", "-C", "--no-cache,--read-data", "-X", "--no-cache");
+    assertEquals(0, code, () -> "stderr: " + err.toString());
+
+    m = managerFor(volDir);
+    Backup task3 = (Backup) m.selectTasks().values().iterator().next();
+    assertEquals(List.of("--prune", "--keep-daily", "7"), Task.strings(task3.serialize().get("restic").get("forget"), false));
+    assertEquals(List.of("--no-cache", "--read-data"), Task.strings(task3.serialize().get("restic").get("check"), false));
+    assertEquals(List.of("--no-cache"), Task.strings(task3.serialize().get("restic").get("execute"), false));
+  }
+
+  @Test
+  void createRcloneWithAtProfilesAndShorthands() throws IOException {
+    Path volDir = tempDir.resolve("rclone_profiles_vol");
+    Path dataDir = tempDir.resolve("rclone_profiles_data");
+    Files.createDirectories(volDir);
+    Files.createDirectories(dataDir);
+
+    assertEquals(0, cmd.execute("create", "volume", volDir.toString()));
+    String vtag = volumeTag(managerFor(volDir), volDir);
+
+    // 1. Explicit profile @extended and @default execute
+    int code = executeWithPassword("cryptpass", "--path", volDir.toString(),
+      "create", "task", "synchronize", ":" + vtag + ":", "local:" + dataDir,
+      "-E", "@extended", "-X", "@default");
+    assertEquals(0, code, () -> "stderr: " + err.toString());
+
+    Manager m = managerFor(volDir);
+    Task task1 = m.tasks().values().iterator().next();
+    assertEquals(Rclone.PROFILE.get("extended"), Task.strings(task1.serialize().get("rclone").get("encrypt"), false));
+    assertEquals(Rclone.PROCESS.get("default"), Task.strings(task1.serialize().get("rclone").get("execute"), false));
+
+    // Delete task1
+    assertEquals(0, cmd.execute("--path", volDir.toString(), "delete", "task", task1.tag()));
+
+    // 2. Shorthand -e -u (extended encryption)
+    code = executeWithPassword("cryptpass", "--path", volDir.toString(),
+      "create", "task", "synchronize", ":" + vtag + ":", "local:" + dataDir, "-e", "-u");
+    assertEquals(0, code, () -> "stderr: " + err.toString());
+
+    m = managerFor(volDir);
+    Task task2 = m.selectTasks().values().iterator().next();
+    assertEquals(Rclone.PROFILE.get("extended"), Task.strings(task2.serialize().get("rclone").get("encrypt"), false));
+
+    // Delete task2
+    assertEquals(0, cmd.execute("--path", volDir.toString(), "delete", "task", task2.tag()));
+
+    // 3. Shorthand -e (default encryption) with directly specified -X --fast-list
+    code = executeWithPassword("cryptpass", "--path", volDir.toString(),
+      "create", "task", "synchronize", ":" + vtag + ":", "local:" + dataDir, "-e", "-X", "--fast-list");
+    assertEquals(0, code, () -> "stderr: " + err.toString());
+
+    m = managerFor(volDir);
+    Task task3 = m.selectTasks().values().iterator().next();
+    assertEquals(Rclone.PROFILE.get("default"), Task.strings(task3.serialize().get("rclone").get("encrypt"), false));
+    assertEquals(List.of("--fast-list"), Task.strings(task3.serialize().get("rclone").get("execute"), false));
+  }
+
   private static boolean available(String executable) {
     String env = System.getenv(executable.toUpperCase());
     String command = env != null && !env.isBlank() ? env : executable;

@@ -34,16 +34,16 @@ public class CreateBackupCommand implements Callable<Integer>, HasCommonOptions 
   @Option(names = "-f", description = "Apply default snapshot retention policy options.")
   boolean defaultForget;
 
-  @Option(names = {"-F", "--forget"}, description = "Snapshot retention policy with profile (default) or options.")
+  @Option(names = {"-F", "--forget"}, description = "Snapshot retention policy with profile (@default) or options.")
   String forget;
 
   @Option(names = "-c", description = "Apply default repository checking options.")
   boolean defaultCheck;
 
-  @Option(names = {"-C", "--check"}, description = "Repository checking with profile (default, full) or options.")
+  @Option(names = {"-C", "--check"}, description = "Repository checking with profile (@default, @full) or options.")
   String check;
 
-  @Option(names = {"-X", "--execute"}, description = "Extra backend execution options.")
+  @Option(names = {"-X", "--execute"}, description = "Extra backend execution options (comma-separated), profile (@default) or '-' for none.")
   String execute;
 
   @Option(names = "--exclude", split = ",", description = "Exclude path specifications (comma-separated list).")
@@ -71,8 +71,8 @@ public class CreateBackupCommand implements Callable<Integer>, HasCommonOptions 
     // The password is obtained after the endpoints are validated
     String password = CliUtils.obtainPassword();
     Boolean format = opts.force ? Boolean.TRUE : (attach ? Boolean.FALSE : null);
-    String f = defaultForget ? "default" : forget;
-    String c = defaultCheck ? "default" : check;
+    String f = defaultForget ? "@default" : forget;
+    String c = defaultCheck ? "@default" : check;
     List<String> exc = CliUtils.parsePatterns(exclude, excludeExts);
     Backup task = new Backup(m, src, repo, password, format, execute, f, c, List.of(), exc);
     if (m.volumes().values().stream().noneMatch(v -> task.refersVolume(v.tag()))) {

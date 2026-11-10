@@ -151,7 +151,7 @@ public abstract class Rclone extends Task {
       return NoCrypt.INSTANCE;
     }
 
-    /// Resolve the encryption profile specifier (a profile name, raw comma-separated
+    /// Resolve the encryption profile specifier (an @-prefixed profile name, raw comma-separated
     /// options or '-' for none) against the crypt filename encoding profiles.
     public static List<String> options(String specifier) {
       return optional(specifier, PROFILE);

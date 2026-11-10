@@ -315,7 +315,7 @@ class SystemExecutorTest {
     RecordingCommandExecutor recorder = new RecordingCommandExecutor();
     SystemExecutor executor = new SystemExecutor(recorder);
 
-    Backup backup = new Backup(manager, volumeSource(), destination(), "secret", null, null, "default", "default", List.of(), List.of("*.tmp"));
+    Backup backup = new Backup(manager, volumeSource(), destination(), "secret", null, null, "@default", "@default", List.of(), List.of("*.tmp"));
     boolean result = executor.run(backup, null);
 
     assertTrue(result);
@@ -406,7 +406,7 @@ class SystemExecutorTest {
     assertEquals(volumeRestored().processOpts(), rcmd.get(rcmd.indexOf("--target") + 1));
 
     // Backup with default check and forget
-    Backup backupDefault = new Backup(manager, volumeSource(), destination(), "secret", null, null, "default", "default", List.of(), List.of("*.tmp"));
+    Backup backupDefault = new Backup(manager, volumeSource(), destination(), "secret", null, null, "@default", "@default", List.of(), List.of("*.tmp"));
     List<List<String>> backupCmds = backupDefault.commands();
     assertEquals(3, backupCmds.size());
     assertEquals("backup", backupCmds.get(0).get(1));
@@ -524,7 +524,7 @@ class SystemExecutorTest {
     SystemExecutor executor = new SystemExecutor(recorder);
 
     Synchronize task = new Synchronize(manager, volumeSource(), destination(), null, List.of(), List.of());
-    task.encrypt("secret", null, Rclone.Encryption.options("default"));
+    task.encrypt("secret", null, Rclone.Encryption.options("@default"));
     boolean result = executor.run(task, null);
 
     assertTrue(result);
@@ -554,7 +554,7 @@ class SystemExecutorTest {
     SystemExecutor executor = new SystemExecutor(recorder);
 
     Copy task = new Copy(manager, destination(), volumeRestored(), null, List.of(), List.of());
-    task.decrypt("secret", "second", Rclone.Encryption.options("default"));
+    task.decrypt("secret", "second", Rclone.Encryption.options("@default"));
     boolean result = executor.run(task, null);
 
     assertTrue(result);
@@ -582,7 +582,7 @@ class SystemExecutorTest {
     Endpoint source = Endpoints.parse(manager, ":" + volume.tag() + ":");
     Endpoint encrypted = Endpoints.parse(manager, "local:" + dir.resolve("crypt-enc"));
     Synchronize encrypt = new Synchronize(manager, source, encrypted, null, List.of(), List.of());
-    encrypt.encrypt("crypt-pass", null, Rclone.Encryption.options("default"));
+    encrypt.encrypt("crypt-pass", null, Rclone.Encryption.options("@default"));
     assertTrue(manager.process(encrypt.tag()));
 
     // The encrypted replica holds no plaintext names nor contents
@@ -596,7 +596,7 @@ class SystemExecutorTest {
 
     // The decrypt task restores the plaintext out of the encrypted source
     Copy decrypt = new Copy(manager, encrypted, Endpoints.parse(manager, ":" + volume.tag() + ":decrypted"), null, List.of(), List.of());
-    decrypt.decrypt("crypt-pass", null, Rclone.Encryption.options("default"));
+    decrypt.decrypt("crypt-pass", null, Rclone.Encryption.options("@default"));
     assertTrue(manager.process(decrypt.tag()));
 
     Path restored = volDir.resolve("decrypted").resolve("secret.txt");
@@ -724,7 +724,7 @@ class SystemExecutorTest {
 
     Path dst = dir.resolve("dst-absent");
     Synchronize task = new Synchronize(manager, volumeSource(), Endpoints.parse(manager, "local:" + dst), null, List.of(), List.of());
-    task.encrypt("secret", null, Rclone.Encryption.options("default"));
+    task.encrypt("secret", null, Rclone.Encryption.options("@default"));
     executor.conform(task);
 
     assertEquals(0, recorder.invocations.size());
@@ -741,7 +741,7 @@ class SystemExecutorTest {
     Files.writeString(dst.resolve(Bitferry.STORAGE_IMAGE), "image");
 
     Synchronize task = new Synchronize(manager, volumeSource(), Endpoints.parse(manager, "local:" + dst), null, List.of(), List.of());
-    task.encrypt("secret", null, Rclone.Encryption.options("default"));
+    task.encrypt("secret", null, Rclone.Encryption.options("@default"));
     executor.conform(task);
 
     assertEquals(0, recorder.invocations.size());
@@ -758,7 +758,7 @@ class SystemExecutorTest {
     Files.writeString(dst.resolve("encrypted_name"), "encrypted-bytes");
 
     Synchronize task = new Synchronize(manager, volumeSource(), Endpoints.parse(manager, "local:" + dst), null, List.of(), List.of());
-    task.encrypt("secret", "secret2", Rclone.Encryption.options("default"));
+    task.encrypt("secret", "secret2", Rclone.Encryption.options("@default"));
     executor.conform(task);
 
     assertEquals(1, recorder.invocations.size());
@@ -792,7 +792,7 @@ class SystemExecutorTest {
     Files.writeString(dst.resolve("enc1"), "bytes");
 
     Synchronize task = new Synchronize(manager, volumeSource(), Endpoints.parse(manager, "local:" + dst), null, List.of(), List.of());
-    task.encrypt("secret", null, Rclone.Encryption.options("default"));
+    task.encrypt("secret", null, Rclone.Encryption.options("@default"));
 
     BitferryError error = assertThrows(BitferryError.class, () -> executor.conform(task));
     assertEquals("the existing encrypted content in '" + dst + "' is not compatible with the provided encryption options (wrong password or filename encryption mode)", error.getMessage());
@@ -813,7 +813,7 @@ class SystemExecutorTest {
     Files.writeString(dst.resolve("enc1"), "bytes");
 
     Synchronize task = new Synchronize(manager, volumeSource(), Endpoints.parse(manager, "local:" + dst), null, List.of(), List.of());
-    task.encrypt("secret", null, Rclone.Encryption.options("default"));
+    task.encrypt("secret", null, Rclone.Encryption.options("@default"));
 
     BitferryError error = assertThrows(BitferryError.class, () -> executor.conform(task));
     assertEquals("the existing encrypted content in '" + dst + "' is not compatible with the provided encryption options (wrong password or filename encryption mode)", error.getMessage());
@@ -834,7 +834,7 @@ class SystemExecutorTest {
     Files.writeString(dst.resolve("raw-file.txt"), "plain-content");
 
     Synchronize task = new Synchronize(manager, volumeSource(), Endpoints.parse(manager, "local:" + dst), null, List.of(), List.of());
-    task.encrypt("secret", null, Rclone.Encryption.options("default"));
+    task.encrypt("secret", null, Rclone.Encryption.options("@default"));
 
     BitferryError error = assertThrows(BitferryError.class, () -> executor.conform(task));
     assertEquals("the existing encrypted content in '" + dst + "' is not compatible with the provided encryption options (wrong password or filename encryption mode)", error.getMessage());

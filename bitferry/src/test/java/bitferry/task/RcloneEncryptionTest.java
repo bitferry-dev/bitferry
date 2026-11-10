@@ -40,7 +40,7 @@ class RcloneEncryptionTest {
   @Test
   void encryptModeCarriesTheProfileDescriptor() {
     Synchronize task = new Synchronize(manager, volumeSource(), volumeEncrypted(), null, List.of(), List.of());
-    task.encrypt("secret", null, Rclone.Encryption.options("default"));
+    task.encrypt("secret", null, Rclone.Encryption.options("@default"));
     JsonNode data = task.serialize();
     assertEquals(Rclone.PROFILE.get("default"), Task.strings(data.get("rclone").get("encrypt"), false));
     assertFalse(data.get("rclone").has("decrypt"));
@@ -52,20 +52,25 @@ class RcloneEncryptionTest {
   @Test
   void extendedAndRawProfilesResolve() {
     Synchronize task = new Synchronize(manager, volumeSource(), volumeEncrypted(), null, List.of(), List.of());
-    task.encrypt("secret", null, Rclone.Encryption.options("extended"));
+    task.encrypt("secret", null, Rclone.Encryption.options("@extended"));
     assertEquals(Rclone.PROFILE.get("extended"), Task.strings(task.serialize().get("rclone").get("encrypt"), false));
 
     Synchronize raw = new Synchronize(manager, volumeSource(), volumeEncrypted(), null, List.of(), List.of());
     raw.encrypt("secret", null, Rclone.Encryption.options("-custom,value"));
     assertEquals(List.of("-custom", "value"), Task.strings(raw.serialize().get("rclone").get("encrypt"), false));
 
-    assertThrows(BitferryError.class, () -> Rclone.Encryption.options("nonexistent"));
+    // Directly specified options without leading dash are passed verbatim
+    Synchronize rawNoDash = new Synchronize(manager, volumeSource(), volumeEncrypted(), null, List.of(), List.of());
+    rawNoDash.encrypt("secret", null, Rclone.Encryption.options("custom-opt,val"));
+    assertEquals(List.of("custom-opt", "val"), Task.strings(rawNoDash.serialize().get("rclone").get("encrypt"), false));
+
+    assertThrows(BitferryError.class, () -> Rclone.Encryption.options("@nonexistent"));
   }
 
   @Test
   void decryptModeMirrorsTheEncryptOne() {
     Copy task = new Copy(manager, volumeEncrypted(), volumeSource(), null, List.of(), List.of());
-    task.decrypt("secret", null, Rclone.Encryption.options("default"));
+    task.decrypt("secret", null, Rclone.Encryption.options("@default"));
     JsonNode data = task.serialize();
     assertEquals(Rclone.PROFILE.get("default"), Task.strings(data.get("rclone").get("decrypt"), false));
     assertFalse(data.get("rclone").has("encrypt"));
@@ -75,7 +80,7 @@ class RcloneEncryptionTest {
   @Test
   void encryptedTaskRoundTripsThroughTheStorage() throws IOException {
     Synchronize task = new Synchronize(manager, volumeSource(), volumeEncrypted(), null, List.of(), List.of());
-    task.encrypt("Our secret password", null, Rclone.Encryption.options("default"));
+    task.encrypt("Our secret password", null, Rclone.Encryption.options("@default"));
     manager.commit();
 
     // The obscured password token is stored in the vault of the source volume
@@ -100,7 +105,7 @@ class RcloneEncryptionTest {
   @Test
   void dualPasswordTokensSupportTheSecondPassword() throws IOException {
     Synchronize task = new Synchronize(manager, volumeSource(), volumeEncrypted(), null, List.of(), List.of());
-    task.encrypt("main-secret", "file-secret", Rclone.Encryption.options("default"));
+    task.encrypt("main-secret", "file-secret", Rclone.Encryption.options("@default"));
     manager.commit();
 
     Manager restored = new Manager();
@@ -116,7 +121,7 @@ class RcloneEncryptionTest {
   @Test
   void bothEncryptionDescriptorsAreRejected() {
     Synchronize task = new Synchronize(manager, volumeSource(), volumeEncrypted(), null, List.of(), List.of());
-    task.encrypt("secret", null, Rclone.Encryption.options("default"));
+    task.encrypt("secret", null, Rclone.Encryption.options("@default"));
     JsonNode data = task.serialize();
     ((tools.jackson.databind.node.ObjectNode) data.get("rclone")).set("decrypt", data.get("rclone").get("encrypt").deepCopy());
     assertThrows(BitferryError.class, () -> Task.restore(manager, data));
@@ -125,11 +130,11 @@ class RcloneEncryptionTest {
   @Test
   void localUnencryptedEndIsRejected() {
     Synchronize task = new Synchronize(manager, localSource(), volumeEncrypted(), null, List.of(), List.of());
-    BitferryError error = assertThrows(BitferryError.class, () -> task.encrypt("secret", null, Rclone.Encryption.options("default")));
+    BitferryError error = assertThrows(BitferryError.class, () -> task.encrypt("secret", null, Rclone.Encryption.options("@default")));
     assertTrue(error.getMessage().contains("encryption requires the unencrypted endpoint to reside within a Bitferry volume"));
 
     Copy reverse = new Copy(manager, volumeEncrypted(), localSource(), null, List.of(), List.of());
-    error = assertThrows(BitferryError.class, () -> reverse.decrypt("secret", null, Rclone.Encryption.options("default")));
+    error = assertThrows(BitferryError.class, () -> reverse.decrypt("secret", null, Rclone.Encryption.options("@default")));
     assertTrue(error.getMessage().contains("encryption requires the unencrypted endpoint to reside within a Bitferry volume"));
   }
 
@@ -147,8 +152,8 @@ class RcloneEncryptionTest {
   @Test
   void passwordsMustBeSpecified() {
     Synchronize task = new Synchronize(manager, volumeSource(), volumeEncrypted(), null, List.of(), List.of());
-    assertThrows(BitferryError.class, () -> task.encrypt(null, null, Rclone.Encryption.options("default")));
-    assertThrows(BitferryError.class, () -> task.encrypt("", null, Rclone.Encryption.options("default")));
+    assertThrows(BitferryError.class, () -> task.encrypt(null, null, Rclone.Encryption.options("@default")));
+    assertThrows(BitferryError.class, () -> task.encrypt("", null, Rclone.Encryption.options("@default")));
   }
 
   @Test
@@ -177,7 +182,7 @@ class RcloneEncryptionTest {
 
     // 1. Wrong password is refused and task is deregistered
     Synchronize wrongPass = new Synchronize(manager, src, enc, null, List.of(), List.of());
-    wrongPass.encrypt("secretB", null, Rclone.Encryption.options("default"));
+    wrongPass.encrypt("secretB", null, Rclone.Encryption.options("@default"));
     BitferryError err = assertThrows(BitferryError.class, volume::commit);
     assertTrue(err.getMessage().contains("the existing encrypted content in '" + encDir + "' is not compatible with the provided encryption options (wrong password or filename encryption mode)"));
     assertFalse(manager.tasks().containsKey(wrongPass.tag()));
@@ -187,21 +192,21 @@ class RcloneEncryptionTest {
 
     // 2. Wrong filename encryption mode (extended base32768 over base32) is refused
     Synchronize wrongMode = new Synchronize(manager, src, enc, null, List.of(), List.of());
-    wrongMode.encrypt("secretA", null, Rclone.Encryption.options("extended"));
+    wrongMode.encrypt("secretA", null, Rclone.Encryption.options("@extended"));
     err = assertThrows(BitferryError.class, volume::commit);
     assertTrue(err.getMessage().contains("the existing encrypted content in '" + encDir + "' is not compatible with the provided encryption options (wrong password or filename encryption mode)"));
     assertFalse(manager.tasks().containsKey(wrongMode.tag()));
 
     // 3. Decrypt task with wrong password is also refused
     Copy wrongDecrypt = new Copy(manager, enc, src, null, List.of(), List.of());
-    wrongDecrypt.decrypt("secretB", null, Rclone.Encryption.options("default"));
+    wrongDecrypt.decrypt("secretB", null, Rclone.Encryption.options("@default"));
     err = assertThrows(BitferryError.class, volume::commit);
     assertTrue(err.getMessage().contains("the existing encrypted content in '" + encDir + "' is not compatible with the provided encryption options (wrong password or filename encryption mode)"));
     assertFalse(manager.tasks().containsKey(wrongDecrypt.tag()));
 
     // 4. Correct password encrypt task succeeds and persists
     Synchronize correctPass = new Synchronize(manager, src, enc, null, List.of(), List.of());
-    correctPass.encrypt("secretA", null, Rclone.Encryption.options("default"));
+    correctPass.encrypt("secretA", null, Rclone.Encryption.options("@default"));
     volume.commit();
     assertTrue(manager.tasks().containsKey(correctPass.tag()));
 
@@ -210,7 +215,7 @@ class RcloneEncryptionTest {
 
     // 5. Correct password decrypt task succeeds and persists
     Copy correctDecrypt = new Copy(manager, enc, src, null, List.of(), List.of());
-    correctDecrypt.decrypt("secretA", null, Rclone.Encryption.options("default"));
+    correctDecrypt.decrypt("secretA", null, Rclone.Encryption.options("@default"));
     volume.commit();
     assertTrue(manager.tasks().containsKey(correctDecrypt.tag()));
 

@@ -32,7 +32,7 @@ public abstract class RcloneTaskCommand implements Callable<Integer>, HasCommonO
   @Parameters(index = "1", description = "Destination endpoint.", paramLabel = "DESTINATION")
   String destination;
 
-  @Option(names = {"-X", "--execute"}, description = "Extra backend execution options (comma-separated) or '-' for none.")
+  @Option(names = {"-X", "--execute"}, description = "Extra backend execution options (comma-separated), profile (@default) or '-' for none.")
   String execute;
 
   @Option(names = "--include", split = ",", description = "Include path specifications (comma-separated list).")
@@ -53,10 +53,10 @@ public abstract class RcloneTaskCommand implements Callable<Integer>, HasCommonO
   @Option(names = "-d", description = "Decrypt source files using default profile.")
   boolean decryptDefault;
 
-  @Option(names = {"-E", "--encrypt"}, description = "Encrypt files in destination using specified profile or options.")
+  @Option(names = {"-E", "--encrypt"}, description = "Encrypt files in destination using specified profile (@default, @extended) or options.")
   String encrypt;
 
-  @Option(names = {"-D", "--decrypt"}, description = "Decrypt source files using specified profile or options.")
+  @Option(names = {"-D", "--decrypt"}, description = "Decrypt source files using specified profile (@default, @extended) or options.")
   String decrypt;
 
   @Option(names = "-u", description = "Apply extended (unicode) encryption profile options.")
@@ -77,7 +77,7 @@ public abstract class RcloneTaskCommand implements Callable<Integer>, HasCommonO
     boolean decryptRequested = decryptDefault || decrypt != null;
     if (encryptRequested && decryptRequested) throw new BitferryError("invalid encryption options: the encryption and decryption are mutually exclusive");
     if (extended && !encryptRequested && !decryptRequested) throw new BitferryError("invalid encryption options: the extended profile modifier requires the encryption to be requested");
-    String profile = encrypt != null ? encrypt : decrypt != null ? decrypt : extended ? "extended" : "default";
+    String profile = encrypt != null ? encrypt : decrypt != null ? decrypt : extended ? "@extended" : "@default";
     CommonOptions opts = CliUtils.resolveOptions(spec, options);
     Manager m = CliUtils.restoreManager(opts);
     // The bare paths encompassed by the intact volumes are attached to them

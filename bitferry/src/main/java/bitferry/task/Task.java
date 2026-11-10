@@ -330,15 +330,19 @@ public abstract class Task {
   }
 
   // Resolve the specified option value against the profile route. The route maps profile
-  // names (with the null key denoting the default profile) to option lists. Explicit option
-  // lists are passed verbatim, '-' disables the options entirely.
+  // names (with the null key denoting the default profile) to option lists. Profile names
+  // are prefixed with '@' (e.g. "@default", "@full"), '-' disables the options entirely,
+  // and directly specified options are passed as comma-separated tokens.
   protected static List<String> optional(String option, Map<String, List<String>> route) {
     if (option == null) return route.get(null);
     if (option.equals("-")) return null;
-    if (option.startsWith("-")) return Arrays.asList(option.split(","));
-    List<String> profile = route.get(option);
-    if (profile == null) throw new BitferryError("unknown options profile '" + option + "'");
-    return profile;
+    if (option.startsWith("@")) {
+      String name = option.substring(1);
+      List<String> profile = route.get(name);
+      if (profile == null) throw new BitferryError("unknown options profile '" + option + "'");
+      return profile;
+    }
+    return Arrays.asList(option.split(","));
   }
 
   // Resolve the restored processing options list against the profile route

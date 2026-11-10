@@ -100,50 +100,38 @@ class TaskTest {
 
   @Test
   void resticProfilesFlowIntoTheDescriptors() {
-    Backup backup = new Backup(manager, volumeSource(), destination(), "secret", null, null, "default", null, List.of(), List.of());
+    Backup backup = new Backup(manager, volumeSource(), destination(), "secret", null, null, "@default", "@full", List.of(), List.of());
     JsonNode data = backup.serialize();
     assertEquals("restic", data.get("backend").asString());
     assertEquals(List.of("--no-cache"), toStringList(data.get("restic").get("execute")));
     assertEquals(Backup.FORGET.get("default"), toStringList(data.get("restic").get("forget")));
-    assertFalse(data.get("restic").has("check"));
+    assertEquals(Backup.CHECK.get("full"), toStringList(data.get("restic").get("check")));
     // The password never travels with the descriptor
     assertFalse(data.has("password"));
 
-    Restore restore = new Restore(manager, destination(), volumeRestored(), "secret", null, List.of(), List.of());
+    Restore restore = new Restore(manager, destination(), volumeRestored(), "secret", "@default", List.of(), List.of());
     assertEquals("restic", restore.serialize().get("backend").asString());
     assertEquals(List.of("--no-cache", "--sparse"), toStringList(restore.serialize().get("restic").get("execute")));
   }
 
   @Test
-  void invalidDescriptorsAreRejected() {
-    var factory = tools.jackson.databind.node.JsonNodeFactory.instance;
-    // A descriptor without the operation discriminator is rejected
-    var none = factory.objectNode().put("modified", "2026-01-01T00:00:00+00:00");
-    assertThrows(BitferryError.class, () -> Task.restore(manager, none));
-  }
+  void directOptionsWithoutAtArePassedVerbatim() {
+    // Both options starting with '-' and options without '-' are treated as raw options
+    Copy task = new Copy(manager, source(), destination(), "--transfers,4", List.of(), List.of());
+    assertEquals(List.of("--transfers", "4"), toStringList(task.serialize().get("rclone").get("execute")));
 
-  @Test
-  void mismatchedBackendIsRejected() {
-    Synchronize task = new Synchronize(manager, source(), destination(), null, List.of(), List.of());
-    var node = (tools.jackson.databind.node.ObjectNode) task.serialize();
-    node.put("backend", "restic");
-    BitferryError err = assertThrows(BitferryError.class, () -> Task.restore(manager, node));
-    assertTrue(err.getMessage().contains("invalid task backend: expected 'rclone' but got 'restic'"));
-  }
+    Copy raw = new Copy(manager, source(), destination(), "custom,options", List.of(), List.of());
+    assertEquals(List.of("custom", "options"), toStringList(raw.serialize().get("rclone").get("execute")));
 
-  @Test
-  void taskWithoutBackendDeserializesCleanly() {
-    Synchronize task = new Synchronize(manager, source(), destination(), null, List.of(), List.of());
-    var node = (tools.jackson.databind.node.ObjectNode) task.serialize();
-    node.remove("backend");
-    Task restored = Task.restore(manager, node);
-    assertEquals("rclone", restored.backend());
+    // '-' disables execution options
+    Copy disabled = new Copy(manager, source(), destination(), "-", List.of(), List.of());
+    assertNull(disabled.serialize().get("rclone"));
   }
 
   @Test
   void unknownOptionsProfilesAreRejected() {
-    assertThrows(BitferryError.class, () -> new Copy(manager, source(), destination(), "nonexistent", List.of(), List.of()));
-    assertThrows(BitferryError.class, () -> new Backup(manager, volumeSource(), destination(), "secret", null, null, "nonexistent", null, List.of(), List.of()));
+    assertThrows(BitferryError.class, () -> new Copy(manager, source(), destination(), "@nonexistent", List.of(), List.of()));
+    assertThrows(BitferryError.class, () -> new Backup(manager, volumeSource(), destination(), "secret", null, null, "@nonexistent", null, List.of(), List.of()));
   }
 
   @Test
