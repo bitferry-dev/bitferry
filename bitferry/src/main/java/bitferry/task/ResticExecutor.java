@@ -1,18 +1,12 @@
 package bitferry.task;
 
-import bitferry.Manager;
-import bitferry.Bitferry;
-import bitferry.BitferryError;
-
-import java.io.IOException;
+import bitferry.*;
+import java.io.*;
 import java.lang.System.Logger.Level;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.function.Consumer;
-import java.util.stream.Stream;
+import java.nio.file.*;
+import java.util.*;
+import java.util.function.*;
+import java.util.stream.*;
 
 /// Restic backend executor: builds the restic invocations for the restic-backed tasks
 /// (the repository backup with the optional integrity checking and retention policy,
@@ -41,6 +35,18 @@ final class ResticExecutor {
     return false;
   }
 
+  /// Perform conformance check of the candidate repository password against the existing repository.
+  void conform(Restic restic) {
+    if (restic instanceof Backup backup && Boolean.TRUE.equals(backup.formatMode())) {
+      return; // --force (wipe and recreate): skip conformance
+    }
+    String repo = repoPath(restic);
+    if (!hasRepository(repo)) {
+      return; // Repo absent (config file missing): skip
+    }
+    probeRepository(restic, repo);
+  }
+
   /// Initialize (or wipe and recreate, or attach to) the repository of the backup task.
   void format(Backup backup) {
     Manager manager = backup.manager();
@@ -49,13 +55,20 @@ final class ResticExecutor {
       return;
     }
     String repo = backup.destination().processOpts();
-    if (Boolean.FALSE.equals(backup.formatMode())) {
-      LOG.log(Level.INFO, () -> "attaching task #" + backup.tag() + " to existing repository '" + repo + "'");
-      return;
-    }
     if (Boolean.TRUE.equals(backup.formatMode())) {
       LOG.log(Level.INFO, () -> "wiping existing repository '" + repo + "' for task #" + backup.tag());
       wipeRepository(Path.of(repo));
+    } else if (hasRepository(repo)) {
+      probeRepository(backup, repo);
+      if (Boolean.FALSE.equals(backup.formatMode())) {
+        LOG.log(Level.INFO, () -> "attaching task #" + backup.tag() + " to existing repository '" + repo + "'");
+      } else {
+        LOG.log(Level.INFO, () -> "existing repository opened; attaching implicitly");
+      }
+      return;
+    } else if (Boolean.FALSE.equals(backup.formatMode())) {
+      LOG.log(Level.INFO, () -> "attaching task #" + backup.tag() + " to existing repository '" + repo + "'");
+      return;
     }
     LOG.log(Level.INFO, () -> "initializing repository '" + repo + "' for task #" + backup.tag());
     List<String> cmd = new ArrayList<>();
@@ -75,6 +88,45 @@ final class ResticExecutor {
       if (e instanceof InterruptedException) Thread.currentThread().interrupt();
       throw new BitferryError("repository initialization failure for task #" + backup.tag() + ": " + e.getMessage(), e);
     }
+  }
+
+  private void probeRepository(Restic restic, String repo) {
+    if (restic.isConformed()) return;
+    Manager manager = restic.manager();
+    List<String> cmd = new ArrayList<>();
+    cmd.add(resolveExecutable());
+    cmd.add("-r");
+    cmd.add(repo);
+    cmd.add("cat");
+    cmd.add("config");
+    cmd.addAll(commonOptions(manager));
+
+    try {
+      ExecutorSupport.echoCommandLine(manager, cmd, null);
+      List<String> output = new ArrayList<>();
+      int exitCode = commandExecutor.execute(cmd, null, restic.processEnvironment(), output::add);
+      if (exitCode != 0) {
+        String message = "the existing repository at '" + repo + "' does not accept the provided password";
+        if (restic instanceof Backup) {
+          message += "; use --attach to attach to an existing repository";
+        }
+        throw new BitferryError(message);
+      }
+      restic.markConformed();
+    } catch (IOException | InterruptedException e) {
+      if (e instanceof InterruptedException) Thread.currentThread().interrupt();
+      throw new BitferryError("repository probe failure for task #" + restic.tag() + ": " + e.getMessage(), e);
+    }
+  }
+
+  static boolean hasRepository(String repo) {
+    return Files.isRegularFile(Path.of(repo).resolve("config"));
+  }
+
+  private static String repoPath(Restic restic) {
+    return restic instanceof Backup backup
+      ? backup.destination().processOpts()
+      : restic.source().processOpts();
   }
 
   // Remove the repository subdirectories upon the forced re-initialization

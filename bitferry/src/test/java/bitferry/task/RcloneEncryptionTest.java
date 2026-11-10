@@ -151,6 +151,87 @@ class RcloneEncryptionTest {
     assertThrows(BitferryError.class, () -> task.encrypt("", null, Rclone.Encryption.options("default")));
   }
 
+  @Test
+  void realRcloneConformanceRejectsIncompatibleOptionsAndAcceptsCorrectPassword() throws Exception {
+    Assumptions.assumeTrue(available("rclone"), "rclone not available for the integration check");
+
+    Path plainDir = dir.resolve("fixture-plain");
+    Files.createDirectories(plainDir);
+    Files.writeString(plainDir.resolve("test.txt"), "hello conformance");
+
+    Path encDir = dir.resolve("fixture-enc");
+    // Build encrypted fixture with password A and standard base32 encryption
+    ProcessBuilder pb = new ProcessBuilder(
+      "rclone", "sync", plainDir.toString(), ":crypt:",
+      "--crypt-remote", encDir.toString(),
+      "--crypt-filename-encryption", "standard",
+      "--crypt-filename-encoding", "base32",
+      "--config", "/dev/null"
+    );
+    pb.environment().put("RCLONE_CRYPT_PASSWORD", Passwords.obscure("secretA"));
+    Process p = pb.start();
+    assertEquals(0, p.waitFor());
+
+    Endpoint src = Endpoints.parse(manager, ":" + volume.tag() + ":");
+    Endpoint enc = Endpoints.parse(manager, "local:" + encDir);
+
+    // 1. Wrong password is refused and task is deregistered
+    Synchronize wrongPass = new Synchronize(manager, src, enc, null, List.of(), List.of());
+    wrongPass.encrypt("secretB", null, Rclone.Encryption.options("default"));
+    BitferryError err = assertThrows(BitferryError.class, volume::commit);
+    assertTrue(err.getMessage().contains("the existing encrypted content in '" + encDir + "' is not compatible with the provided encryption options (wrong password or filename encryption mode)"));
+    assertFalse(manager.tasks().containsKey(wrongPass.tag()));
+
+    Manager restored = new Manager().restore(dir.resolve("volume"));
+    assertFalse(restored.tasks().containsKey(wrongPass.tag()));
+
+    // 2. Wrong filename encryption mode (extended base32768 over base32) is refused
+    Synchronize wrongMode = new Synchronize(manager, src, enc, null, List.of(), List.of());
+    wrongMode.encrypt("secretA", null, Rclone.Encryption.options("extended"));
+    err = assertThrows(BitferryError.class, volume::commit);
+    assertTrue(err.getMessage().contains("the existing encrypted content in '" + encDir + "' is not compatible with the provided encryption options (wrong password or filename encryption mode)"));
+    assertFalse(manager.tasks().containsKey(wrongMode.tag()));
+
+    // 3. Decrypt task with wrong password is also refused
+    Copy wrongDecrypt = new Copy(manager, enc, src, null, List.of(), List.of());
+    wrongDecrypt.decrypt("secretB", null, Rclone.Encryption.options("default"));
+    err = assertThrows(BitferryError.class, volume::commit);
+    assertTrue(err.getMessage().contains("the existing encrypted content in '" + encDir + "' is not compatible with the provided encryption options (wrong password or filename encryption mode)"));
+    assertFalse(manager.tasks().containsKey(wrongDecrypt.tag()));
+
+    // 4. Correct password encrypt task succeeds and persists
+    Synchronize correctPass = new Synchronize(manager, src, enc, null, List.of(), List.of());
+    correctPass.encrypt("secretA", null, Rclone.Encryption.options("default"));
+    volume.commit();
+    assertTrue(manager.tasks().containsKey(correctPass.tag()));
+
+    restored = new Manager().restore(dir.resolve("volume"));
+    assertTrue(restored.tasks().containsKey(correctPass.tag()));
+
+    // 5. Correct password decrypt task succeeds and persists
+    Copy correctDecrypt = new Copy(manager, enc, src, null, List.of(), List.of());
+    correctDecrypt.decrypt("secretA", null, Rclone.Encryption.options("default"));
+    volume.commit();
+    assertTrue(manager.tasks().containsKey(correctDecrypt.tag()));
+
+    restored = new Manager().restore(dir.resolve("volume"));
+    assertTrue(restored.tasks().containsKey(correctDecrypt.tag()));
+  }
+
+  private static boolean available(String executable) {
+    String env = System.getenv(executable.toUpperCase());
+    String command = env != null && !env.isBlank() ? env : executable;
+    try {
+      Process process = new ProcessBuilder(command, "version").start();
+      return process.waitFor() == 0;
+    } catch (IOException e) {
+      return false;
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      return false;
+    }
+  }
+
   private static List<String> toStringList(JsonNode node) {
     return Task.strings(node, false);
   }

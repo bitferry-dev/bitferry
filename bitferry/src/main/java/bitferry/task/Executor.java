@@ -20,6 +20,24 @@ public interface Executor {
   /// Perform one-time backend formatting upon task creation (e.g. restic init).
   default void format(Task task) {}
 
+  /// Perform one-time backend formatting upon backup task creation (e.g. restic init).
+  default void format(Backup task) {
+    format((Task) task);
+  }
+
+  /// Perform encryption and backend target conformance validation upon task creation.
+  default void conform(Task task) {}
+
+  /// Perform encryption and backend target conformance validation for restic tasks upon creation.
+  default void conform(Restic task) {
+    conform((Task) task);
+  }
+
+  /// Perform encryption and backend target conformance validation for rclone tasks upon creation.
+  default void conform(Rclone task) {
+    conform((Task) task);
+  }
+
   /// Default system process backend executor.
   static Executor system() {
     return new SystemExecutor();

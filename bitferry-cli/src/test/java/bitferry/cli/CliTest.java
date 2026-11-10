@@ -6,6 +6,7 @@ import bitferry.task.Backup;
 import bitferry.task.Rclone;
 import bitferry.task.Restore;
 import bitferry.task.Task;
+import bitferry.vault.Passwords;
 import java.io.*;
 import java.nio.charset.*;
 import java.nio.file.*;
@@ -461,5 +462,152 @@ class CliTest {
     child.paths = List.of(Path.of("/child/path"));
     CommonOptions merged = child.merge(parent);
     assertEquals(List.of(Path.of("/parent/path"), Path.of("/child/path")), merged.paths);
+  }
+
+  @Test
+  void createEncryptedTaskConformanceRefusesIncompatibleBackend() throws Exception {
+    Assumptions.assumeTrue(available("rclone"), "rclone not available for integration check");
+    Path volDir = tempDir.resolve("cli_enc_vol");
+    Path plainDir = tempDir.resolve("cli_enc_plain");
+    Path encDir = tempDir.resolve("cli_enc_dest");
+    Files.createDirectories(volDir);
+    Files.createDirectories(plainDir);
+    Files.writeString(plainDir.resolve("test.txt"), "hello cli");
+
+    // Pre-create encrypted repository with password A
+    ProcessBuilder pb = new ProcessBuilder(
+      "rclone", "sync", plainDir.toString(), ":crypt:",
+      "--crypt-remote", encDir.toString(),
+      "--crypt-filename-encryption", "standard",
+      "--crypt-filename-encoding", "base32",
+      "--config", "/dev/null"
+    );
+    pb.environment().put("RCLONE_CRYPT_PASSWORD", Passwords.obscure("passwordA"));
+    Process p = pb.start();
+    assertEquals(0, p.waitFor());
+
+    assertEquals(0, cmd.execute("create", "volume", volDir.toString()));
+    String vtag = volumeTag(managerFor(volDir), volDir);
+
+    // 1. Creation with wrong password fails and is not persisted
+    cmd = Main.createCommandLine();
+    out = new StringWriter();
+    err = new StringWriter();
+    cmd.setOut(new PrintWriter(out));
+    cmd.setErr(new PrintWriter(err));
+    int code = executeWithPassword("wrongPassword", "--path", volDir.toString(), "create", "task", "synchronize", ":" + vtag + ":", "local:" + encDir, "-e");
+    assertEquals(1, code);
+    assertTrue(err.toString().contains("the existing encrypted content in '" + encDir + "' is not compatible with the provided encryption options (wrong password or filename encryption mode)"));
+
+    Manager reloaded = managerFor(volDir);
+    assertTrue(reloaded.tasks().isEmpty());
+
+    // 2. Creation with correct password succeeds
+    cmd = Main.createCommandLine();
+    out = new StringWriter();
+    err = new StringWriter();
+    cmd.setOut(new PrintWriter(out));
+    cmd.setErr(new PrintWriter(err));
+    code = executeWithPassword("passwordA", "--path", volDir.toString(), "create", "task", "synchronize", ":" + vtag + ":", "local:" + encDir, "-e");
+    assertEquals(0, code, () -> "stderr: " + err.toString());
+
+    reloaded = managerFor(volDir);
+    assertEquals(1, reloaded.tasks().size());
+  }
+
+  @Test
+  void createResticTaskConformanceRefusesWrongPassword() throws Exception {
+    Assumptions.assumeTrue(available("restic"), "restic not available for integration check");
+    Path volDir = tempDir.resolve("cli_restic_vol");
+    Path repoDir = tempDir.resolve("cli_restic_repo");
+    Files.createDirectories(volDir);
+
+    ProcessBuilder pb = new ProcessBuilder("restic", "init", "-r", repoDir.toString());
+    pb.environment().put("RESTIC_PASSWORD", "correctSecret");
+    Process p = pb.start();
+    assertEquals(0, p.waitFor());
+
+    assertEquals(0, cmd.execute("create", "volume", volDir.toString()));
+    String vtag = volumeTag(managerFor(volDir), volDir);
+
+    // 1. Wrong password backup is refused
+    cmd = Main.createCommandLine();
+    out = new StringWriter();
+    err = new StringWriter();
+    cmd.setOut(new PrintWriter(out));
+    cmd.setErr(new PrintWriter(err));
+    int code = executeWithPassword("badSecret", "--path", volDir.toString(), "create", "task", "backup", ":" + vtag + ":", "local:" + repoDir);
+    assertEquals(1, code);
+    assertTrue(err.toString().contains("the existing repository at '" + repoDir + "' does not accept the provided password"));
+    assertTrue(err.toString().contains("--attach"));
+    assertTrue(managerFor(volDir).tasks().isEmpty());
+
+    // 2. Wrong password with -a/--attach is refused
+    cmd = Main.createCommandLine();
+    out = new StringWriter();
+    err = new StringWriter();
+    cmd.setOut(new PrintWriter(out));
+    cmd.setErr(new PrintWriter(err));
+    code = executeWithPassword("badSecret", "--path", volDir.toString(), "create", "task", "backup", ":" + vtag + ":", "local:" + repoDir, "-a");
+    assertEquals(1, code);
+    assertTrue(err.toString().contains("does not accept the provided password"));
+    assertTrue(managerFor(volDir).tasks().isEmpty());
+
+    // 3. Correct password backup succeeds
+    cmd = Main.createCommandLine();
+    out = new StringWriter();
+    err = new StringWriter();
+    cmd.setOut(new PrintWriter(out));
+    cmd.setErr(new PrintWriter(err));
+    code = executeWithPassword("correctSecret", "--path", volDir.toString(), "create", "task", "backup", ":" + vtag + ":", "local:" + repoDir);
+    assertEquals(0, code, () -> "stderr: " + err.toString());
+    assertEquals(1, managerFor(volDir).tasks().size());
+
+    // Delete the backup task to allow re-creating over the same endpoints with --force
+    Task existingTask = managerFor(volDir).tasks().values().iterator().next();
+    cmd = Main.createCommandLine();
+    assertEquals(0, cmd.execute("--path", volDir.toString(), "delete", "task", existingTask.tag()));
+
+    // 4. Force (--force) proceeds over existing repo with a new password
+    cmd = Main.createCommandLine();
+    out = new StringWriter();
+    err = new StringWriter();
+    cmd.setOut(new PrintWriter(out));
+    cmd.setErr(new PrintWriter(err));
+    code = executeWithPassword("brandNewSecret", "--force", "--path", volDir.toString(), "create", "task", "backup", ":" + vtag + ":", "local:" + repoDir);
+    assertEquals(0, code, () -> "stderr: " + err.toString());
+
+    // 5. Restore with bad password is refused
+    cmd = Main.createCommandLine();
+    out = new StringWriter();
+    err = new StringWriter();
+    cmd.setOut(new PrintWriter(out));
+    cmd.setErr(new PrintWriter(err));
+    code = executeWithPassword("badSecret", "--path", volDir.toString(), "create", "task", "restore", "local:" + repoDir, ":" + vtag + ":restored");
+    assertEquals(1, code);
+    assertTrue(err.toString().contains("does not accept the provided password"));
+
+    // 6. Restore with correct password ("brandNewSecret") succeeds
+    cmd = Main.createCommandLine();
+    out = new StringWriter();
+    err = new StringWriter();
+    cmd.setOut(new PrintWriter(out));
+    cmd.setErr(new PrintWriter(err));
+    code = executeWithPassword("brandNewSecret", "--path", volDir.toString(), "create", "task", "restore", "local:" + repoDir, ":" + vtag + ":restored");
+    assertEquals(0, code, () -> "stderr: " + err.toString());
+  }
+
+  private static boolean available(String executable) {
+    String env = System.getenv(executable.toUpperCase());
+    String command = env != null && !env.isBlank() ? env : executable;
+    try {
+      Process process = new ProcessBuilder(command, "version").start();
+      return process.waitFor() == 0;
+    } catch (IOException e) {
+      return false;
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      return false;
+    }
   }
 }

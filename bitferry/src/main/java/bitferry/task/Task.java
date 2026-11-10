@@ -254,12 +254,16 @@ public abstract class Task {
   /// (e.g. the repository initialization for the backup tasks).
   protected void format() {}
 
+  /// Perform the encryption and backend target conformance validation against existing data.
+  protected void conform() {}
+
   /// Commit the task performing the pending FSM transitions.
   public void commit() {
     loop:
     while (true) switch (commitState) {
       case PRISTINE -> { // Format storage etc. when a new task is created
         try {
+          conform();
           format();
         } catch (BitferryError e) {
           // Abort the registration: the failed task must not persist (nor re-register

@@ -24,6 +24,15 @@ public abstract class Restic extends Task {
   private final Vault vault;
   private String cachedPassword;
   private boolean cached;
+  private boolean conformed;
+
+  public boolean isConformed() {
+    return conformed;
+  }
+
+  public void markConformed() {
+    this.conformed = true;
+  }
 
   /// Constructor for a new task instance; the processing options profile route is
   /// passed explicitly by the concrete classes. The password is obscured and stored
@@ -95,5 +104,11 @@ public abstract class Restic extends Task {
   @Override
   public String director() {
     return DIRECTOR;
+  }
+
+  /// Perform repository password conformance check against the existing repository.
+  @Override
+  protected void conform() {
+    manager.backendExecutor().conform(this);
   }
 }

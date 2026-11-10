@@ -117,6 +117,12 @@ public abstract class Rclone extends Task {
     return DIRECTOR;
   }
 
+  /// Perform candidate encryption options conformance test against existing backend data.
+  @Override
+  protected void conform() {
+    manager.backendExecutor().conform(this);
+  }
+
   /// The rclone crypt encryption mode base carrying the crypt options and the
   /// obscured password pair stored with the vault provider.
   public abstract static class Encryption {

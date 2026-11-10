@@ -469,4 +469,297 @@ class SystemExecutorTest {
     Path restored = volDir.resolve("decrypted").resolve("secret.txt");
     assertEquals("classified payload", Files.readString(restored));
   }
+
+  @Test
+  void resticConformSkipsWhenRepoAbsent() {
+    RecordingCommandExecutor recorder = new RecordingCommandExecutor();
+    SystemExecutor executor = new SystemExecutor(recorder);
+
+    Backup backup = new Backup(manager, volumeSource(), destination(), "secret", null, null, null, null, List.of(), List.of());
+    executor.conform(backup);
+
+    assertEquals(0, recorder.invocations.size());
+  }
+
+  @Test
+  void resticConformProbesExistingRepo() throws IOException {
+    RecordingCommandExecutor recorder = new RecordingCommandExecutor();
+    SystemExecutor executor = new SystemExecutor(recorder);
+
+    Path repo = dir.resolve("restic-repo");
+    Files.createDirectories(repo);
+    Files.writeString(repo.resolve("config"), "dummy-config");
+
+    Backup backup = new Backup(manager, volumeSource(), Endpoints.parse(manager, "local:" + repo), "secret", null, null, null, null, List.of(), List.of());
+    executor.conform(backup);
+
+    assertEquals(1, recorder.invocations.size());
+    RecordingCommandExecutor.Invocation inv = recorder.invocations.get(0);
+    assertEquals("restic", inv.command().get(0));
+    assertTrue(inv.command().contains("-r"));
+    assertEquals(repo.toString(), inv.command().get(inv.command().indexOf("-r") + 1));
+    assertTrue(inv.command().contains("cat"));
+    assertTrue(inv.command().contains("config"));
+    assertEquals("secret", inv.environment().get("RESTIC_PASSWORD"));
+  }
+
+  @Test
+  void resticConformSkipsOnForce() throws IOException {
+    RecordingCommandExecutor recorder = new RecordingCommandExecutor();
+    SystemExecutor executor = new SystemExecutor(recorder);
+
+    Path repo = dir.resolve("restic-repo-force");
+    Files.createDirectories(repo);
+    Files.writeString(repo.resolve("config"), "dummy-config");
+
+    Backup backup = new Backup(manager, volumeSource(), Endpoints.parse(manager, "local:" + repo), "secret", true, null, null, null, List.of(), List.of());
+    executor.conform(backup);
+
+    assertEquals(0, recorder.invocations.size());
+  }
+
+  @Test
+  void resticConformRefusesOnProbeFailure() throws IOException {
+    RecordingCommandExecutor recorder = new RecordingCommandExecutor();
+    recorder.returnCode = 1;
+    SystemExecutor executor = new SystemExecutor(recorder);
+
+    Path repo = dir.resolve("restic-repo-fail");
+    Files.createDirectories(repo);
+    Files.writeString(repo.resolve("config"), "dummy-config");
+
+    Backup backup = new Backup(manager, volumeSource(), Endpoints.parse(manager, "local:" + repo), "secret", null, null, null, null, List.of(), List.of());
+    BitferryError error = assertThrows(BitferryError.class, () -> executor.conform(backup));
+    assertTrue(error.getMessage().contains("the existing repository at '" + repo + "' does not accept the provided password"));
+    assertTrue(error.getMessage().contains("--attach"));
+  }
+
+  @Test
+  void resticRestoreConformRefusesWithoutAttachHint() throws IOException {
+    RecordingCommandExecutor recorder = new RecordingCommandExecutor();
+    recorder.returnCode = 1;
+    SystemExecutor executor = new SystemExecutor(recorder);
+
+    Path repo = dir.resolve("restic-repo-restore-fail");
+    Files.createDirectories(repo);
+    Files.writeString(repo.resolve("config"), "dummy-config");
+
+    Restore restore = new Restore(manager, Endpoints.parse(manager, "local:" + repo), volumeRestored(), "secret", null, List.of(), List.of());
+    BitferryError error = assertThrows(BitferryError.class, () -> executor.conform(restore));
+    assertTrue(error.getMessage().contains("the existing repository at '" + repo + "' does not accept the provided password"));
+    assertFalse(error.getMessage().contains("--attach"));
+  }
+
+  @Test
+  void resticFormatImplicitlyAttachesWhenRepoExistsAndCorrectPassword() throws IOException {
+    RecordingCommandExecutor recorder = new RecordingCommandExecutor();
+    SystemExecutor executor = new SystemExecutor(recorder);
+
+    Path repo = dir.resolve("restic-repo-implicit");
+    Files.createDirectories(repo);
+    Files.writeString(repo.resolve("config"), "dummy-config");
+
+    Backup backup = new Backup(manager, volumeSource(), Endpoints.parse(manager, "local:" + repo), "secret", null, null, null, null, List.of(), List.of());
+    executor.format(backup);
+
+    assertEquals(1, recorder.invocations.size());
+    RecordingCommandExecutor.Invocation inv = recorder.invocations.get(0);
+    assertTrue(inv.command().contains("cat"));
+    assertTrue(inv.command().contains("config"));
+    assertFalse(inv.command().contains("init"));
+  }
+
+  @Test
+  void rcloneConformSkipsWhenNoCrypt() throws IOException {
+    RecordingCommandExecutor recorder = new RecordingCommandExecutor();
+    SystemExecutor executor = new SystemExecutor(recorder);
+
+    Path dst = dir.resolve("dst-nocrypt");
+    Files.createDirectories(dst);
+    Files.writeString(dst.resolve("file.txt"), "hello");
+
+    Synchronize task = new Synchronize(manager, volumeSource(), Endpoints.parse(manager, "local:" + dst), null, List.of(), List.of());
+    executor.conform(task);
+
+    assertEquals(0, recorder.invocations.size());
+  }
+
+  @Test
+  void rcloneConformSkipsWhenDirEmptyOrAbsent() {
+    RecordingCommandExecutor recorder = new RecordingCommandExecutor();
+    SystemExecutor executor = new SystemExecutor(recorder);
+
+    Path dst = dir.resolve("dst-absent");
+    Synchronize task = new Synchronize(manager, volumeSource(), Endpoints.parse(manager, "local:" + dst), null, List.of(), List.of());
+    task.encrypt("secret", null, Rclone.Encryption.options("default"));
+    executor.conform(task);
+
+    assertEquals(0, recorder.invocations.size());
+  }
+
+  @Test
+  void rcloneConformSkipsWhenOnlyStorageFilesPresent() throws IOException {
+    RecordingCommandExecutor recorder = new RecordingCommandExecutor();
+    SystemExecutor executor = new SystemExecutor(recorder);
+
+    Path dst = dir.resolve("dst-storage-only");
+    Files.createDirectories(dst);
+    Files.writeString(dst.resolve(Bitferry.STORAGE), "storage");
+    Files.writeString(dst.resolve(Bitferry.STORAGE_IMAGE), "image");
+
+    Synchronize task = new Synchronize(manager, volumeSource(), Endpoints.parse(manager, "local:" + dst), null, List.of(), List.of());
+    task.encrypt("secret", null, Rclone.Encryption.options("default"));
+    executor.conform(task);
+
+    assertEquals(0, recorder.invocations.size());
+  }
+
+  @Test
+  void rcloneConformProbesAndAssertsCommandShape() throws IOException {
+    RecordingCommandExecutor recorder = new RecordingCommandExecutor();
+    recorder.simulatedOutput = List.of("[", "{\"Path\":\"plaintext.txt\"}", "]");
+    SystemExecutor executor = new SystemExecutor(recorder);
+
+    Path dst = dir.resolve("dst-probe-shape");
+    Files.createDirectories(dst);
+    Files.writeString(dst.resolve("encrypted_name"), "encrypted-bytes");
+
+    Synchronize task = new Synchronize(manager, volumeSource(), Endpoints.parse(manager, "local:" + dst), null, List.of(), List.of());
+    task.encrypt("secret", "secret2", Rclone.Encryption.options("default"));
+    executor.conform(task);
+
+    assertEquals(1, recorder.invocations.size());
+    RecordingCommandExecutor.Invocation inv = recorder.invocations.get(0);
+    List<String> cmd = inv.command();
+    assertEquals("rclone", cmd.get(0));
+    assertEquals("lsjson", cmd.get(1));
+    assertEquals("-R", cmd.get(2));
+    assertTrue(cmd.contains("--config"));
+    assertTrue(cmd.contains("- " + Bitferry.STORAGE));
+    assertTrue(cmd.contains("- " + Bitferry.STORAGE_IMAGE));
+    assertTrue(cmd.contains("--crypt-filename-encoding"));
+    assertTrue(cmd.contains("base32"));
+    assertTrue(cmd.contains("--crypt-filename-encryption"));
+    assertTrue(cmd.contains("standard"));
+    assertTrue(cmd.contains("--crypt-remote"));
+    assertEquals(dst.toString(), cmd.get(cmd.indexOf("--crypt-remote") + 1));
+    assertEquals(":crypt:", cmd.get(cmd.size() - 1));
+    assertEquals("secret", Passwords.reveal(inv.environment().get("RCLONE_CRYPT_PASSWORD")));
+    assertEquals("secret2", Passwords.reveal(inv.environment().get("RCLONE_CRYPT_PASSWORD2")));
+  }
+
+  @Test
+  void rcloneConformRefusesOnProbeFailure() throws IOException {
+    RecordingCommandExecutor recorder = new RecordingCommandExecutor();
+    recorder.returnCode = 1;
+    SystemExecutor executor = new SystemExecutor(recorder);
+
+    Path dst = dir.resolve("dst-probe-fail");
+    Files.createDirectories(dst);
+    Files.writeString(dst.resolve("enc1"), "bytes");
+
+    Synchronize task = new Synchronize(manager, volumeSource(), Endpoints.parse(manager, "local:" + dst), null, List.of(), List.of());
+    task.encrypt("secret", null, Rclone.Encryption.options("default"));
+
+    BitferryError error = assertThrows(BitferryError.class, () -> executor.conform(task));
+    assertEquals("the existing encrypted content in '" + dst + "' is not compatible with the provided encryption options (wrong password or filename encryption mode)", error.getMessage());
+  }
+
+  @Test
+  void rcloneConformRefusesOnDecryptionError() throws IOException {
+    RecordingCommandExecutor recorder = new RecordingCommandExecutor();
+    recorder.simulatedOutput = List.of(
+      "[",
+      "2026/11/10 14:00:00 NOTICE: enc1: Skipping undecryptable file name: bad PKCS#7 padding - too long",
+      "]"
+    );
+    SystemExecutor executor = new SystemExecutor(recorder);
+
+    Path dst = dir.resolve("dst-probe-decrypt-err");
+    Files.createDirectories(dst);
+    Files.writeString(dst.resolve("enc1"), "bytes");
+
+    Synchronize task = new Synchronize(manager, volumeSource(), Endpoints.parse(manager, "local:" + dst), null, List.of(), List.of());
+    task.encrypt("secret", null, Rclone.Encryption.options("default"));
+
+    BitferryError error = assertThrows(BitferryError.class, () -> executor.conform(task));
+    assertEquals("the existing encrypted content in '" + dst + "' is not compatible with the provided encryption options (wrong password or filename encryption mode)", error.getMessage());
+  }
+
+  @Test
+  void rcloneConformRefusesWhenCryptNamesMatchRawNames() throws IOException {
+    RecordingCommandExecutor recorder = new RecordingCommandExecutor();
+    recorder.simulatedOutput = List.of(
+      "[",
+      "{\"Path\":\"raw-file.txt\"}",
+      "]"
+    );
+    SystemExecutor executor = new SystemExecutor(recorder);
+
+    Path dst = dir.resolve("dst-probe-same-name");
+    Files.createDirectories(dst);
+    Files.writeString(dst.resolve("raw-file.txt"), "plain-content");
+
+    Synchronize task = new Synchronize(manager, volumeSource(), Endpoints.parse(manager, "local:" + dst), null, List.of(), List.of());
+    task.encrypt("secret", null, Rclone.Encryption.options("default"));
+
+    BitferryError error = assertThrows(BitferryError.class, () -> executor.conform(task));
+    assertEquals("the existing encrypted content in '" + dst + "' is not compatible with the provided encryption options (wrong password or filename encryption mode)", error.getMessage());
+  }
+
+  @Test
+  void realResticConformanceRejectsWrongPasswordAndAcceptsCorrectPassword() throws Exception {
+    Assumptions.assumeTrue(available("restic"), "restic not available for the integration check");
+    Path repoDir = dir.resolve("real-restic-repo");
+
+    // Initialize restic repo with password A
+    ProcessBuilder pb = new ProcessBuilder("restic", "init", "-r", repoDir.toString());
+    pb.environment().put("RESTIC_PASSWORD", "correct-password");
+    Process p = pb.start();
+    assertEquals(0, p.waitFor());
+
+    Path srcDir = dir.resolve("real-restic-src");
+    Files.createDirectories(srcDir);
+    Volume vol = new Volume(manager, srcDir);
+    Endpoint src = Endpoints.parse(manager, ":" + vol.tag() + ":");
+    Endpoint repo = Endpoints.parse(manager, "local:" + repoDir);
+
+    // 1. Wrong password backup creation is refused and task is deregistered
+    Backup wrongBackup = new Backup(manager, src, repo, "wrong-password", null, null, null, null, List.of(), List.of());
+    BitferryError err = assertThrows(BitferryError.class, vol::commit);
+    assertTrue(err.getMessage().contains("does not accept the provided password"), err.getMessage());
+    assertTrue(err.getMessage().contains("--attach"), err.getMessage());
+    assertFalse(manager.tasks().containsKey(wrongBackup.tag()));
+
+    // 2. Attach (-a) with wrong password is also refused
+    Backup wrongAttach = new Backup(manager, src, repo, "wrong-password", false, null, null, null, List.of(), List.of());
+    err = assertThrows(BitferryError.class, vol::commit);
+    assertTrue(err.getMessage().contains("does not accept the provided password"), err.getMessage());
+    assertFalse(manager.tasks().containsKey(wrongAttach.tag()));
+
+    // 3. Correct password backup creation succeeds and persists
+    Backup correctBackup = new Backup(manager, src, repo, "correct-password", null, null, null, null, List.of(), List.of());
+    vol.commit();
+    assertTrue(manager.tasks().containsKey(correctBackup.tag()));
+
+    Manager restored = new Manager().restore(srcDir);
+    assertTrue(restored.tasks().containsKey(correctBackup.tag()));
+
+    // 4. Force (--force) skips conformance, wipes and reinitializes with new password
+    Backup forceBackup = new Backup(manager, src, repo, "new-force-password", true, null, null, null, List.of(), List.of());
+    vol.commit();
+    assertTrue(manager.tasks().containsKey(forceBackup.tag()));
+
+    // 5. Restore with wrong password is refused
+    Restore wrongRestore = new Restore(manager, repo, src, "bad-password", null, List.of(), List.of());
+    err = assertThrows(BitferryError.class, vol::commit);
+    assertTrue(err.getMessage().contains("does not accept the provided password"), err.getMessage());
+    assertFalse(err.getMessage().contains("--attach"), err.getMessage());
+    assertFalse(manager.tasks().containsKey(wrongRestore.tag()));
+
+    // 6. Restore with correct password ("new-force-password") succeeds
+    Restore correctRestore = new Restore(manager, repo, src, "new-force-password", null, List.of(), List.of());
+    vol.commit();
+    assertTrue(manager.tasks().containsKey(correctRestore.tag()));
+  }
 }

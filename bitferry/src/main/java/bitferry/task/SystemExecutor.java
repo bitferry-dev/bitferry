@@ -47,10 +47,18 @@ public class SystemExecutor implements Executor {
   }
 
   @Override
-  public void format(Task task) {
-    if (task instanceof Backup backup) {
-      resticExecutor.format(backup);
-    }
+  public void format(Backup backup) {
+    resticExecutor.format(backup);
+  }
+
+  @Override
+  public void conform(Restic restic) {
+    resticExecutor.conform(restic);
+  }
+
+  @Override
+  public void conform(Rclone rclone) {
+    rcloneExecutor.conform(rclone);
   }
 
   /// @see ExecutorSupport#executableName(String)

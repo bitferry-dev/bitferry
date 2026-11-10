@@ -165,6 +165,22 @@ class TaskTest {
     assertTrue(reloaded.tasks().isEmpty());
   }
 
+  @Test
+  void failedConformanceAbortsTheRegistration() {
+    manager.backendExecutor(new Executor() {
+      public boolean run(Task task, java.util.function.Consumer<String> output) { return false; }
+      public void conform(Task task) { throw new BitferryError("encryption conformance failure"); }
+    });
+    Backup backup = new Backup(manager, volumeSource(), destination(), "secret", null, null, null, null, List.of(), List.of());
+
+    BitferryError error = assertThrows(BitferryError.class, volume::commit);
+    assertTrue(error.getMessage().contains("encryption conformance failure"), error.getMessage());
+    assertFalse(manager.tasks().containsKey(backup.tag()));
+
+    Manager reloaded = new Manager().restore(dir.resolve("volume"));
+    assertTrue(reloaded.tasks().isEmpty());
+  }
+
   private static List<String> toStringList(JsonNode node) {
     return Task.strings(node, false);
   }
