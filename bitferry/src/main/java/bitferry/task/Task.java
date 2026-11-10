@@ -23,6 +23,7 @@ import tools.jackson.databind.node.*;
   @JsonSubTypes.Type(value = Backup.class, name = "backup"),
   @JsonSubTypes.Type(value = Restore.class, name = "restore")
 })
+@JsonPropertyOrder({"task", "operation", "backend", "source", "destination", "modified", "include", "exclude", "deleted"})
 public abstract class Task {
 
   // Tags used by the commit()'s FSM
@@ -130,6 +131,7 @@ public abstract class Task {
   public abstract String operation();
 
   /// The task's backend identifier (rclone, restic etc.).
+  @JsonProperty("backend")
   public abstract String backend();
 
   /// The arrow used in the task listings between the endpoints.

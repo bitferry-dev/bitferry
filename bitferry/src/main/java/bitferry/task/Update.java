@@ -24,12 +24,16 @@ public class Update extends Rclone {
     @JsonProperty("source") Endpoint source,
     @JsonProperty("destination") Endpoint destination,
     @JsonProperty("task") String tag,
+    @JsonProperty("backend") String backend,
     @JsonProperty("modified") OffsetDateTime modified,
     @JsonProperty("include") List<String> include,
     @JsonProperty("exclude") List<String> exclude,
-    @JsonProperty("rclone") Backend backend
+    @JsonProperty("rclone") Backend backendOpts
   ) {
-    super(manager, source, destination, tag, modified, include, exclude, backend);
+    super(manager, source, destination, tag, modified, include, exclude, backendOpts);
+    if (backend != null && !BACKEND.equals(backend)) {
+      throw new BitferryError("invalid task backend: expected '" + BACKEND + "' but got '" + backend + "'");
+    }
   }
 
   /// The rclone subcommand and its modifiers for this operation.

@@ -86,6 +86,7 @@ class MigrationTest {
     JsonNode task1 = findTask(tasks, "89e1c119");
     assertNotNull(task1);
     assertEquals("synchronize", task1.get("operation").asString());
+    assertEquals("rclone", task1.get("backend").asString());
     assertEquals("local", task1.get("source").get("endpoint").asString());
     assertEquals("/data/work", task1.get("source").get("root").asString());
     assertEquals("bitferry", task1.get("destination").get("endpoint").asString());
@@ -101,6 +102,7 @@ class MigrationTest {
     JsonNode task2 = findTask(tasks, "77b2a001");
     assertNotNull(task2);
     assertEquals("backup", task2.get("operation").asString());
+    assertEquals("restic", task2.get("backend").asString());
     assertEquals("--no-cache", task2.get("restic").get("execute").get(0).asString());
   }
 
@@ -246,6 +248,7 @@ class MigrationTest {
     JsonNode tasks = migrated.get("tasks");
     assertTrue(tasks.isArray());
     JsonNode task = tasks.get(0);
+    assertEquals("rclone", task.get("backend").asString());
     assertEquals(List.of("--metadata", "--links"), Task.strings(task.get("rclone").get("execute"), false));
     assertFalse(task.get("rclone").has("process"));
     assertEquals(List.of("--custom-opt"), Task.strings(task.get("custom_backend").get("execute"), false));

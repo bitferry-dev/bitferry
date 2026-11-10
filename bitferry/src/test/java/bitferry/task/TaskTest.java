@@ -73,6 +73,7 @@ class TaskTest {
     JsonNode data = task.serialize();
     // The operation is the discriminator property; the tag travels in-band
     assertEquals("synchronize", data.get("operation").asString());
+    assertEquals("rclone", data.get("backend").asString());
     assertEquals(task.tag(), data.get("task").asString());
     // The endpoint descriptors are discriminated by the 'endpoint' property
     assertEquals("local", data.get("source").get("endpoint").asString());
@@ -101,6 +102,7 @@ class TaskTest {
   void resticProfilesFlowIntoTheDescriptors() {
     Backup backup = new Backup(manager, volumeSource(), destination(), "secret", null, null, "default", null, List.of(), List.of());
     JsonNode data = backup.serialize();
+    assertEquals("restic", data.get("backend").asString());
     assertEquals(List.of("--no-cache"), toStringList(data.get("restic").get("execute")));
     assertEquals(Backup.FORGET.get("default"), toStringList(data.get("restic").get("forget")));
     assertFalse(data.get("restic").has("check"));
@@ -108,6 +110,7 @@ class TaskTest {
     assertFalse(data.has("password"));
 
     Restore restore = new Restore(manager, destination(), volumeRestored(), "secret", null, List.of(), List.of());
+    assertEquals("restic", restore.serialize().get("backend").asString());
     assertEquals(List.of("--no-cache", "--sparse"), toStringList(restore.serialize().get("restic").get("execute")));
   }
 
@@ -117,6 +120,24 @@ class TaskTest {
     // A descriptor without the operation discriminator is rejected
     var none = factory.objectNode().put("modified", "2026-01-01T00:00:00+00:00");
     assertThrows(BitferryError.class, () -> Task.restore(manager, none));
+  }
+
+  @Test
+  void mismatchedBackendIsRejected() {
+    Synchronize task = new Synchronize(manager, source(), destination(), null, List.of(), List.of());
+    var node = (tools.jackson.databind.node.ObjectNode) task.serialize();
+    node.put("backend", "restic");
+    BitferryError err = assertThrows(BitferryError.class, () -> Task.restore(manager, node));
+    assertTrue(err.getMessage().contains("invalid task backend: expected 'rclone' but got 'restic'"));
+  }
+
+  @Test
+  void taskWithoutBackendDeserializesCleanly() {
+    Synchronize task = new Synchronize(manager, source(), destination(), null, List.of(), List.of());
+    var node = (tools.jackson.databind.node.ObjectNode) task.serialize();
+    node.remove("backend");
+    Task restored = Task.restore(manager, node);
+    assertEquals("rclone", restored.backend());
   }
 
   @Test

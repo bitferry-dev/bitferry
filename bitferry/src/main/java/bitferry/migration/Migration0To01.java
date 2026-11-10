@@ -1,6 +1,7 @@
 package bitferry.migration;
 
 import bitferry.*;
+import bitferry.task.*;
 import java.util.*;
 import tools.jackson.databind.*;
 import tools.jackson.databind.node.*;
@@ -134,6 +135,12 @@ public final class Migration0To01 implements StorageMigration {
       }
     } else {
       throw new BitferryError("invalid task descriptor for task #" + tag + ": missing operation");
+    }
+
+    if (!task.has("backend")) {
+      String opName = task.get("operation").asString();
+      String backend = "backup".equals(opName) || "restore".equals(opName) ? Restic.BACKEND : Rclone.BACKEND;
+      task.put("backend", backend);
     }
 
     return task;

@@ -50,15 +50,19 @@ public class Backup extends Restic {
     @JsonProperty("source") Endpoint source,
     @JsonProperty("destination") Endpoint destination,
     @JsonProperty("task") String tag,
+    @JsonProperty("backend") String backend,
     @JsonProperty("modified") OffsetDateTime modified,
     @JsonProperty("include") List<String> include,
     @JsonProperty("exclude") List<String> exclude,
-    @JsonProperty("restic") Backend backend
+    @JsonProperty("restic") Backend backendOpts
   ) {
-    super(manager, source, destination, tag, modified, include, exclude, backend, PROCESS);
+    super(manager, source, destination, tag, modified, include, exclude, backendOpts, PROCESS);
+    if (backend != null && !BACKEND.equals(backend)) {
+      throw new BitferryError("invalid task backend: expected '" + BACKEND + "' but got '" + backend + "'");
+    }
     this.format = null;
-    this.forget = backend == null ? null : backend.forget();
-    this.check = backend == null ? null : backend.check();
+    this.forget = backendOpts == null ? null : backendOpts.forget();
+    this.check = backendOpts == null ? null : backendOpts.check();
   }
 
   @Override
