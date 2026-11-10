@@ -75,7 +75,7 @@ class CliTest {
     assertTrue(out.toString().contains("info"));
     assertTrue(out.toString().contains("create"));
     assertTrue(out.toString().contains("delete"));
-    assertTrue(out.toString().contains("process"));
+    assertTrue(out.toString().contains("execute"));
   }
 
   @Test
@@ -101,8 +101,8 @@ class CliTest {
   }
 
   @Test
-  void processNotesTheTasksSkippedForTheAbsentVolumes() throws IOException {
-    // Two volumes with a task between them; the processing then probes only the first
+  void executeNotesTheTasksSkippedForTheAbsentVolumes() throws IOException {
+    // Two volumes with a task between them; the execution then probes only the first
     // one (the removable media peer is unplugged), so the task goes stale
     Path firstDir = tempDir.resolve("skip_first");
     Path secondDir = tempDir.resolve("skip_second");
@@ -122,12 +122,12 @@ class CliTest {
     assertEquals(0, cmd.execute("--path", firstDir + "," + secondDir, "create", "task", "synchronize", ":" + ftag + ":", ":" + stag + ":backup"),
       () -> "stderr: " + err.toString());
 
-    // The absent peer volume makes the task stale: it is neither processed nor
+    // The absent peer volume makes the task stale: it is neither executed nor
     // silently forgotten - the skip is noted on the stderr
     cmd = Main.createCommandLine();
     err = new StringWriter();
     cmd.setErr(new PrintWriter(err));
-    int code = cmd.execute("--path", firstDir.toString(), "-n", "process");
+    int code = cmd.execute("--path", firstDir.toString(), "-n", "execute");
     assertEquals(0, code, () -> "stderr: " + err.toString());
     assertTrue(err.toString().contains("task(s) skipped"), () -> "stderr: " + err.toString());
   }
@@ -684,6 +684,52 @@ class CliTest {
     assertEquals(0, code);
     assertTrue(out.toString().contains("# Intact volumes"));
     assertTrue(out.toString().contains("# Intact tasks"));
+  }
+
+  @Test
+  void executeCommandAndExecutionOptions() throws Exception {
+    Path volDir = tempDir.resolve("cli_exec_vol");
+    Path dataDir = tempDir.resolve("cli_exec_data");
+    Files.createDirectories(volDir);
+    Files.createDirectories(dataDir);
+
+    // Create volume
+    CommandLine cmd = Main.createCommandLine();
+    assertEquals(0, cmd.execute("c", "v", volDir.toString()));
+    String vtag = volumeTag(managerFor(volDir), volDir);
+
+    // Create task with --execute option
+    cmd = Main.createCommandLine();
+    StringWriter out = new StringWriter();
+    StringWriter err1 = new StringWriter();
+    cmd.setOut(new PrintWriter(out));
+    cmd.setErr(new PrintWriter(err1));
+    assertEquals(0, cmd.execute("--path", volDir.toString(), "create", "task", "synchronize", ":" + vtag + ":", "local:" + dataDir, "--execute", "--transfers,4"),
+      () -> "stderr: " + err1.toString());
+
+    Manager m = managerFor(volDir);
+    Task task = m.tasks().values().iterator().next();
+    assertEquals(List.of("--transfers", "4"), Task.strings(task.serialize().get("rclone").get("execute"), false));
+
+    // Execute with 'execute' command (-n simulation)
+    cmd = Main.createCommandLine();
+    out = new StringWriter();
+    StringWriter err2 = new StringWriter();
+    cmd.setOut(new PrintWriter(out));
+    cmd.setErr(new PrintWriter(err2));
+    int code = cmd.execute("--path", volDir.toString(), "-n", "execute", task.tag());
+    assertEquals(0, code, () -> "stderr: " + err2.toString());
+    assertTrue(out.toString().contains("All 1 task(s) executed successfully."));
+
+    // Execute with 'x' alias (-n simulation)
+    cmd = Main.createCommandLine();
+    out = new StringWriter();
+    StringWriter err3 = new StringWriter();
+    cmd.setOut(new PrintWriter(out));
+    cmd.setErr(new PrintWriter(err3));
+    code = cmd.execute("--path", volDir.toString(), "-n", "x", task.tag());
+    assertEquals(0, code, () -> "stderr: " + err3.toString());
+    assertTrue(out.toString().contains("All 1 task(s) executed successfully."));
   }
 
   private static boolean available(String executable) {

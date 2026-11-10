@@ -28,8 +28,8 @@ public class CreateRestoreCommand implements Callable<Integer>, HasCommonOptions
   @Parameters(index = "1", description = "Destination endpoint.", paramLabel = "DESTINATION")
   String destination;
 
-  @Option(names = {"-X", "--process"}, description = "Extra backend processing options.")
-  String process;
+  @Option(names = {"-X", "--execute"}, description = "Extra backend execution options.")
+  String execute;
 
   @Option(names = "--include", split = ",", description = "Include path specifications (comma-separated list).")
   List<String> include;
@@ -60,7 +60,7 @@ public class CreateRestoreCommand implements Callable<Integer>, HasCommonOptions
     String password = CliUtils.obtainPassword();
     List<String> inc = CliUtils.parsePatterns(include, includeExts);
     List<String> exc = CliUtils.parsePatterns(exclude, excludeExts);
-    Restore task = new Restore(m, repo, dst, password, process, inc, exc);
+    Restore task = new Restore(m, repo, dst, password, execute, inc, exc);
     if (m.volumes().values().stream().noneMatch(v -> task.refersVolume(v.tag()))) {
       throw new BitferryError("task #" + task.tag() + " does not belong to any registered volume; it cannot be persisted");
     }

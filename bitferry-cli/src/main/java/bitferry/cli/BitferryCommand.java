@@ -15,7 +15,7 @@ import picocli.CommandLine.Model.*;
     InfoCommand.class,
     CreateCommand.class,
     DeleteCommand.class,
-    ProcessCommand.class
+    ExecuteCommand.class
   }
 )
 public class BitferryCommand implements Callable<Integer>, HasCommonOptions {

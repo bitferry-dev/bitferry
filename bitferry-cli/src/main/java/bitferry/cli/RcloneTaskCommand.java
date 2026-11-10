@@ -17,7 +17,7 @@ public abstract class RcloneTaskCommand implements Callable<Integer>, HasCommonO
 
   @FunctionalInterface
   public interface TaskFactory {
-    Task create(Manager manager, Endpoint source, Endpoint destination, String process, Collection<String> include, Collection<String> exclude);
+    Task create(Manager manager, Endpoint source, Endpoint destination, String execute, Collection<String> include, Collection<String> exclude);
   }
 
   @Mixin
@@ -32,8 +32,8 @@ public abstract class RcloneTaskCommand implements Callable<Integer>, HasCommonO
   @Parameters(index = "1", description = "Destination endpoint.", paramLabel = "DESTINATION")
   String destination;
 
-  @Option(names = {"-X", "--process"}, description = "Extra backend processing options (comma-separated) or '-' for none.")
-  String process;
+  @Option(names = {"-X", "--execute"}, description = "Extra backend execution options (comma-separated) or '-' for none.")
+  String execute;
 
   @Option(names = "--include", split = ",", description = "Include path specifications (comma-separated list).")
   List<String> include;
@@ -86,7 +86,7 @@ public abstract class RcloneTaskCommand implements Callable<Integer>, HasCommonO
     CliUtils.ensureUniqueTask(m, src, dst);
     List<String> inc = CliUtils.parsePatterns(include, includeExts);
     List<String> exc = CliUtils.parsePatterns(exclude, excludeExts);
-    Task task = taskFactory().create(m, src, dst, process, inc, exc);
+    Task task = taskFactory().create(m, src, dst, execute, inc, exc);
     if (encryptRequested || decryptRequested) {
       if (!(task instanceof Rclone rclone)) throw new BitferryError("encryption is supported for the rclone tasks only");
       // The password is obtained after the endpoints are validated

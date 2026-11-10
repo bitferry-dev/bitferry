@@ -80,7 +80,7 @@ class TaskTest {
     assertEquals(volume.tag(), data.get("destination").get("volume").asString());
     assertEquals("backup", data.get("destination").get("path").asString());
     // The backend section with the default processing options is present
-    assertEquals(List.of("--metadata"), toStringList(data.get("rclone").get("process")));
+    assertEquals(List.of("--metadata"), toStringList(data.get("rclone").get("execute")));
     // Empty include/exclude sections are omitted
     assertFalse(data.has("include"));
     assertFalse(data.has("exclude"));
@@ -101,14 +101,14 @@ class TaskTest {
   void resticProfilesFlowIntoTheDescriptors() {
     Backup backup = new Backup(manager, volumeSource(), destination(), "secret", null, null, "default", null, List.of(), List.of());
     JsonNode data = backup.serialize();
-    assertEquals(List.of("--no-cache"), toStringList(data.get("restic").get("process")));
+    assertEquals(List.of("--no-cache"), toStringList(data.get("restic").get("execute")));
     assertEquals(Backup.FORGET.get("default"), toStringList(data.get("restic").get("forget")));
     assertFalse(data.get("restic").has("check"));
     // The password never travels with the descriptor
     assertFalse(data.has("password"));
 
     Restore restore = new Restore(manager, destination(), volumeRestored(), "secret", null, List.of(), List.of());
-    assertEquals(List.of("--no-cache", "--sparse"), toStringList(restore.serialize().get("restic").get("process")));
+    assertEquals(List.of("--no-cache", "--sparse"), toStringList(restore.serialize().get("restic").get("execute")));
   }
 
   @Test

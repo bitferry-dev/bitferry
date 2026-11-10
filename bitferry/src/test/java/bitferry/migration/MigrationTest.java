@@ -95,13 +95,13 @@ class MigrationTest {
     assertEquals("*.txt", task1.get("include").get(0).asString());
     assertEquals(1, task1.get("exclude").size());
     assertEquals("*.bak", task1.get("exclude").get(0).asString());
-    assertEquals("--metadata", task1.get("rclone").get("process").get(0).asString());
+    assertEquals("--metadata", task1.get("rclone").get("execute").get(0).asString());
 
     // Task 77b2a001
     JsonNode task2 = findTask(tasks, "77b2a001");
     assertNotNull(task2);
     assertEquals("backup", task2.get("operation").asString());
-    assertEquals("--no-cache", task2.get("restic").get("process").get(0).asString());
+    assertEquals("--no-cache", task2.get("restic").get("execute").get(0).asString());
   }
 
   @Test

@@ -43,8 +43,8 @@ public class CreateBackupCommand implements Callable<Integer>, HasCommonOptions 
   @Option(names = {"-C", "--check"}, description = "Repository checking with profile (default, full) or options.")
   String check;
 
-  @Option(names = {"-X", "--process"}, description = "Extra backend processing options.")
-  String process;
+  @Option(names = {"-X", "--execute"}, description = "Extra backend execution options.")
+  String execute;
 
   @Option(names = "--exclude", split = ",", description = "Exclude path specifications (comma-separated list).")
   List<String> exclude;
@@ -74,7 +74,7 @@ public class CreateBackupCommand implements Callable<Integer>, HasCommonOptions 
     String f = defaultForget ? "default" : forget;
     String c = defaultCheck ? "default" : check;
     List<String> exc = CliUtils.parsePatterns(exclude, excludeExts);
-    Backup task = new Backup(m, src, repo, password, format, process, f, c, List.of(), exc);
+    Backup task = new Backup(m, src, repo, password, format, execute, f, c, List.of(), exc);
     if (m.volumes().values().stream().noneMatch(v -> task.refersVolume(v.tag()))) {
       throw new BitferryError("task #" + task.tag() + " does not belong to any registered volume; it cannot be persisted");
     }

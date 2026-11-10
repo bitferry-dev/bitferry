@@ -39,13 +39,13 @@ public abstract class Rclone extends Task {
   @SuppressWarnings("this-escape")
   protected Rclone(Manager manager, Endpoint source, Endpoint destination, String tag, OffsetDateTime modified, List<String> include, List<String> exclude, Backend backend) {
     super(manager, source, destination, tag, modified, include, exclude);
-    this.processOptions = optional(backend == null ? null : backend.process(), PROCESS);
+    this.processOptions = optional(backend == null ? null : backend.execute(), PROCESS);
     this.encryption = Encryption.restore(this, backend);
   }
 
   /// The rclone backend descriptor section. Exactly one of the encryption
   /// descriptors may be present.
-  public record Backend(List<String> process, List<String> encrypt, List<String> decrypt) {}
+  public record Backend(List<String> execute, List<String> encrypt, List<String> decrypt) {}
 
   /// The crypt filename encoding profiles; the null key denotes no default profile.
   public static final Map<String, List<String>> PROFILE = route(Map.of(
@@ -101,10 +101,10 @@ public abstract class Rclone extends Task {
   /// the reference implementation's `filter_nones` behavior.
   @JsonProperty("rclone")
   Backend storeBackend() {
-    List<String> process = orNull(processOptions);
+    List<String> execute = orNull(processOptions);
     List<String> encrypt = "encrypt".equals(encryption.operation()) ? orNull(encryption.options()) : null;
     List<String> decrypt = "decrypt".equals(encryption.operation()) ? orNull(encryption.options()) : null;
-    return process == null && encrypt == null && decrypt == null ? null : new Backend(process, encrypt, decrypt);
+    return execute == null && encrypt == null && decrypt == null ? null : new Backend(execute, encrypt, decrypt);
   }
 
   @Override

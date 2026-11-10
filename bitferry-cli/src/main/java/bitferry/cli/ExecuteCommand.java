@@ -9,13 +9,13 @@ import picocli.CommandLine.*;
 import picocli.CommandLine.Help.*;
 import picocli.CommandLine.Model.*;
 
-/// Process tasks matched by specified (partial) tags, or all intact tasks if no tags given.
-@Command(name = "process", aliases = {"x"}, mixinStandardHelpOptions = true, description = "Process tasks matched by specified (partial) tags.")
-public class ProcessCommand implements Callable<Integer>, HasCommonOptions {
+/// Execute tasks matched by specified (partial) tags, or all intact tasks if no tags given.
+@Command(name = "execute", aliases = {"x"}, mixinStandardHelpOptions = true, description = "Execute tasks matched by specified (partial) tags.")
+public class ExecuteCommand implements Callable<Integer>, HasCommonOptions {
 
   // Explicit no-arg constructor: the command classes are instantiated
   // reflectively by picocli.
-  public ProcessCommand() {}
+  public ExecuteCommand() {}
 
   @Mixin
   CommonOptions options = new CommonOptions();
@@ -23,7 +23,7 @@ public class ProcessCommand implements Callable<Integer>, HasCommonOptions {
   @Spec
   CommandSpec spec;
 
-  @Parameters(arity = "0..*", description = "Tags matching tasks to process.", paramLabel = "TAGS")
+  @Parameters(arity = "0..*", description = "Tags matching tasks to execute.", paramLabel = "TAGS")
   List<String> tags;
 
   @Override
@@ -38,7 +38,7 @@ public class ProcessCommand implements Callable<Integer>, HasCommonOptions {
     CommonOptions opts = CliUtils.resolveOptions(spec, options);
     Manager m = CliUtils.restoreManager(opts);
     // The tasks skipped due to the absent volumes are surfaced: a silent success here
-    // would look like the processing ran while nothing did
+    // would look like the execution ran while nothing did
     List<Task> stale = m.liveTasks().values().stream().filter(t -> !t.isIntact()).toList();
     if (!stale.isEmpty() && !m.quiet) {
       err.println(Ansi.AUTO.string("@|faint " + stale.size() + " task(s) skipped: their volumes are currently absent (see 'bitferry info -v')|@"));
@@ -65,11 +65,10 @@ public class ProcessCommand implements Callable<Integer>, HasCommonOptions {
     if (!m.quiet) {
       out.println();
       String summary = outcome
-        ? String.format("@|green All %d task(s) processed successfully.|@", n)
-        : String.format("@|red Some of the %d task(s) failed to process.|@", n);
+        ? String.format("@|green All %d task(s) executed successfully.|@", n)
+        : String.format("@|red Some of the %d task(s) failed to execute.|@", n);
       out.println(Ansi.AUTO.string(summary));
     }
     return outcome ? 0 : 1;
   }
 }
-

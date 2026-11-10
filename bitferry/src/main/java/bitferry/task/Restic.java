@@ -53,12 +53,12 @@ public abstract class Restic extends Task {
   protected Restic(Manager manager, Endpoint source, Endpoint destination, String tag, OffsetDateTime modified, List<String> include, List<String> exclude, Backend backend, Map<String, List<String>> processRoute) {
     super(manager, source, destination, tag, modified, include, exclude);
     this.vault = Vault.volume();
-    this.processOptions = optional(backend == null ? null : backend.process(), processRoute);
+    this.processOptions = optional(backend == null ? null : backend.execute(), processRoute);
     this.cached = false;
   }
 
   /// The restic backend descriptor section.
-  public record Backend(List<String> process, List<String> forget, List<String> check) {}
+  public record Backend(List<String> execute, List<String> forget, List<String> check) {}
 
   public List<String> processOptions() {
     return processOptions == null ? List.of() : java.util.Collections.unmodifiableList(processOptions);

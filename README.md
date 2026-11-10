@@ -14,7 +14,7 @@ launchers, **AOT-trained** with the JDK 25 [AOT cache](https://openjdk.org/jeps/
 | Gradle project  | JPMS module    | What it is                                                       |
 |-----------------|---------------|------------------------------------------------------------------|
 | `bitferry`      | `bitferry`    | the library: volumes, tasks, vault and the `.bitferry` storage (Jackson-based) |
-| `bitferry-cli`  | `bitferry.cli`| CLI frontend: picocli commands (`info`, `create`, `delete`, `process`); java.util.logging |
+| `bitferry-cli`  | `bitferry.cli`| CLI frontend: picocli commands (`info`, `create`, `delete`, `execute`); java.util.logging |
 | `bitferry-gui`  | `bitferry.gui`| JavaFX frontend; java.util.logging                               |
 | `bitferry-app`  | `bitferry.app`| distribution: jlink/jpackage/AOT assembly (aggregate module)     |
 

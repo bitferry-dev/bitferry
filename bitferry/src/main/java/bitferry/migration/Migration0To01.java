@@ -83,10 +83,28 @@ public final class Migration0To01 implements StorageMigration {
       task.set("exclude", taskData.get("exclude"));
     }
     if (taskData.has("rclone")) {
-      task.set("rclone", taskData.get("rclone"));
+      JsonNode rcloneNode = taskData.get("rclone");
+      if (rcloneNode.isObject()) {
+        ObjectNode rclone = ((ObjectNode) rcloneNode).deepCopy();
+        if (rclone.has("process")) {
+          rclone.set("execute", rclone.remove("process"));
+        }
+        task.set("rclone", rclone);
+      } else {
+        task.set("rclone", rcloneNode);
+      }
     }
     if (taskData.has("restic")) {
-      task.set("restic", taskData.get("restic"));
+      JsonNode resticNode = taskData.get("restic");
+      if (resticNode.isObject()) {
+        ObjectNode restic = ((ObjectNode) resticNode).deepCopy();
+        if (restic.has("process")) {
+          restic.set("execute", restic.remove("process"));
+        }
+        task.set("restic", restic);
+      } else {
+        task.set("restic", resticNode);
+      }
     }
 
     String foundOp = null;
