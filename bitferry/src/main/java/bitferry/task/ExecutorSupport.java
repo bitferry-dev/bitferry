@@ -28,9 +28,74 @@ final class ExecutorSupport {
   /// stderr otherwise) bypassing the logger.
   static void echoCommandLine(Manager manager, List<String> command, Consumer<String> output) {
     if (!manager.verbose()) return;
-    String commandLine = String.join(" ", command);
+    String commandLine = displayCommandLine(command);
     if (output != null) output.accept(commandLine);
     else System.err.println(commandLine);
+  }
+
+  /// Format the command line for display, replacing bundled backend paths with generic names.
+  static String displayCommandLine(List<String> command) {
+    return String.join(" ", displayCommand(command));
+  }
+
+  /// Return a command line tokens copy with bundled backend paths replaced with generic names.
+  static List<String> displayCommand(List<String> command) {
+    String home = System.getProperty("java.home", ".");
+    return displayCommand(command, System::getenv, Path.of(home).toAbsolutePath().normalize());
+  }
+
+  static List<String> displayCommand(List<String> command, Function<String, String> environment, Path javaHome) {
+    if (command == null || command.isEmpty()) return List.of();
+    String exec = command.get(0);
+    String display = displayExecutable(exec, environment, javaHome);
+    if (Objects.equals(exec, display)) return command;
+    List<String> result = new ArrayList<>(command);
+    result.set(0, display);
+    return result;
+  }
+
+  /// Replace a bundled backend executable path with its generic tool name (e.g. "rclone", "restic").
+  static String displayExecutable(String executable) {
+    String home = System.getProperty("java.home", ".");
+    return displayExecutable(executable, System::getenv, Path.of(home).toAbsolutePath().normalize());
+  }
+
+  static String displayExecutable(String executable, Function<String, String> environment, Path javaHome) {
+    if (executable == null || executable.isBlank()) return executable;
+    for (String backend : List.of("rclone", "restic")) {
+      if (isBundled(executable, backend, environment, javaHome)) {
+        return backend;
+      }
+    }
+    return executable;
+  }
+
+  /// Return true if the given executable path is the distribution-bundled backend executable.
+  static boolean isBundled(String executable, String backend) {
+    String home = System.getProperty("java.home", ".");
+    return isBundled(executable, backend, System::getenv, Path.of(home).toAbsolutePath().normalize());
+  }
+
+  static boolean isBundled(String executable, String backend, Function<String, String> environment, Path javaHome) {
+    if (executable == null || backend == null) return false;
+    String property = System.getProperty("bitferry." + backend);
+    if (property != null && !property.isBlank() && samePath(executable, property)) return true;
+    String override = environment.apply(backend.toUpperCase());
+    if (override != null && !override.isBlank()) return false;
+    for (Path dir : bundledDirectories(javaHome)) {
+      Path candidate = dir.resolve(executableName(backend));
+      if (samePath(executable, candidate.toString())) return true;
+    }
+    return false;
+  }
+
+  private static boolean samePath(String p1, String p2) {
+    if (Objects.equals(p1, p2)) return true;
+    try {
+      return Path.of(p1).toAbsolutePath().normalize().equals(Path.of(p2).toAbsolutePath().normalize());
+    } catch (Exception e) {
+      return false;
+    }
   }
 
   /// Execute the command through the executor seam echoing the command line and

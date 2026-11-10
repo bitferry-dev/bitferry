@@ -212,7 +212,7 @@ final class RcloneExecutor {
   }
 
   List<List<String>> commands(Rclone rclone) {
-    return List.of(command(rclone));
+    return List.of(ExecutorSupport.displayCommand(command(rclone)));
   }
 
   /// Process the rclone-backed task. Return true on success.

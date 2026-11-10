@@ -216,11 +216,11 @@ final class ResticExecutor {
 
   List<List<String>> commands(Backup backup) {
     List<List<String>> cmds = new ArrayList<>();
-    cmds.add(backupCommand(backup));
+    cmds.add(ExecutorSupport.displayCommand(backupCommand(backup)));
     List<String> check = checkCommand(backup);
-    if (check != null) cmds.add(check);
+    if (check != null) cmds.add(ExecutorSupport.displayCommand(check));
     List<String> forget = forgetCommand(backup);
-    if (forget != null) cmds.add(forget);
+    if (forget != null) cmds.add(ExecutorSupport.displayCommand(forget));
     return cmds;
   }
 
@@ -253,7 +253,7 @@ final class ResticExecutor {
   }
 
   List<List<String>> commands(Restore restore) {
-    return List.of(restoreCommand(restore));
+    return List.of(ExecutorSupport.displayCommand(restoreCommand(restore)));
   }
 
   private boolean runBackup(Backup backup, Consumer<String> output) {

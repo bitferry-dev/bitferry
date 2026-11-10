@@ -121,6 +121,98 @@ class SystemExecutorTest {
     }
   }
 
+  @Test
+  void bundledToolPathReplacedWithGenericNameInDisplayAndCommands() throws IOException {
+    Function<String, String> noEnv = name -> null;
+    Function<String, String> envOverride = name -> "/custom/" + name.toLowerCase();
+
+    // The bundled launcher property replaces the long path with the generic backend name
+    String appImageRclone = "/tmp/.mount_bitferhOfdml/usr/app/lib/app/../../bin/rclone";
+    System.setProperty("bitferry.rclone", appImageRclone);
+    try {
+      assertTrue(SystemExecutor.isBundled(appImageRclone, "rclone"));
+      assertEquals("rclone", SystemExecutor.displayExecutable(appImageRclone));
+      assertEquals("rclone sync /a /b", SystemExecutor.displayCommandLine(List.of(appImageRclone, "sync", "/a", "/b")));
+    } finally {
+      System.clearProperty("bitferry.rclone");
+    }
+
+    String appImageRestic = "/tmp/.mount_bitferhOfdml/usr/app/bin/restic";
+    System.setProperty("bitferry.restic", appImageRestic);
+    try {
+      assertTrue(SystemExecutor.isBundled(appImageRestic, "restic"));
+      assertEquals("restic", SystemExecutor.displayExecutable(appImageRestic));
+      assertEquals("restic backup .", SystemExecutor.displayCommandLine(List.of(appImageRestic, "backup", ".")));
+    } finally {
+      System.clearProperty("bitferry.restic");
+    }
+
+    // Bundled directory layout detection
+    Path img = image();
+    Path bundledRclone = img.resolve("bin").resolve(SystemExecutor.executableName("rclone"));
+    assertTrue(SystemExecutor.isBundled(bundledRclone.toString(), "rclone", noEnv, img));
+    assertEquals("rclone", SystemExecutor.displayExecutable(bundledRclone.toString(), noEnv, img));
+
+    // Explicit environment override keeps the user-specified executable verbatim
+    assertFalse(SystemExecutor.isBundled("/custom/rclone", "rclone", envOverride, img));
+    assertEquals("/custom/rclone", SystemExecutor.displayExecutable("/custom/rclone", envOverride, img));
+
+    // Arbitrary external executable is not bundled
+    assertFalse(SystemExecutor.isBundled("/usr/local/bin/custom-tool", "rclone", noEnv, img));
+    assertEquals("/usr/local/bin/custom-tool", SystemExecutor.displayExecutable("/usr/local/bin/custom-tool", noEnv, img));
+  }
+
+  @Test
+  void verboseEchoAndCommandsUseGenericToolNameForBundledBinaries() {
+    String bundledRclone = "/tmp/.mount_bitferhOfdml/usr/app/lib/app/../../bin/rclone";
+    String bundledRestic = "/tmp/.mount_bitferhOfdml/usr/app/bin/restic";
+    System.setProperty("bitferry.rclone", bundledRclone);
+    System.setProperty("bitferry.restic", bundledRestic);
+
+    try {
+      RecordingCommandExecutor recorder = new RecordingCommandExecutor();
+      SystemExecutor executor = new SystemExecutor(recorder);
+      manager.verbose(true);
+
+      // Rclone task: commands() uses generic "rclone"
+      Synchronize sync = new Synchronize(manager, source(), destination(), null, List.of(), List.of());
+      List<List<String>> cmds = sync.commands();
+      assertEquals(1, cmds.size());
+      assertEquals("rclone", cmds.get(0).get(0));
+
+      // Execution echo prints generic "rclone", but actual execution receives the full bundled path
+      List<String> output = new ArrayList<>();
+      boolean success = executor.run(sync, output::add);
+      assertTrue(success);
+      assertEquals(1, recorder.invocations.size());
+      assertEquals(bundledRclone, recorder.invocations.get(0).command().get(0));
+      assertTrue(output.stream().anyMatch(line -> line.startsWith("rclone sync ")),
+        "Expected output to echo 'rclone sync ...' but got: " + output);
+      assertFalse(output.stream().anyMatch(line -> line.contains(".mount_bitfer")),
+        "Bundled path should not appear in verbose echo output");
+
+      // Restic backup task: commands() uses generic "restic"
+      recorder.invocations.clear();
+      output.clear();
+      Backup backup = new Backup(manager, volumeSource(), destination(), "secret", null, null, null, null, List.of(), List.of());
+      List<List<String>> backupCmds = backup.commands();
+      assertFalse(backupCmds.isEmpty());
+      assertEquals("restic", backupCmds.get(0).get(0));
+
+      success = executor.run(backup, output::add);
+      assertTrue(success);
+      assertFalse(recorder.invocations.isEmpty());
+      assertEquals(bundledRestic, recorder.invocations.get(0).command().get(0));
+      assertTrue(output.stream().anyMatch(line -> line.startsWith("restic backup ")),
+        "Expected output to echo 'restic backup ...' but got: " + output);
+      assertFalse(output.stream().anyMatch(line -> line.contains(".mount_bitfer")),
+        "Bundled path should not appear in verbose echo output");
+    } finally {
+      System.clearProperty("bitferry.rclone");
+      System.clearProperty("bitferry.restic");
+    }
+  }
+
   // The image layout stub shared by the resolution tests
   private Path image() throws IOException {
     Path image = dir.resolve("image");

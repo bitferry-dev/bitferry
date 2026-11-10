@@ -91,4 +91,29 @@ public class SystemExecutor implements Executor {
   static String resolveExecutable(String backend) {
     return ExecutorSupport.resolveExecutable(backend);
   }
+
+  /// @see ExecutorSupport#isBundled(String, String, Function, Path)
+  static boolean isBundled(String executable, String backend, Function<String, String> environment, Path javaHome) {
+    return ExecutorSupport.isBundled(executable, backend, environment, javaHome);
+  }
+
+  /// @see ExecutorSupport#isBundled(String, String)
+  static boolean isBundled(String executable, String backend) {
+    return ExecutorSupport.isBundled(executable, backend);
+  }
+
+  /// @see ExecutorSupport#displayExecutable(String, Function, Path)
+  static String displayExecutable(String executable, Function<String, String> environment, Path javaHome) {
+    return ExecutorSupport.displayExecutable(executable, environment, javaHome);
+  }
+
+  /// @see ExecutorSupport#displayExecutable(String)
+  static String displayExecutable(String executable) {
+    return ExecutorSupport.displayExecutable(executable);
+  }
+
+  /// @see ExecutorSupport#displayCommandLine(List)
+  static String displayCommandLine(List<String> command) {
+    return ExecutorSupport.displayCommandLine(command);
+  }
 }
