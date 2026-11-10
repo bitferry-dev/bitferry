@@ -31,7 +31,10 @@ public class CreateVolumeCommand implements Callable<Integer>, HasCommonOptions 
   @Override
   public Integer call() {
     CommonOptions opts = CliUtils.resolveOptions(spec, options);
-    Manager m = CliUtils.createManager(opts);
+    // The full manager restoration (not the narrow fresh one): the creation commits
+    // the whole volume set, so the collected tombstones materialize their removal
+    // from the other storages within this very command
+    Manager m = CliUtils.restoreManager(opts);
     new Volume(m, root);
     m.commit();
     return 0;
