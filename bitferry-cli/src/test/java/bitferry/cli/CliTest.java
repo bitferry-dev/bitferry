@@ -152,6 +152,36 @@ class CliTest {
   }
 
   @Test
+  void profilesAnnotationResolvesAndRendersWithoutHardcodedCommandMappings() {
+    @CommandLine.Command(name = "dummy", mixinStandardHelpOptions = true)
+    class DummyCommand implements Runnable {
+      @CommandLine.Option(names = {"-v", "--verbose"})
+      boolean verbose;
+
+      @Profiles(value = Backup.class, field = "CHECK")
+      @CommandLine.Option(names = "--custom-check")
+      String check;
+
+      @Profiles(Rclone.class)
+      @CommandLine.Option(names = "--custom-exec")
+      String exec;
+
+      @Override
+      public void run() {}
+    }
+
+    CommandLine dummyCmd = new CommandLine(new DummyCommand());
+    dummyCmd.setHelpFactory(VerboseHelp.INSTANCE);
+    StringWriter verboseOut = new StringWriter();
+    dummyCmd.setOut(new PrintWriter(verboseOut));
+    assertEquals(0, dummyCmd.execute("--help", "-v"));
+    String helpText = verboseOut.toString();
+    assertTrue(helpText.contains("@default: --no-cache"));
+    assertTrue(helpText.contains("@full:    --no-cache --read-data"));
+    assertTrue(helpText.contains("@default: --metadata"));
+  }
+
+  @Test
   void noArgumentsRunsInfoAction() {
     int exitCode = cmd.execute();
     assertEquals(0, exitCode);

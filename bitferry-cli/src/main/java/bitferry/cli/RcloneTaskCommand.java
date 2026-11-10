@@ -32,6 +32,7 @@ public abstract class RcloneTaskCommand implements Callable<Integer>, HasCommonO
   @Parameters(index = "1", description = "Destination endpoint.", paramLabel = "DESTINATION")
   String destination;
 
+  @Profiles(Rclone.class)
   @Option(names = {"-X", "--execute"}, description = "Extra backend execution options (comma-separated), profile (@default) or '-' for none.")
   String execute;
 
@@ -53,9 +54,11 @@ public abstract class RcloneTaskCommand implements Callable<Integer>, HasCommonO
   @Option(names = "-d", description = "Decrypt source files using default profile.")
   boolean decryptDefault;
 
+  @Profiles(value = Rclone.class, field = "PROFILE")
   @Option(names = {"-E", "--encrypt"}, description = "Encrypt files in destination using specified profile (@default, @extended) or options.")
   String encrypt;
 
+  @Profiles(value = Rclone.class, field = "PROFILE")
   @Option(names = {"-D", "--decrypt"}, description = "Decrypt source files using specified profile (@default, @extended) or options.")
   String decrypt;
 

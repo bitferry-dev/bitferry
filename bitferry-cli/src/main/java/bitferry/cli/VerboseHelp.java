@@ -1,6 +1,6 @@
 package bitferry.cli;
 
-import bitferry.task.*;
+import java.lang.reflect.*;
 import java.util.*;
 import picocli.CommandLine;
 import picocli.CommandLine.Help;
@@ -48,31 +48,85 @@ public final class VerboseHelp implements IHelpFactory {
   /// Resolve extra profile description lines for the given option.
   public static List<String> profileLines(CommandSpec commandSpec, OptionSpec opt) {
     if (opt == null) return List.of();
-    Object userObject = commandSpec != null ? commandSpec.userObject() : null;
-    List<String> names = Arrays.asList(opt.names());
+    Profiles annotation = findProfilesAnnotation(commandSpec, opt);
+    if (annotation == null) return List.of();
+    Map<String, List<String>> map = resolveProfilesMap(annotation);
+    if (map == null || map.isEmpty()) return List.of();
+
+    List<String> keys;
+    if (annotation.names().length > 0) {
+      keys = Arrays.asList(annotation.names());
+    } else {
+      keys = map.keySet().stream()
+        .filter(Objects::nonNull)
+        .filter(k -> map.get(k) != null && !map.get(k).isEmpty())
+        .sorted((a, b) -> "default".equals(a) ? -1 : "default".equals(b) ? 1 : a.compareTo(b))
+        .toList();
+    }
+
+    int maxPrefixLen = keys.stream()
+      .filter(k -> map.get(k) != null && !map.get(k).isEmpty())
+      .mapToInt(k -> ("@" + k + ":").length())
+      .max()
+      .orElse(0);
+
     List<String> extra = new ArrayList<>();
-    if (userObject instanceof CreateBackupCommand) {
-      if (names.contains("--forget")) {
-        extra.add("  @default: " + String.join(" ", Backup.FORGET.get("default")));
-      } else if (names.contains("--check")) {
-        extra.add("  @default: " + String.join(" ", Backup.CHECK.get("default")));
-        extra.add("  @full:    " + String.join(" ", Backup.CHECK.get("full")));
-      } else if (names.contains("--execute")) {
-        extra.add("  @default: " + String.join(" ", Backup.PROCESS.get("default")));
-      }
-    } else if (userObject instanceof CreateRestoreCommand) {
-      if (names.contains("--execute")) {
-        extra.add("  @default: " + String.join(" ", Restore.PROCESS.get("default")));
-      }
-    } else if (userObject instanceof RcloneTaskCommand) {
-      if (names.contains("--execute")) {
-        extra.add("  @default: " + String.join(" ", Rclone.PROCESS.get("default")));
-      } else if (names.contains("--encrypt") || names.contains("--decrypt")) {
-        extra.add("  @default:  " + String.join(" ", Rclone.PROFILE.get("default")));
-        extra.add("  @extended: " + String.join(" ", Rclone.PROFILE.get("extended")));
-      }
+    for (String key : keys) {
+      List<String> values = map.get(key);
+      if (values == null || values.isEmpty()) continue;
+      String prefix = "@" + key + ":";
+      String padded = String.format("%-" + maxPrefixLen + "s", prefix);
+      extra.add("  " + padded + " " + String.join(" ", values));
     }
     return extra;
+  }
+
+  /// Find the @Profiles annotation bound to the option's underlying field or method.
+  public static Profiles findProfilesAnnotation(CommandSpec commandSpec, OptionSpec opt) {
+    if (opt == null) return null;
+    if (opt.userObject() instanceof AnnotatedElement element) {
+      Profiles ann = element.getAnnotation(Profiles.class);
+      if (ann != null) return ann;
+    }
+    if (commandSpec != null && commandSpec.userObject() != null) {
+      List<String> optNames = Arrays.asList(opt.names());
+      for (Class<?> cl = commandSpec.userObject().getClass(); cl != null && cl != Object.class; cl = cl.getSuperclass()) {
+        for (Field f : cl.getDeclaredFields()) {
+          Profiles ann = f.getAnnotation(Profiles.class);
+          if (ann != null) {
+            CommandLine.Option optAnn = f.getAnnotation(CommandLine.Option.class);
+            if (optAnn != null && Arrays.stream(optAnn.names()).anyMatch(optNames::contains)) {
+              return ann;
+            }
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  /// Retrieve the profiles map from the class and field specified in the @Profiles annotation.
+  @SuppressWarnings("unchecked")
+  public static Map<String, List<String>> resolveProfilesMap(Profiles annotation) {
+    if (annotation == null) return null;
+    Class<?> source = annotation.value();
+    String fieldName = annotation.field();
+    try {
+      Field f = source.getField(fieldName);
+      Object val = f.get(null);
+      if (val instanceof Map<?, ?> map) {
+        return (Map<String, List<String>>) map;
+      }
+    } catch (NoSuchFieldException e) {
+      try {
+        Method m = source.getMethod(fieldName);
+        Object val = m.invoke(null);
+        if (val instanceof Map<?, ?> map) {
+          return (Map<String, List<String>>) map;
+        }
+      } catch (Exception ignored) {}
+    } catch (Exception ignored) {}
+    return null;
   }
 
   private static class CustomHelp extends Help {

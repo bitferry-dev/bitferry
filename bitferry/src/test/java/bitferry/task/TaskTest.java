@@ -168,6 +168,7 @@ class TaskTest {
     BitferryError error = assertThrows(BitferryError.class, volume::commit);
     assertTrue(error.getMessage().contains("repository initialization failure"), error.getMessage());
     assertFalse(manager.tasks().containsKey(backup.tag()));
+    assertEquals(0, volume.generation());
 
     // The storage dump excludes the aborted task: nothing resurrects upon the restore
     Manager reloaded = new Manager().restore(dir.resolve("volume"));
@@ -185,6 +186,7 @@ class TaskTest {
     BitferryError error = assertThrows(BitferryError.class, volume::commit);
     assertTrue(error.getMessage().contains("encryption conformance failure"), error.getMessage());
     assertFalse(manager.tasks().containsKey(backup.tag()));
+    assertEquals(0, volume.generation());
 
     Manager reloaded = new Manager().restore(dir.resolve("volume"));
     assertTrue(reloaded.tasks().isEmpty());

@@ -28,6 +28,7 @@ public class CreateRestoreCommand implements Callable<Integer>, HasCommonOptions
   @Parameters(index = "1", description = "Destination endpoint.", paramLabel = "DESTINATION")
   String destination;
 
+  @Profiles(Restore.class)
   @Option(names = {"-X", "--execute"}, description = "Extra backend execution options (comma-separated), profile (@default) or '-' for none.")
   String execute;
 

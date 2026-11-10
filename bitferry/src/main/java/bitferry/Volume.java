@@ -300,7 +300,8 @@ public final class Volume {
       }
     }
     // On successful commit advance the volume's generation so that the referring tasks won't be flagged out-of-date anymore
-    generation = ts.isEmpty() ? 0 : ts.values().stream().mapToInt(Task::generation).max().orElseThrow() + 1;
+    var surviving = tasks();
+    generation = surviving.isEmpty() ? 0 : surviving.values().stream().mapToInt(Task::generation).max().orElseThrow() + 1;
     modified = false;
     if (!problems.isEmpty()) throw new BitferryError("task commit failure(s) in volume #" + tag + ": " + String.join("; ", problems));
   }

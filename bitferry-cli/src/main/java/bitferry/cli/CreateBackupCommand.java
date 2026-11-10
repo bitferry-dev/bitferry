@@ -34,15 +34,18 @@ public class CreateBackupCommand implements Callable<Integer>, HasCommonOptions 
   @Option(names = "-f", description = "Apply default snapshot retention policy options.")
   boolean defaultForget;
 
+  @Profiles(value = Backup.class, field = "FORGET")
   @Option(names = {"-F", "--forget"}, description = "Snapshot retention policy with profile (@default) or options.")
   String forget;
 
   @Option(names = "-c", description = "Apply default repository checking options.")
   boolean defaultCheck;
 
+  @Profiles(value = Backup.class, field = "CHECK")
   @Option(names = {"-C", "--check"}, description = "Repository checking with profile (@default, @full) or options.")
   String check;
 
+  @Profiles(Backup.class)
   @Option(names = {"-X", "--execute"}, description = "Extra backend execution options (comma-separated), profile (@default) or '-' for none.")
   String execute;
 
