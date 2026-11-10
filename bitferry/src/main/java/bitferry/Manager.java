@@ -117,6 +117,13 @@ public class Manager {
     tasks.put(task.tag(), task);
   }
 
+  /// Drop the task from the registry: the abort of a failed creation (the one-time
+  /// backend initialization of a pristine task may reject the task - e.g. the
+  /// repository initialization over the existing repository).
+  public void deregisterTask(Task task) {
+    tasks.remove(task.tag());
+  }
+
   /// Return the registered live volumes.
   public Map<String, Volume> liveVolumes() {
     return volumes.values().stream()

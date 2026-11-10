@@ -145,6 +145,26 @@ class TaskTest {
     assertTrue(volume.intactTasks().isEmpty());
   }
 
+  @Test
+  void failedInitializationAbortsTheRegistration() {
+    // The backend executor whose repository initialization (the format) fails - e.g.
+    // the restic init over the existing repository
+    manager.backendExecutor(new Executor() {
+      public boolean run(Task task, java.util.function.Consumer<String> output) { return false; }
+      public void format(Task task) { throw new BitferryError("repository initialization failure"); }
+    });
+    Backup backup = new Backup(manager, volumeSource(), destination(), "secret", null, null, null, null, List.of(), List.of());
+
+    // The commit raises the initialization failure and aborts the registration
+    BitferryError error = assertThrows(BitferryError.class, volume::commit);
+    assertTrue(error.getMessage().contains("repository initialization failure"), error.getMessage());
+    assertFalse(manager.tasks().containsKey(backup.tag()));
+
+    // The storage dump excludes the aborted task: nothing resurrects upon the restore
+    Manager reloaded = new Manager().restore(dir.resolve("volume"));
+    assertTrue(reloaded.tasks().isEmpty());
+  }
+
   private static List<String> toStringList(JsonNode node) {
     return Task.strings(node, false);
   }

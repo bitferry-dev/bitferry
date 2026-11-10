@@ -49,6 +49,18 @@ public abstract class Task {
   protected CommitState commitState;
   private boolean live = true;
 
+  // The lifecycle rides on the three cooperating fields above: `deleted` is the persisted
+  // deletion marker (the tombstone winning the conflicting restorations), `live` is the
+  // visibility flag (the physically deleted tasks and the collected tombstones are
+  // dropped from the storages), and `commitState` is the commit-phase machine mirroring
+  // the volume's one.
+
+  // The transient in-memory marker of the processing in progress: guards the re-entrancy
+  // (a task dispatched while its previous run is still going). Deliberately not persisted -
+  // the generation/intact mechanism already encodes the processing needs and the backend
+  // runs are idempotent upon the interruption.
+  private boolean processing;
+
   /// The deletion marker: a tombstoned task stays persisted within the storages of the
   /// currently visible volumes but is invisible for all the operations until it is
   /// collected. Null (and omitted from the descriptor) when the task is not deleted:
@@ -191,15 +203,17 @@ public abstract class Task {
     generation = Math.max(source.generation(), destination.generation()) + 1;
   }
 
-  /// Mark the task for deletion by recording the deletion marker (the tombstone): the
-  /// marked task becomes invisible for all the operations immediately while the marker
-  /// travels through all the referring storages, winning the conflicting restorations
-  /// over the plain copies by its bumped timestamp. The physical removal is performed
-  /// by the garbage collection once all the referred volumes are visible - the deferral
-  /// keeps the deletion resilient against the volumes disappearing mid-flight: the
-  /// stale plain copies of the vanished storages lose the conflict upon the return.
+  /// Mark the task for deletion by recording the deletion marker (the tombstone) and
+  /// the DELETED transition of the commit machine: the marked task becomes invisible
+  /// for all the operations immediately while the marker travels through all the
+  /// referring storages, winning the conflicting restorations over the plain copies
+  /// by its bumped timestamp. The physical removal is performed by the garbage
+  /// collection once all the referred volumes are visible - the deferral keeps the
+  /// deletion resilient against the volumes disappearing mid-flight: the stale plain
+  /// copies of the vanished storages lose the conflict upon the return.
   public void delete() {
     deleted = true;
+    commitState = CommitState.DELETED;
     touch();
   }
 
@@ -245,7 +259,15 @@ public abstract class Task {
     loop:
     while (true) switch (commitState) {
       case PRISTINE -> { // Format storage etc. when a new task is created
-        format();
+        try {
+          format();
+        } catch (BitferryError e) {
+          // Abort the registration: the failed task must not persist (nor re-register
+          // upon the following restorations) - the volume storage dump below reflects
+          // the surviving task set
+          manager.deregisterTask(this);
+          throw e;
+        }
         commitState = CommitState.LIVE;
       }
       case LIVE -> {
@@ -266,15 +288,24 @@ public abstract class Task {
     LOG.log(Level.INFO, () -> "task #" + tag + " committed");
   }
 
-  /// Process the task by delegating the backend utility execution to the manager's executor.
-  /// Return true on success.
+  /// Process the task by delegating the backend utility execution to the manager's
+  /// executor. The referred volumes are re-checked for the presence (the vanished
+  /// volumes fail the processing early instead of the backend failing on the vanished
+  /// paths), and the processing-in-progress guard rejects the re-entrancy (the task
+  /// dispatched while its previous run is still going). Return true on success.
   public boolean process(Consumer<String> output) {
-    LOG.log(Level.INFO, () -> "processing task #" + tag);
-    for (String vtag : referredVolumes()) {
-      Volume v = manager.volume(vtag);
-      if (v != null) v.checkPresence();
+    if (processing) throw new BitferryError("task #" + tag + " is already being processed");
+    processing = true;
+    try {
+      LOG.log(Level.INFO, () -> "processing task #" + tag);
+      for (String vtag : referredVolumes()) {
+        Volume v = manager.volume(vtag);
+        if (v != null) v.checkPresence();
+      }
+      return manager.backendExecutor().run(this, output);
+    } finally {
+      processing = false;
     }
-    return manager.backendExecutor().run(this, output);
   }
 
   /// Return the task's short descriptor used in the listings.

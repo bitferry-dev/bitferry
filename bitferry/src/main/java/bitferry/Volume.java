@@ -226,10 +226,23 @@ public final class Volume {
     return kept.isEmpty() ? null : kept;
   }
 
-  /// Commit the volume: format the storage upon creation, dump the storage contents when
-  /// modified, remove the storage upon the deletion, then commit the referring tasks.
+  /// Commit the volume: commit the referring tasks first (their one-time initialization
+  /// may still abort the registration - the failed repository initialization - and the
+  /// storage dump below must reflect the surviving task set), then format the storage
+  /// upon creation, dump the storage contents when modified, remove the storage upon
+  /// the deletion.
   public void commit() {
     Path storage = root.resolve(Bitferry.STORAGE);
+    var ts = tasks();
+    List<String> problems = new ArrayList<>();
+    for (Task task : ts.values()) {
+      try {
+        task.commit();
+      } catch (BitferryError e) {
+        LOG.log(Level.ERROR, () -> "commit failure(s) for task #" + task.tag() + ": " + e.getMessage());
+        problems.add(e.getMessage());
+      }
+    }
     loop:
     while (true) switch (commitState) {
       case PRISTINE -> { // Format the volume
@@ -287,20 +300,8 @@ public final class Volume {
       }
     }
     // On successful commit advance the volume's generation so that the referring tasks won't be flagged out-of-date anymore
-    var ts = tasks();
     generation = ts.isEmpty() ? 0 : ts.values().stream().mapToInt(Task::generation).max().orElseThrow() + 1;
     modified = false;
-    // The volume commit itself might succeed even in spite of the task failures
-    // But this case is still reported by raising the exception
-    List<String> problems = new ArrayList<>();
-    for (Task task : ts.values()) {
-      try {
-        task.commit();
-      } catch (BitferryError e) {
-        LOG.log(Level.ERROR, () -> "commit failure(s) for task #" + task.tag() + ": " + e.getMessage());
-        problems.add(e.getMessage());
-      }
-    }
     if (!problems.isEmpty()) throw new BitferryError("task commit failure(s) in volume #" + tag + ": " + String.join("; ", problems));
   }
 
