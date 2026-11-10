@@ -211,6 +211,9 @@ public class Manager {
   public Manager restore(List<Path> roots) {
     for (Path root : roots.stream().map(Bitferry::canonicalize).distinct().toList()) {
       try {
+        // The probe no longer declares IOException (the modern JDK convenience probes
+        // resolve the access errors into the false return), so the guard is the
+        // unchecked SecurityException only
         if (!java.nio.file.Files.isRegularFile(root.resolve(Bitferry.STORAGE))) {
           LOG.log(Level.DEBUG, () -> "no volume storage found in '" + root + "'");
           continue;

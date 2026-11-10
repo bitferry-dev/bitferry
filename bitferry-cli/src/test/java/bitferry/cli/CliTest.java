@@ -100,6 +100,38 @@ class CliTest {
   }
 
   @Test
+  void processNotesTheTasksSkippedForTheAbsentVolumes() throws IOException {
+    // Two volumes with a task between them; the processing then probes only the first
+    // one (the removable media peer is unplugged), so the task goes stale
+    Path firstDir = tempDir.resolve("skip_first");
+    Path secondDir = tempDir.resolve("skip_second");
+    Files.createDirectories(firstDir);
+    Files.createDirectories(secondDir);
+    assertEquals(0, cmd.execute("create", "volume", firstDir.toString()));
+    assertEquals(0, cmd.execute("create", "volume", secondDir.toString()));
+    Manager m = managerFor(firstDir);
+    String ftag = volumeTag(m, firstDir);
+    String stag = volumeTag(managerFor(secondDir), secondDir);
+
+    cmd = Main.createCommandLine();
+    out = new StringWriter();
+    err = new StringWriter();
+    cmd.setOut(new PrintWriter(out));
+    cmd.setErr(new PrintWriter(err));
+    assertEquals(0, cmd.execute("--path", firstDir + "," + secondDir, "create", "task", "synchronize", ":" + ftag + ":", ":" + stag + ":backup"),
+      () -> "stderr: " + err.toString());
+
+    // The absent peer volume makes the task stale: it is neither processed nor
+    // silently forgotten - the skip is noted on the stderr
+    cmd = Main.createCommandLine();
+    err = new StringWriter();
+    cmd.setErr(new PrintWriter(err));
+    int code = cmd.execute("--path", firstDir.toString(), "process");
+    assertEquals(0, code, () -> "stderr: " + err.toString());
+    assertTrue(err.toString().contains("task(s) skipped"), () -> "stderr: " + err.toString());
+  }
+
+  @Test
   void createAndExecuteTaskLifecycle() throws IOException {
     Path volDir = tempDir.resolve("src_vol");
     Path dstDir = tempDir.resolve("dst_dir");

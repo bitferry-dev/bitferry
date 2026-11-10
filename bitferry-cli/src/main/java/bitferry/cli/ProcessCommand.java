@@ -34,8 +34,15 @@ public class ProcessCommand implements Callable<Integer>, HasCommonOptions {
   @Override
   public Integer call() {
     PrintWriter out = spec != null ? spec.commandLine().getOut() : new PrintWriter(System.out, true);
+    PrintWriter err = spec != null ? spec.commandLine().getErr() : new PrintWriter(System.err, true);
     CommonOptions opts = CliUtils.resolveOptions(spec, options);
     Manager m = CliUtils.restoreManager(opts);
+    // The tasks skipped due to the absent volumes are surfaced: a silent success here
+    // would look like the processing ran while nothing did
+    List<Task> stale = m.liveTasks().values().stream().filter(t -> !t.isIntact()).toList();
+    if (!stale.isEmpty() && !m.quiet) {
+      err.println(Ansi.AUTO.string("@|faint " + stale.size() + " task(s) skipped: their volumes are currently absent (see 'bitferry info -v')|@"));
+    }
     Map<String, Task> tasks = m.selectTasks(tags);
     // An empty selection succeeds silently
     if (tasks.isEmpty()) return 0;
