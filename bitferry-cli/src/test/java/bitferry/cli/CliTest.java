@@ -79,6 +79,79 @@ class CliTest {
   }
 
   @Test
+  void helpPagesPrintProfilesOnlyInVerboseMode() {
+    // Non-verbose help: mentions profiles inline but does not dump profile contents
+    CommandLine backupCmd = Main.createCommandLine();
+    StringWriter backupOut = new StringWriter();
+    backupCmd.setOut(new PrintWriter(backupOut));
+    assertEquals(0, backupCmd.execute("create", "task", "backup", "--help"));
+    String bHelp = backupOut.toString();
+    assertTrue(bHelp.contains("profile (@default)"));
+    assertTrue(bHelp.contains("profile (@default, @full)"));
+    assertFalse(bHelp.contains("@default: --no-cache"));
+    assertFalse(bHelp.contains("@full:    --no-cache"));
+    assertFalse(bHelp.contains("--prune"));
+
+    // Verbose help (--help -v): dumps profile contents
+    CommandLine backupVerboseCmd = Main.createCommandLine();
+    StringWriter backupVerboseOut = new StringWriter();
+    backupVerboseCmd.setOut(new PrintWriter(backupVerboseOut));
+    assertEquals(0, backupVerboseCmd.execute("create", "task", "backup", "--help", "-v"));
+    String bVerboseHelp = backupVerboseOut.toString();
+    assertTrue(bVerboseHelp.contains("@default: --no-cache"));
+    assertTrue(bVerboseHelp.contains("@full:    --no-cache --read-data"));
+    assertTrue(bVerboseHelp.contains("@default: --prune --no-cache"));
+
+    // Verbose help with combined flag (-vh)
+    CommandLine backupCombinedCmd = Main.createCommandLine();
+    StringWriter backupCombinedOut = new StringWriter();
+    backupCombinedCmd.setOut(new PrintWriter(backupCombinedOut));
+    assertEquals(0, backupCombinedCmd.execute("create", "task", "backup", "-vh"));
+    assertTrue(backupCombinedOut.toString().contains("@default: --no-cache"));
+
+    // Verbose help with option before subcommand (-v create task backup -h)
+    CommandLine backupParentVerboseCmd = Main.createCommandLine();
+    StringWriter backupParentVerboseOut = new StringWriter();
+    backupParentVerboseCmd.setOut(new PrintWriter(backupParentVerboseOut));
+    assertEquals(0, backupParentVerboseCmd.execute("-v", "create", "task", "backup", "-h"));
+    assertTrue(backupParentVerboseOut.toString().contains("@default: --no-cache"));
+
+    // Synchronize help: non-verbose vs verbose
+    CommandLine syncCmd = Main.createCommandLine();
+    StringWriter syncOut = new StringWriter();
+    syncCmd.setOut(new PrintWriter(syncOut));
+    assertEquals(0, syncCmd.execute("create", "task", "synchronize", "--help"));
+    String sHelp = syncOut.toString();
+    assertTrue(sHelp.contains("profile (@default, @extended)"));
+    assertFalse(sHelp.contains("@default:  --crypt-filename-encoding"));
+
+    CommandLine syncVerboseCmd = Main.createCommandLine();
+    StringWriter syncVerboseOut = new StringWriter();
+    syncVerboseCmd.setOut(new PrintWriter(syncVerboseOut));
+    assertEquals(0, syncVerboseCmd.execute("create", "task", "synchronize", "--help", "--verbose"));
+    String sVerboseHelp = syncVerboseOut.toString();
+    assertTrue(sVerboseHelp.contains("@default:  --crypt-filename-encoding base32"));
+    assertTrue(sVerboseHelp.contains("@extended: --crypt-filename-encoding base32768"));
+    assertTrue(sVerboseHelp.contains("@default: --metadata"));
+
+    // Restore help: non-verbose vs verbose
+    CommandLine restoreCmd = Main.createCommandLine();
+    StringWriter restoreOut = new StringWriter();
+    restoreCmd.setOut(new PrintWriter(restoreOut));
+    assertEquals(0, restoreCmd.execute("create", "task", "restore", "--help"));
+    String rHelp = restoreOut.toString();
+    assertTrue(rHelp.contains("profile (@default)"));
+    assertFalse(rHelp.contains("@default: --no-cache --sparse"));
+
+    CommandLine restoreVerboseCmd = Main.createCommandLine();
+    StringWriter restoreVerboseOut = new StringWriter();
+    restoreVerboseCmd.setOut(new PrintWriter(restoreVerboseOut));
+    assertEquals(0, restoreVerboseCmd.execute("create", "task", "restore", "-v", "--help"));
+    String rVerboseHelp = restoreVerboseOut.toString();
+    assertTrue(rVerboseHelp.contains("@default: --no-cache --sparse"));
+  }
+
+  @Test
   void noArgumentsRunsInfoAction() {
     int exitCode = cmd.execute();
     assertEquals(0, exitCode);

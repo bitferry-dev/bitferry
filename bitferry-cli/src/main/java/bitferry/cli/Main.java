@@ -14,6 +14,7 @@ public final class Main {
   public static CommandLine createCommandLine() {
     BitferryCommand root = new BitferryCommand();
     CommandLine cmd = new CommandLine(root);
+    cmd.setHelpFactory(VerboseHelp.INSTANCE);
     cmd.setExecutionExceptionHandler((ex, commandLine, parseResult) -> {
       if (ex instanceof BitferryError) {
         commandLine.getErr().println(Ansi.AUTO.string("@|bold,red Error:|@ " + ex.getMessage()));
