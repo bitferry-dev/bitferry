@@ -63,8 +63,15 @@ final class ResticExecutor {
       return; // --force (wipe and recreate): skip conformance
     }
     String repo = repoPath(restic);
+    Path repoDir = Path.of(repo);
+    if (!Files.isDirectory(repoDir)) {
+      return; // Repo directory absent: skip conformance
+    }
     if (!hasRepository(repo)) {
-      return; // Repo absent (config file missing): skip
+      if (restic instanceof Restore) {
+        throw new BitferryError("the repository at '" + repo + "' is not a valid restic repository");
+      }
+      return; // For backup, new repository will be initialized by format()
     }
     probeRepository(restic, repo);
   }
@@ -82,14 +89,7 @@ final class ResticExecutor {
       wipeRepository(Path.of(repo));
     } else if (hasRepository(repo)) {
       probeRepository(backup, repo);
-      if (Boolean.FALSE.equals(backup.formatMode())) {
-        LOG.log(Level.INFO, () -> "attaching task #" + backup.tag() + " to existing repository '" + repo + "'");
-      } else {
-        LOG.log(Level.INFO, () -> "existing repository opened; attaching implicitly");
-      }
-      return;
-    } else if (Boolean.FALSE.equals(backup.formatMode())) {
-      LOG.log(Level.INFO, () -> "attaching task #" + backup.tag() + " to existing repository '" + repo + "'");
+      LOG.log(Level.INFO, () -> "existing repository opened; attaching implicitly");
       return;
     }
     LOG.log(Level.INFO, () -> "initializing repository '" + repo + "' for task #" + backup.tag());
@@ -128,11 +128,7 @@ final class ResticExecutor {
       List<String> output = new ArrayList<>();
       int exitCode = commandExecutor.execute(cmd, null, restic.processEnvironment(), output::add);
       if (exitCode != 0) {
-        String message = "the existing repository at '" + repo + "' does not accept the provided password";
-        if (restic instanceof Backup) {
-          message += "; use --attach to attach to an existing repository";
-        }
-        throw new BitferryError(message);
+        throw new BitferryError("the existing repository at '" + repo + "' does not accept the provided password");
       }
       restic.markConformed();
     } catch (IOException | InterruptedException e) {

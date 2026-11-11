@@ -28,9 +28,6 @@ public class CreateBackupCommand implements Callable<Integer>, HasCommonOptions 
   @Parameters(index = "1", description = "Repository endpoint.", paramLabel = "REPOSITORY")
   String repository;
 
-  @Option(names = {"-a", "--attach"}, description = "Attach to existing repository.")
-  boolean attach;
-
   @Option(names = "-f", description = "Apply default snapshot retention policy options.")
   boolean defaultForget;
 
@@ -81,7 +78,7 @@ public class CreateBackupCommand implements Callable<Integer>, HasCommonOptions 
     CliUtils.ensureUniqueTask(m, src, repo);
     // The password is obtained after the endpoints are validated
     String password = CliUtils.obtainPassword();
-    Boolean format = opts.force ? Boolean.TRUE : (attach ? Boolean.FALSE : null);
+    Boolean format = opts.force ? Boolean.TRUE : null;
     String f = defaultForget ? "@default" : forget;
     String c = defaultCheck ? "@default" : check;
     String mCadence = defaultMaintain ? "@default" : maintain;

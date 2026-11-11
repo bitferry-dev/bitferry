@@ -314,7 +314,7 @@ class CliTest {
     err = new StringWriter();
     cmd.setOut(new PrintWriter(out));
     cmd.setErr(new PrintWriter(err));
-    int code = executeWithPassword("Our secret password", "--path", volDir.toString(), "create", "task", "backup", ":" + vtag + ":", "local:" + repoDir, "-a");
+    int code = executeWithPassword("Our secret password", "--path", volDir.toString(), "create", "task", "backup", ":" + vtag + ":", "local:" + repoDir);
     assertEquals(0, code, () -> "stderr: " + err.toString());
 
     // The obscured password token is stored within the volume storage
@@ -431,7 +431,7 @@ class CliTest {
     cmd = Main.createCommandLine();
     err = new StringWriter();
     cmd.setErr(new PrintWriter(err));
-    int code = executeWithPassword(null, "--path", volDir.toString(), "create", "task", "backup", ":" + vtag + ":", volDir.resolve("repo").toString(), "-a");
+    int code = executeWithPassword(null, "--path", volDir.toString(), "create", "task", "backup", ":" + vtag + ":", volDir.resolve("repo").toString());
     assertNotEquals(0, code);
     assertTrue(err.toString().contains("password must be specified"), () -> "stderr: " + err.toString());
   }
@@ -556,7 +556,7 @@ class CliTest {
     err = new StringWriter();
     cmd.setOut(new PrintWriter(out));
     cmd.setErr(new PrintWriter(err));
-    assertEquals(0, executeWithPassword("alias-pass", "--path", volDir.toString(), "c", "t", "b", ":" + vtag + ":", "local:" + tempDir.resolve("alias_repo"), "-a"), () -> "stderr: " + err.toString());
+    assertEquals(0, executeWithPassword("alias-pass", "--path", volDir.toString(), "c", "t", "b", ":" + vtag + ":", "local:" + tempDir.resolve("alias_repo")), () -> "stderr: " + err.toString());
 
     // The 'c t r' alias creates the restore task
     cmd = Main.createCommandLine();
@@ -657,18 +657,18 @@ class CliTest {
     int code = executeWithPassword("badSecret", "--path", volDir.toString(), "create", "task", "backup", ":" + vtag + ":", "local:" + repoDir);
     assertEquals(1, code);
     assertTrue(err.toString().contains("the existing repository at '" + repoDir + "' does not accept the provided password"));
-    assertTrue(err.toString().contains("--attach"));
+    assertFalse(err.toString().contains("--attach"));
     assertTrue(managerFor(volDir).tasks().isEmpty());
 
-    // 2. Wrong password with -a/--attach is refused
+    // 2. -a/--attach is rejected as an unknown option
     cmd = Main.createCommandLine();
     out = new StringWriter();
     err = new StringWriter();
     cmd.setOut(new PrintWriter(out));
     cmd.setErr(new PrintWriter(err));
     code = executeWithPassword("badSecret", "--path", volDir.toString(), "create", "task", "backup", ":" + vtag + ":", "local:" + repoDir, "-a");
-    assertEquals(1, code);
-    assertTrue(err.toString().contains("does not accept the provided password"));
+    assertEquals(2, code);
+    assertTrue(err.toString().contains("Unknown option: '-a'"));
     assertTrue(managerFor(volDir).tasks().isEmpty());
 
     // 3. Correct password backup succeeds
@@ -890,7 +890,7 @@ class CliTest {
 
     // 1. Create backup with explicit @-prefixed profiles: -F @default -C @full
     int code = executeWithPassword("pass1", "--path", volDir.toString(),
-      "create", "task", "backup", ":" + vtag + ":", "local:" + repoDir, "-a", "-F", "@default", "-C", "@full");
+      "create", "task", "backup", ":" + vtag + ":", "local:" + repoDir, "-F", "@default", "-C", "@full");
     assertEquals(0, code, () -> "stderr: " + err.toString());
 
     Manager m = managerFor(volDir);
@@ -904,7 +904,7 @@ class CliTest {
 
     // 2. Create backup with shorthands -f -c
     code = executeWithPassword("pass1", "--path", volDir.toString(),
-      "create", "task", "backup", ":" + vtag + ":", "local:" + repoDir, "-a", "-f", "-c");
+      "create", "task", "backup", ":" + vtag + ":", "local:" + repoDir, "-f", "-c");
     assertEquals(0, code, () -> "stderr: " + err.toString());
 
     m = managerFor(volDir);
@@ -917,7 +917,7 @@ class CliTest {
 
     // 3. Create backup with directly specified raw options without @
     code = executeWithPassword("pass1", "--path", volDir.toString(),
-      "create", "task", "backup", ":" + vtag + ":", "local:" + repoDir, "-a",
+      "create", "task", "backup", ":" + vtag + ":", "local:" + repoDir,
       "-F", "--prune,--keep-daily,7", "-C", "--no-cache,--read-data", "-X", "--no-cache");
     assertEquals(0, code, () -> "stderr: " + err.toString());
 
@@ -1009,7 +1009,7 @@ class CliTest {
 
     // 1. Explicit -M 14d,10
     int code = executeWithPassword("secret1", "--path", volDir.toString(),
-      "create", "task", "backup", ":" + vtag + ":", "local:" + repoDir, "-a", "-M", "14d,10");
+      "create", "task", "backup", ":" + vtag + ":", "local:" + repoDir, "-M", "14d,10");
     assertEquals(0, code, () -> "stderr: " + err.toString());
 
     Manager m = managerFor(volDir);
@@ -1021,7 +1021,7 @@ class CliTest {
 
     // 2. Shorthand -m sets @default (7d,5)
     code = executeWithPassword("secret1", "--path", volDir.toString(),
-      "create", "task", "backup", ":" + vtag + ":", "local:" + repoDir, "-a", "-m");
+      "create", "task", "backup", ":" + vtag + ":", "local:" + repoDir, "-m");
     assertEquals(0, code, () -> "stderr: " + err.toString());
 
     m = managerFor(volDir);
@@ -1033,7 +1033,7 @@ class CliTest {
 
     // 3. Disable with -M -
     code = executeWithPassword("secret1", "--path", volDir.toString(),
-      "create", "task", "backup", ":" + vtag + ":", "local:" + repoDir, "-a", "-M", "-");
+      "create", "task", "backup", ":" + vtag + ":", "local:" + repoDir, "-M", "-");
     assertEquals(0, code, () -> "stderr: " + err.toString());
 
     m = managerFor(volDir);
@@ -1045,7 +1045,7 @@ class CliTest {
 
     // 4. Mutual exclusivity: -m and -M both specified
     code = executeWithPassword("secret1", "--path", volDir.toString(),
-      "create", "task", "backup", ":" + vtag + ":", "local:" + repoDir, "-a", "-m", "-M", "14d");
+      "create", "task", "backup", ":" + vtag + ":", "local:" + repoDir, "-m", "-M", "14d");
     assertNotEquals(0, code);
     assertTrue(err.toString().contains("maintenance cadence specified twice"));
   }
@@ -1174,9 +1174,9 @@ class CliTest {
     assertEquals(0, cmd.execute("create", "volume", volDir.toString()));
     String vtag = volumeTag(managerFor(volDir), volDir);
 
-    // 1. Create backup task (attached mode with retention and check)
+    // 1. Create backup task (with retention and check)
     int code = executeWithPassword("repo-pass", "--path", volDir.toString(),
-      "create", "task", "backup", ":" + vtag + ":", "local:" + repoDir, "-a", "-f", "-c", "--exclude", "*.tmp");
+      "create", "task", "backup", ":" + vtag + ":", "local:" + repoDir, "-f", "-c", "--exclude", "*.tmp");
     assertEquals(0, code, () -> "stderr: " + err.toString());
 
     Manager m = managerFor(volDir);
@@ -1247,5 +1247,22 @@ class CliTest {
     assertTrue(rBreakdown.contains("restic restore"));
     assertTrue(rBreakdown.contains("Maintain:"));
     assertTrue(rBreakdown.contains("restic check"));
+  }
+
+  @Test
+  void createRestoreTaskRejectsNonResticDirectory() throws IOException {
+    Path volDir = tempDir.resolve("cli_restore_vol");
+    Path notRepo = tempDir.resolve("cli_not_a_repo");
+    Files.createDirectories(volDir);
+    Files.createDirectories(notRepo);
+    Files.writeString(notRepo.resolve("dummy.txt"), "hello");
+
+    assertEquals(0, cmd.execute("create", "volume", volDir.toString()));
+    String vtag = volumeTag(managerFor(volDir), volDir);
+
+    int code = executeWithPassword("any-pass", "--path", volDir.toString(),
+      "create", "task", "restore", "local:" + notRepo, ":" + vtag + ":restored");
+    assertEquals(1, code);
+    assertTrue(err.toString().contains("is not a valid restic repository"));
   }
 }

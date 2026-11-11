@@ -27,8 +27,8 @@ public class Backup extends Restic {
   /// Maintenance cadence profiles; default is 7 days or 5 backups.
   public static final Map<String, Cadence> CADENCE = Cadence.PROFILES;
 
-  /// The repository initialization mode: null to initialize a new repository,
-  /// true to wipe and recreate the existing one, false to attach to it.
+  /// The repository initialization mode: null for automatic creation/attachment,
+  /// or true (--force) to wipe and recreate the existing repository.
   protected Boolean format;
 
   protected List<String> forget;

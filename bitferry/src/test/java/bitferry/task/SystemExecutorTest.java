@@ -498,17 +498,6 @@ class SystemExecutorTest {
   }
 
   @Test
-  void backupFormatSkipsWhenAttached() {
-    RecordingCommandExecutor recorder = new RecordingCommandExecutor();
-    SystemExecutor executor = new SystemExecutor(recorder);
-
-    Backup backup = new Backup(manager, volumeSource(), destination(), "secret", false, null, null, null, List.of(), List.of());
-    executor.format(backup);
-
-    assertEquals(0, recorder.invocations.size());
-  }
-
-  @Test
   void realRcloneSynchronizeSyncsFilesSuccessfully() throws IOException {
     Assumptions.assumeTrue(available("rclone"), "rclone not available for the integration check");
     Path srcDir = dir.resolve("real-src");
@@ -677,11 +666,11 @@ class SystemExecutorTest {
     Backup backup = new Backup(manager, volumeSource(), Endpoints.parse(manager, "local:" + repo), "secret", null, null, null, null, List.of(), List.of());
     BitferryError error = assertThrows(BitferryError.class, () -> executor.conform(backup));
     assertTrue(error.getMessage().contains("the existing repository at '" + repo + "' does not accept the provided password"));
-    assertTrue(error.getMessage().contains("--attach"));
+    assertFalse(error.getMessage().contains("--attach"));
   }
 
   @Test
-  void resticRestoreConformRefusesWithoutAttachHint() throws IOException {
+  void resticRestoreConformRefusesWrongPassword() throws IOException {
     RecordingCommandExecutor recorder = new RecordingCommandExecutor();
     recorder.returnCode = 1;
     SystemExecutor executor = new SystemExecutor(recorder);
@@ -694,6 +683,20 @@ class SystemExecutorTest {
     BitferryError error = assertThrows(BitferryError.class, () -> executor.conform(restore));
     assertTrue(error.getMessage().contains("the existing repository at '" + repo + "' does not accept the provided password"));
     assertFalse(error.getMessage().contains("--attach"));
+  }
+
+  @Test
+  void resticRestoreConformRefusesNonResticDirectory() throws IOException {
+    RecordingCommandExecutor recorder = new RecordingCommandExecutor();
+    SystemExecutor executor = new SystemExecutor(recorder);
+
+    Path notRepo = dir.resolve("not-a-restic-repo");
+    Files.createDirectories(notRepo);
+    Files.writeString(notRepo.resolve("some-file.txt"), "hello");
+
+    Restore restore = new Restore(manager, Endpoints.parse(manager, "local:" + notRepo), volumeRestored(), "secret", null, List.of(), List.of());
+    BitferryError error = assertThrows(BitferryError.class, () -> executor.conform(restore));
+    assertTrue(error.getMessage().contains("not a valid restic repository"));
   }
 
   @Test
@@ -874,16 +877,10 @@ class SystemExecutorTest {
     Backup wrongBackup = new Backup(manager, src, repo, "wrong-password", null, null, null, null, List.of(), List.of());
     BitferryError err = assertThrows(BitferryError.class, vol::commit);
     assertTrue(err.getMessage().contains("does not accept the provided password"), err.getMessage());
-    assertTrue(err.getMessage().contains("--attach"), err.getMessage());
+    assertFalse(err.getMessage().contains("--attach"), err.getMessage());
     assertFalse(manager.tasks().containsKey(wrongBackup.tag()));
 
-    // 2. Attach (-a) with wrong password is also refused
-    Backup wrongAttach = new Backup(manager, src, repo, "wrong-password", false, null, null, null, List.of(), List.of());
-    err = assertThrows(BitferryError.class, vol::commit);
-    assertTrue(err.getMessage().contains("does not accept the provided password"), err.getMessage());
-    assertFalse(manager.tasks().containsKey(wrongAttach.tag()));
-
-    // 3. Correct password backup creation succeeds and persists
+    // 2. Correct password backup creation succeeds and persists
     Backup correctBackup = new Backup(manager, src, repo, "correct-password", null, null, null, null, List.of(), List.of());
     vol.commit();
     assertTrue(manager.tasks().containsKey(correctBackup.tag()));
