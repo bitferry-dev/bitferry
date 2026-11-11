@@ -35,18 +35,25 @@ public class CreateBackupCommand implements Callable<Integer>, HasCommonOptions 
   boolean defaultForget;
 
   @Profiles(value = Backup.class, field = "FORGET")
-  @Option(names = {"-F", "--forget"}, description = "Snapshot retention policy with profile (@default) or options.")
+  @Option(names = {"-F", "--forget"}, description = "Snapshot retention policy with profile @|bold,cyan (@default)|@ or options.")
   String forget;
 
   @Option(names = "-c", description = "Apply default repository checking options.")
   boolean defaultCheck;
 
   @Profiles(value = Backup.class, field = "CHECK")
-  @Option(names = {"-C", "--check"}, description = "Repository checking with profile (@default, @full) or options.")
+  @Option(names = {"-C", "--check"}, description = "Repository checking with profile @|bold,cyan (@default, @full)|@ or options.")
   String check;
 
+  @Option(names = "-m", description = "Apply default maintenance cadence.")
+  boolean defaultMaintain;
+
+  @Profiles(value = Backup.class, field = "CADENCE")
+  @Option(names = {"-M", "--maintain"}, description = "Maintenance cadence with profile @|bold,cyan (@default)|@, '<duration>,<count>' or '-' for none.")
+  String maintain;
+
   @Profiles(Backup.class)
-  @Option(names = {"-X", "--execute"}, description = "Extra backend execution options (comma-separated), profile (@default) or '-' for none.")
+  @Option(names = {"-X", "--execute"}, description = "Extra backend execution options (comma-separated), profile @|bold,cyan (@default)|@ or '-' for none.")
   String execute;
 
   @Option(names = "--exclude", split = ",", description = "Exclude path specifications (comma-separated list).")
@@ -65,6 +72,7 @@ public class CreateBackupCommand implements Callable<Integer>, HasCommonOptions 
     // The shorthand and the explicit forms of the same setting are mutually exclusive
     if (defaultForget && forget != null) throw new BitferryError("snapshot retention policy specified twice: use either -f or --forget");
     if (defaultCheck && check != null) throw new BitferryError("repository checking specified twice: use either -c or --check");
+    if (defaultMaintain && maintain != null) throw new BitferryError("maintenance cadence specified twice: use either -m or --maintain");
     CommonOptions opts = CliUtils.resolveOptions(spec, options);
     Manager m = CliUtils.restoreManager(opts);
     // The bare paths encompassed by the intact volumes are attached to them
@@ -76,8 +84,9 @@ public class CreateBackupCommand implements Callable<Integer>, HasCommonOptions 
     Boolean format = opts.force ? Boolean.TRUE : (attach ? Boolean.FALSE : null);
     String f = defaultForget ? "@default" : forget;
     String c = defaultCheck ? "@default" : check;
+    String mCadence = defaultMaintain ? "@default" : maintain;
     List<String> exc = CliUtils.parsePatterns(exclude, excludeExts);
-    Backup task = new Backup(m, src, repo, password, format, execute, f, c, List.of(), exc);
+    Backup task = new Backup(m, src, repo, password, format, execute, f, c, mCadence, List.of(), exc);
     if (m.volumes().values().stream().noneMatch(v -> task.refersVolume(v.tag()))) {
       throw new BitferryError("task #" + task.tag() + " does not belong to any registered volume; it cannot be persisted");
     }

@@ -150,7 +150,7 @@ public final class CliUtils {
       if (ve.isIntact()) {
         return Ansi.AUTO.string(":@|cyan " + ve.vtag() + "|@:" + path);
       } else {
-        return Ansi.AUTO.string(":@|bold,red {" + ve.vtag() + "}|@:" + path);
+        return Ansi.AUTO.string(":{@|bold,red " + ve.vtag() + "|@}:" + path);
       }
     }
     return endpoint.describe();

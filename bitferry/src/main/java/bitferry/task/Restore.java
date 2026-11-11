@@ -13,7 +13,7 @@ public class Restore extends Restic {
 
   /// Processing options profiles; the null key denotes the default profile.
   public static final Map<String, List<String>> PROCESS =
-    route(Map.of("default", List.of("--no-cache", "--sparse")), List.of("--no-cache", "--sparse"));
+    route(Map.of("default", List.of("--sparse")), List.of("--sparse"));
 
   /// Constructor for a new task instance.
   public Restore(Manager manager, Endpoint source, Endpoint destination, String password, String process, Collection<String> include, Collection<String> exclude) {

@@ -48,6 +48,20 @@ public class SystemExecutor implements Executor {
   }
 
   @Override
+  public boolean maintain(Task task, Consumer<String> output) {
+    LOG.log(Level.INFO, () -> "maintaining task #" + task.tag());
+    if (task instanceof Rclone rclone) {
+      return rcloneExecutor.maintain(rclone, output);
+    } else if (task instanceof Restic restic) {
+      return resticExecutor.maintain(restic, output);
+    }
+    String message = "unsupported task backend for maintenance of task #" + task.tag() + ": " + task.getClass().getName();
+    LOG.log(Level.ERROR, () -> message);
+    if (output != null) output.accept(message);
+    return false;
+  }
+
+  @Override
   public void format(Backup backup) {
     resticExecutor.format(backup);
   }
@@ -75,6 +89,31 @@ public class SystemExecutor implements Executor {
   @Override
   public List<List<String>> commands(Restore restore) {
     return resticExecutor.commands(restore);
+  }
+
+  @Override
+  public List<List<String>> maintainCommands(Task task) {
+    if (task instanceof Rclone rclone) {
+      return rcloneExecutor.maintainCommands(rclone);
+    } else if (task instanceof Restic restic) {
+      return resticExecutor.maintainCommands(restic);
+    }
+    return List.of();
+  }
+
+  @Override
+  public List<List<String>> maintainCommands(Rclone rclone) {
+    return rcloneExecutor.maintainCommands(rclone);
+  }
+
+  @Override
+  public List<List<String>> maintainCommands(Backup backup) {
+    return resticExecutor.maintainCommands(backup);
+  }
+
+  @Override
+  public List<List<String>> maintainCommands(Restore restore) {
+    return resticExecutor.maintainCommands(restore);
   }
 
   /// @see ExecutorSupport#executableName(String)

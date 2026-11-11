@@ -6,6 +6,7 @@ import bitferry.vault.Passwords;
 import java.io.*;
 import java.nio.charset.*;
 import java.nio.file.*;
+import java.time.Instant;
 import java.util.*;
 import java.util.function.*;
 import org.junit.jupiter.api.*;
@@ -319,40 +320,47 @@ class SystemExecutorTest {
     boolean result = executor.run(backup, null);
 
     assertTrue(result);
-    // 3 invocations: backup, check, forget
-    assertEquals(3, recorder.invocations.size());
+    // 4 invocations: maintenance check, forget, prune before backup, then backup
+    assertEquals(4, recorder.invocations.size());
 
-    // 1. Backup invocation
-    RecordingCommandExecutor.Invocation invBackup = recorder.invocations.get(0);
+    // 1. Maintenance Check invocation
+    RecordingCommandExecutor.Invocation invCheck = recorder.invocations.get(0);
+    assertEquals("secret", invCheck.environment().get("RESTIC_PASSWORD"));
+    List<String> cmdCheck = invCheck.command();
+    assertEquals("restic", cmdCheck.get(0));
+    assertEquals("check", cmdCheck.get(1));
+    assertFalse(cmdCheck.contains("--no-cache"));
+
+    // 2. Maintenance Forget invocation
+    RecordingCommandExecutor.Invocation invForget = recorder.invocations.get(1);
+    assertEquals("secret", invForget.environment().get("RESTIC_PASSWORD"));
+    List<String> cmdForget = invForget.command();
+    assertEquals("restic", cmdForget.get(0));
+    assertEquals("forget", cmdForget.get(1));
+    assertFalse(cmdForget.contains("--prune"));
+
+    // 3. Maintenance Prune invocation
+    RecordingCommandExecutor.Invocation invPrune = recorder.invocations.get(2);
+    assertEquals("secret", invPrune.environment().get("RESTIC_PASSWORD"));
+    List<String> cmdPrune = invPrune.command();
+    assertEquals("restic", cmdPrune.get(0));
+    assertEquals("prune", cmdPrune.get(1));
+
+    // 4. Backup invocation
+    RecordingCommandExecutor.Invocation invBackup = recorder.invocations.get(3);
     assertEquals(Path.of(volumeSource().processOpts()), invBackup.workingDir());
     // The repository password travels through the environment
     assertEquals("secret", invBackup.environment().get("RESTIC_PASSWORD"));
-    List<String> cmd1 = invBackup.command();
-    assertEquals("restic", cmd1.get(0));
-    assertEquals("backup", cmd1.get(1));
-    assertEquals(".", cmd1.get(2));
-    assertTrue(cmd1.contains("--tag"));
-    assertTrue(cmd1.contains("bitferry," + backup.tag()));
-    assertTrue(cmd1.contains("--exclude"));
-    assertTrue(cmd1.contains("*.tmp"));
-    assertTrue(cmd1.contains("-r"));
-    assertEquals(destination().processOpts(), cmd1.get(cmd1.size() - 1));
-
-    // 2. Check invocation
-    RecordingCommandExecutor.Invocation invCheck = recorder.invocations.get(1);
-    assertEquals("secret", invCheck.environment().get("RESTIC_PASSWORD"));
-    List<String> cmd2 = invCheck.command();
-    assertEquals("restic", cmd2.get(0));
-    assertEquals("check", cmd2.get(1));
-    assertTrue(cmd2.contains("--no-cache"));
-
-    // 3. Forget invocation
-    RecordingCommandExecutor.Invocation invForget = recorder.invocations.get(2);
-    assertEquals("secret", invForget.environment().get("RESTIC_PASSWORD"));
-    List<String> cmd3 = invForget.command();
-    assertEquals("restic", cmd3.get(0));
-    assertEquals("forget", cmd3.get(1));
-    assertTrue(cmd3.contains("--prune"));
+    List<String> cmdBackup = invBackup.command();
+    assertEquals("restic", cmdBackup.get(0));
+    assertEquals("backup", cmdBackup.get(1));
+    assertEquals(".", cmdBackup.get(2));
+    assertTrue(cmdBackup.contains("--tag"));
+    assertTrue(cmdBackup.contains("bitferry," + backup.tag()));
+    assertTrue(cmdBackup.contains("--exclude"));
+    assertTrue(cmdBackup.contains("*.tmp"));
+    assertTrue(cmdBackup.contains("-r"));
+    assertEquals(destination().processOpts(), cmdBackup.get(cmdBackup.size() - 1));
   }
 
   @Test
@@ -405,13 +413,18 @@ class SystemExecutorTest {
     assertTrue(rcmd.contains("--target"));
     assertEquals(volumeRestored().processOpts(), rcmd.get(rcmd.indexOf("--target") + 1));
 
-    // Backup with default check and forget
+    // Backup commands return routine backup command
     Backup backupDefault = new Backup(manager, volumeSource(), destination(), "secret", null, null, "@default", "@default", List.of(), List.of("*.tmp"));
     List<List<String>> backupCmds = backupDefault.commands();
-    assertEquals(3, backupCmds.size());
+    assertEquals(1, backupCmds.size());
     assertEquals("backup", backupCmds.get(0).get(1));
-    assertEquals("check", backupCmds.get(1).get(1));
-    assertEquals("forget", backupCmds.get(2).get(1));
+
+    // Backup maintainCommands return check, forget, prune
+    List<List<String>> maintainCmds = backupDefault.maintainCommands();
+    assertEquals(3, maintainCmds.size());
+    assertEquals("check", maintainCmds.get(0).get(1));
+    assertEquals("forget", maintainCmds.get(1).get(1));
+    assertEquals("prune", maintainCmds.get(2).get(1));
 
     // Backup skipping check and forget
     Backup backupSkip = new Backup(manager, volumeSource(), destination(), "secret", null, null, "-", "-", List.of(), List.of());
@@ -894,5 +907,130 @@ class SystemExecutorTest {
     Restore correctRestore = new Restore(manager, repo, src, "new-force-password", null, List.of(), List.of());
     vol.commit();
     assertTrue(manager.tasks().containsKey(correctRestore.tag()));
+  }
+
+  @Test
+  void routineBackupDoesNotTriggerMaintenanceWhenNotDue() throws IOException {
+    RecordingCommandExecutor recorder = new RecordingCommandExecutor();
+    SystemExecutor executor = new SystemExecutor(recorder);
+
+    Path repoDir = dir.resolve("routine-backup-repo");
+    Files.createDirectories(repoDir);
+    Endpoint repo = Endpoints.parse(manager, "local:" + repoDir);
+
+    // Baseline state: maintenance done recently, count low
+    RepoState state = new RepoState();
+    state.recordMaintenance();
+    state.recordBackup();
+    state.save(repoDir);
+
+    Backup backup = new Backup(manager, volumeSource(), repo, "secret", null, null, "@default", "@default", "7d,5", List.of(), List.of());
+    boolean ok = executor.run(backup, null);
+    assertTrue(ok);
+
+    // Only 1 invocation: backup (maintenance was not due)
+    assertEquals(1, recorder.invocations.size());
+    assertEquals("backup", recorder.invocations.get(0).command().get(1));
+
+    // Backups count incremented
+    RepoState updated = RepoState.load(repoDir);
+    assertEquals(2, updated.backupsSinceMaintenance());
+  }
+
+  @Test
+  void routineBackupTriggersMaintenanceWhenDueAndResetsCount() throws IOException {
+    RecordingCommandExecutor recorder = new RecordingCommandExecutor();
+    SystemExecutor executor = new SystemExecutor(recorder);
+
+    Path repoDir = dir.resolve("due-backup-repo");
+    Files.createDirectories(repoDir);
+    Endpoint repo = Endpoints.parse(manager, "local:" + repoDir);
+
+    // Threshold crossed: 5 backups done since maintenance
+    RepoState state = new RepoState(Instant.now(), Instant.now(), 5, false);
+    state.save(repoDir);
+
+    Backup backup = new Backup(manager, volumeSource(), repo, "secret", null, null, "@default", "@default", "7d,5", List.of(), List.of());
+    boolean ok = executor.run(backup, null);
+    assertTrue(ok);
+
+    // 4 invocations: check -> forget -> prune -> backup
+    assertEquals(4, recorder.invocations.size());
+    assertEquals("check", recorder.invocations.get(0).command().get(1));
+    assertEquals("forget", recorder.invocations.get(1).command().get(1));
+    assertEquals("prune", recorder.invocations.get(2).command().get(1));
+    assertEquals("backup", recorder.invocations.get(3).command().get(1));
+
+    // Count was reset to 0 by maintenance, then incremented to 1 by the completed backup
+    RepoState updated = RepoState.load(repoDir);
+    assertEquals(1, updated.backupsSinceMaintenance());
+  }
+
+  @Test
+  void maintenanceAbortsBeforeForgetAndPruneWhenCheckFails() throws IOException {
+    RecordingCommandExecutor recorder = new RecordingCommandExecutor();
+    recorder.returnCode = 1; // Check command fails
+    SystemExecutor executor = new SystemExecutor(recorder);
+
+    Path repoDir = dir.resolve("failing-check-repo");
+    Files.createDirectories(repoDir);
+    Endpoint repo = Endpoints.parse(manager, "local:" + repoDir);
+
+    Backup backup = new Backup(manager, volumeSource(), repo, "secret", null, null, "@default", "@default", "7d,5", List.of(), List.of());
+    boolean ok = executor.maintain(backup, null);
+    assertFalse(ok);
+
+    // Halted immediately after failed check: forget and prune never executed
+    assertEquals(1, recorder.invocations.size());
+    assertEquals("check", recorder.invocations.get(0).command().get(1));
+  }
+
+  @Test
+  void batchMaintenanceFaultIsolation() throws IOException {
+    // Failing task 1 check should not prevent task 2 maintenance
+    List<RecordingCommandExecutor.Invocation> invocations = new ArrayList<>();
+    CommandExecutor dynamicExecutor = (command, workingDirectory, environment, output) -> {
+      invocations.add(new RecordingCommandExecutor.Invocation(command, workingDirectory, environment, output));
+      if (command.stream().anyMatch(tok -> tok.contains("failing-task"))) {
+        return 1; // Fails task 1
+      }
+      return 0; // Succeeds task 2
+    };
+
+    SystemExecutor executor = new SystemExecutor(dynamicExecutor);
+    manager.backendExecutor(executor);
+
+    Path repo1 = dir.resolve("failing-task");
+    Path repo2 = dir.resolve("healthy-task");
+    Files.createDirectories(repo1);
+    Files.createDirectories(repo2);
+
+    Backup b1 = new Backup(manager, volumeSource(), Endpoints.parse(manager, "local:" + repo1), "sec1", null, null, null, null, "7d,5", List.of(), List.of());
+    Backup b2 = new Backup(manager, volumeSource(), Endpoints.parse(manager, "local:" + repo2), "sec2", null, null, null, null, "7d,5", List.of(), List.of());
+
+    boolean overall = manager.maintain(List.of(b1.tag(), b2.tag()), null);
+    assertFalse(overall);
+
+    // b1 check ran (and failed, aborting its prune)
+    assertTrue(invocations.stream().anyMatch(inv -> inv.command().contains(repo1.toString())));
+    // b2 was still maintained!
+    assertTrue(invocations.stream().anyMatch(inv -> inv.command().contains(repo2.toString())));
+  }
+
+  @Test
+  void rcloneMaintenanceRunsCheck() {
+    RecordingCommandExecutor recorder = new RecordingCommandExecutor();
+    SystemExecutor executor = new SystemExecutor(recorder);
+
+    Synchronize sync = new Synchronize(manager, source(), destination(), null, List.of("*.txt"), List.of("*.bak"));
+    boolean ok = executor.maintain(sync, null);
+    assertTrue(ok);
+
+    assertEquals(1, recorder.invocations.size());
+    List<String> cmd = recorder.invocations.get(0).command();
+    assertEquals("rclone", cmd.get(0));
+    assertEquals("check", cmd.get(1));
+    assertTrue(cmd.contains("+ *.txt"));
+    assertTrue(cmd.contains("- *.bak"));
   }
 }

@@ -17,7 +17,7 @@ public abstract class Restic extends Task {
 
   /// Processing options profiles; the null key denotes the default profile.
   public static final Map<String, List<String>> PROCESS =
-    route(Map.of("default", List.of("--no-cache")), List.of("--no-cache"));
+    route(Map.of("default", List.of()), List.of());
 
   protected List<String> processOptions;
 
@@ -58,7 +58,16 @@ public abstract class Restic extends Task {
   }
 
   /// The restic backend descriptor section.
-  public record Backend(List<String> execute, List<String> forget, List<String> check) {}
+  public record Backend(
+    @JsonProperty("execute") List<String> execute,
+    @JsonProperty("forget") List<String> forget,
+    @JsonProperty("check") List<String> check,
+    @JsonProperty("maintain") String maintain
+  ) {
+    public Backend(List<String> execute, List<String> forget, List<String> check) {
+      this(execute, forget, check, null);
+    }
+  }
 
   public List<String> processOptions() {
     return processOptions == null ? List.of() : java.util.Collections.unmodifiableList(processOptions);

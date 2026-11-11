@@ -103,15 +103,19 @@ class TaskTest {
     Backup backup = new Backup(manager, volumeSource(), destination(), "secret", null, null, "@default", "@full", List.of(), List.of());
     JsonNode data = backup.serialize();
     assertEquals("restic", data.get("backend").asString());
-    assertEquals(List.of("--no-cache"), toStringList(data.get("restic").get("execute")));
+    assertNull(data.get("restic").get("execute"));
     assertEquals(Backup.FORGET.get("default"), toStringList(data.get("restic").get("forget")));
     assertEquals(Backup.CHECK.get("full"), toStringList(data.get("restic").get("check")));
+    assertEquals("7d,5", data.get("restic").get("maintain").asString());
     // The password never travels with the descriptor
     assertFalse(data.has("password"));
 
+    Backup restoredBackup = (Backup) Task.restore(manager, data);
+    assertEquals("7d,5", restoredBackup.cadence().format());
+
     Restore restore = new Restore(manager, destination(), volumeRestored(), "secret", "@default", List.of(), List.of());
     assertEquals("restic", restore.serialize().get("backend").asString());
-    assertEquals(List.of("--no-cache", "--sparse"), toStringList(restore.serialize().get("restic").get("execute")));
+    assertEquals(List.of("--sparse"), toStringList(restore.serialize().get("restic").get("execute")));
   }
 
   @Test

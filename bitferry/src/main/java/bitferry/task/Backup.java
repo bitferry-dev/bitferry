@@ -15,14 +15,17 @@ public class Backup extends Restic {
 
   /// Snapshot retention policy profiles; the null key denotes the default (skip) profile.
   public static final Map<String, List<String>> FORGET = route(Map.of(
-    "default", List.of("--prune", "--no-cache", "--keep-within-hourly", "24h", "--keep-within-daily", "7d", "--keep-within-weekly", "30d", "--keep-within-monthly", "1y", "--keep-within-yearly", "100y")
+    "default", List.of("--prune", "--keep-within-hourly", "24h", "--keep-within-daily", "7d", "--keep-within-weekly", "30d", "--keep-within-monthly", "1y", "--keep-within-yearly", "100y")
   ), null);
 
   /// Repository checking profiles; the null key denotes the default (skip) profile.
   public static final Map<String, List<String>> CHECK = route(Map.of(
-    "default", List.of("--no-cache"),
-    "full", List.of("--no-cache", "--read-data")
+    "default", List.of(),
+    "full", List.of("--read-data")
   ), null);
+
+  /// Maintenance cadence profiles; default is 7 days or 5 backups.
+  public static final Map<String, Cadence> CADENCE = Cadence.PROFILES;
 
   /// The repository initialization mode: null to initialize a new repository,
   /// true to wipe and recreate the existing one, false to attach to it.
@@ -30,15 +33,22 @@ public class Backup extends Restic {
 
   protected List<String> forget;
   protected List<String> check;
+  protected Cadence cadence;
 
   private static final System.Logger LOG = System.getLogger(Backup.class.getName());
 
-  /// Constructor for a new task instance.
-  public Backup(Manager manager, Endpoint source, Endpoint destination, String password, Boolean format, String process, String forget, String check, Collection<String> include, Collection<String> exclude) {
+  /// Constructor for a new task instance with an explicit maintenance cadence.
+  public Backup(Manager manager, Endpoint source, Endpoint destination, String password, Boolean format, String process, String forget, String check, String maintain, Collection<String> include, Collection<String> exclude) {
     super(manager, source, destination, password, process, PROCESS, include, exclude);
     this.format = format;
     this.forget = optional(forget, FORGET);
     this.check = optional(check, CHECK);
+    this.cadence = Cadence.parse(maintain);
+  }
+
+  /// Constructor for a new task instance (cadence defaults to @default).
+  public Backup(Manager manager, Endpoint source, Endpoint destination, String password, Boolean format, String process, String forget, String check, Collection<String> include, Collection<String> exclude) {
+    this(manager, source, destination, password, format, process, forget, check, null, include, exclude);
   }
 
   /// Jackson creator restoring an existing task from the storage descriptor;
@@ -63,6 +73,9 @@ public class Backup extends Restic {
     this.format = null;
     this.forget = backendOpts == null ? null : backendOpts.forget();
     this.check = backendOpts == null ? null : backendOpts.check();
+    this.cadence = backendOpts == null || backendOpts.maintain() == null
+      ? Cadence.PROFILES.get("default")
+      : Cadence.parse(backendOpts.maintain());
   }
 
   @Override
@@ -93,13 +106,19 @@ public class Backup extends Restic {
     return check == null ? null : java.util.Collections.unmodifiableList(check);
   }
 
+  public Cadence cadence() {
+    return cadence;
+  }
+
   @Override
   @JsonProperty("restic")
   Backend storeBackend() {
+    String m = cadence == null ? "-" : cadence.format();
     boolean empty = (processOptions == null || processOptions.isEmpty())
       && (forget == null || forget.isEmpty())
-      && (check == null || check.isEmpty());
-    return empty ? null : new Backend(orNull(processOptions), orNull(forget), orNull(check));
+      && check == null
+      && Cadence.PROFILES.get("default").equals(cadence);
+    return empty ? null : new Backend(orNull(processOptions), orNull(forget), check, m);
   }
 
   /// Initialize the repository upon the task creation.
@@ -111,5 +130,10 @@ public class Backup extends Restic {
   @Override
   public List<List<String>> commands() {
     return manager.backendExecutor().commands(this);
+  }
+
+  @Override
+  public List<List<String>> maintainCommands() {
+    return manager.backendExecutor().maintainCommands(this);
   }
 }

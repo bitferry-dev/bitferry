@@ -33,7 +33,7 @@ public abstract class RcloneTaskCommand implements Callable<Integer>, HasCommonO
   String destination;
 
   @Profiles(Rclone.class)
-  @Option(names = {"-X", "--execute"}, description = "Extra backend execution options (comma-separated), profile (@default) or '-' for none.")
+  @Option(names = {"-X", "--execute"}, description = "Extra backend execution options (comma-separated), profile @|bold,cyan (@default)|@ or '-' for none.")
   String execute;
 
   @Option(names = "--include", split = ",", description = "Include path specifications (comma-separated list).")
@@ -51,15 +51,15 @@ public abstract class RcloneTaskCommand implements Callable<Integer>, HasCommonO
   @Option(names = "-e", description = "Encrypt files in destination using @default profile.")
   boolean encryptDefault;
 
-  @Option(names = "-d", description = "Decrypt source files using @default profile.")
+  @Option(names = "-d", description = "Decrypt source files using @|bold,cyan @default|@ profile.")
   boolean decryptDefault;
 
   @Profiles(value = Rclone.class, field = "PROFILE")
-  @Option(names = {"-E", "--encrypt"}, description = "Encrypt files in destination using specified profile (@default, @extended) or options.")
+  @Option(names = {"-E", "--encrypt"}, description = "Encrypt files in destination using specified profile @|bold,cyan (@default, @extended)|@ or options.")
   String encrypt;
 
   @Profiles(value = Rclone.class, field = "PROFILE")
-  @Option(names = {"-D", "--decrypt"}, description = "Decrypt source files using specified profile (@default, @extended) or options.")
+  @Option(names = {"-D", "--decrypt"}, description = "Decrypt source files using specified profile @|bold,cyan (@default, @extended)|@ or options.")
   String decrypt;
 
   @Option(names = "-u", description = "Apply extended (unicode) encryption profile options.")

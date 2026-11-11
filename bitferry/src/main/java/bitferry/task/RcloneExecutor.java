@@ -220,4 +220,57 @@ final class RcloneExecutor {
     List<String> cmd = command(rclone);
     return ExecutorSupport.execute(commandExecutor, rclone.manager(), cmd, null, rclone.processEnvironment(), rclone.tag(), output);
   }
+
+  List<String> maintainCommand(Rclone rclone) {
+    Manager manager = rclone.manager();
+    List<String> cmd = new ArrayList<>();
+    cmd.add(ExecutorSupport.resolveExecutable("rclone"));
+
+    // Subcommand: check
+    cmd.add("check");
+
+    // Include filters
+    for (String inc : rclone.include()) {
+      cmd.add("--filter");
+      cmd.add("+ " + inc);
+    }
+    // Exclude Bitferry storage files
+    cmd.add("--filter");
+    cmd.add("- " + Bitferry.STORAGE);
+    cmd.add("--filter");
+    cmd.add("- " + Bitferry.STORAGE_IMAGE);
+    // Exclude filters
+    for (String exc : rclone.exclude()) {
+      cmd.add("--filter");
+      cmd.add("- " + exc);
+    }
+
+    // Common options
+    cmd.add("--config");
+    cmd.add(ExecutorSupport.isWindows() ? "NUL" : "/dev/null");
+    if (manager.verbose()) {
+      cmd.add("--verbose");
+    }
+    if (manager.quiet) {
+      cmd.add("--quiet");
+    }
+
+    // Process options
+    cmd.addAll(rclone.processOptions());
+
+    // The endpoints (or the crypt tail placing the ':crypt:' remote for the encrypted tasks)
+    cmd.addAll(rclone.encryption().processOpts(rclone));
+
+    return cmd;
+  }
+
+  List<List<String>> maintainCommands(Rclone rclone) {
+    return List.of(ExecutorSupport.displayCommand(maintainCommand(rclone)));
+  }
+
+  /// Perform maintenance (integrity checking) on the rclone-backed task. Return true on success.
+  boolean maintain(Rclone rclone, Consumer<String> output) {
+    List<String> cmd = maintainCommand(rclone);
+    return ExecutorSupport.execute(commandExecutor, rclone.manager(), cmd, null, rclone.processEnvironment(), rclone.tag(), output);
+  }
 }

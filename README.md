@@ -186,9 +186,15 @@ untrained until the target builds its own.
 ## Development
 
 ```bash
-./gradlew :bitferry-cli:run --args="info"
+./bitferry.sh info                          # build + run the CLI from the local build tree
+./gradlew :bitferry-cli:run --args="info"   # via the gradle run task (no interactive terminal)
 ./gradlew :bitferry-gui:run
 ```
+
+The `bitferry.sh` launcher builds the CLI (`:bitferry-cli:installDist`) and runs the
+installed launcher with the arguments passed through unchanged. Unlike the gradle run
+task (whose daemon detaches the process console), it keeps the real terminal attached,
+so the interactive password prompting works and the help layout adapts to the terminal.
 
 Logging: the library is logging-free (the domain returns results and errors); the CLI
 reports through `java.util.logging` (verbosity via the common options), and so does the

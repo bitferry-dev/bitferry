@@ -29,7 +29,7 @@ public class CreateRestoreCommand implements Callable<Integer>, HasCommonOptions
   String destination;
 
   @Profiles(Restore.class)
-  @Option(names = {"-X", "--execute"}, description = "Extra backend execution options (comma-separated), profile (@default) or '-' for none.")
+  @Option(names = {"-X", "--execute"}, description = "Extra backend execution options (comma-separated), profile @|bold,cyan (@default)|@ or '-' for none.")
   String execute;
 
   @Option(names = "--include", split = ",", description = "Include path specifications (comma-separated list).")

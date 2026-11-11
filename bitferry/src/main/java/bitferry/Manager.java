@@ -333,6 +333,31 @@ public class Manager {
     return process(Arrays.asList(tags), null);
   }
 
+  /// Maintain the intact tasks matched by the specified (partial) tags or all intact tasks
+  /// forwarding output to the consumer (null for CLI pass-through).
+  public boolean maintain(List<String> tags, java.util.function.Consumer<String> output) {
+    boolean outcome = true;
+    for (Task t : selectTasks(tags).values()) {
+      outcome = t.maintain(output) && outcome;
+    }
+    return outcome;
+  }
+
+  /// Maintain the intact tasks matched by the specified (partial) tags or all intact tasks with CLI pass-through.
+  public boolean maintain(List<String> tags) {
+    return maintain(tags, null);
+  }
+
+  /// Maintain the intact tasks with captured output.
+  public boolean maintain(java.util.function.Consumer<String> output, String... tags) {
+    return maintain(Arrays.asList(tags), output);
+  }
+
+  /// Maintain the intact tasks matched by the specified (partial) tags or all intact tasks with CLI pass-through.
+  public boolean maintain(String... tags) {
+    return maintain(Arrays.asList(tags), null);
+  }
+
   /// Return the backend executor used for the task processing.
   public Executor backendExecutor() {
     return backendExecutor;

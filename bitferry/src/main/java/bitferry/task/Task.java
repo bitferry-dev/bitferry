@@ -314,9 +314,32 @@ public abstract class Task {
     }
   }
 
+  /// Maintain the task repository/endpoints by delegating to the manager's executor.
+  /// The referred volumes are checked for presence, and the processing-in-progress guard
+  /// rejects re-entrancy. Return true on success.
+  public boolean maintain(Consumer<String> output) {
+    if (processing) throw new BitferryError("task #" + tag + " is already being processed");
+    processing = true;
+    try {
+      LOG.log(Level.INFO, () -> "maintaining task #" + tag);
+      for (String vtag : referredVolumes()) {
+        Volume v = manager.volume(vtag);
+        if (v != null) v.checkPresence();
+      }
+      return manager.backendExecutor().maintain(this, output);
+    } finally {
+      processing = false;
+    }
+  }
+
   /// Return the backend command lines about to execute for this task.
   public List<List<String>> commands() {
     return manager.backendExecutor().commands(this);
+  }
+
+  /// Return the backend command lines about to execute for maintaining this task.
+  public List<List<String>> maintainCommands() {
+    return manager.backendExecutor().maintainCommands(this);
   }
 
   /// Return the task's short descriptor used in the listings.

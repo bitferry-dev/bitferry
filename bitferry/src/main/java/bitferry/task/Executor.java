@@ -64,6 +64,34 @@ public interface Executor {
     return commands((Task) task);
   }
 
+  /// Perform maintenance (integrity verification, snapshot retention, and garbage collection)
+  /// on the task or its target repository. Return true on success.
+  default boolean maintain(Task task, Consumer<String> output) {
+    return true;
+  }
+
+  /// Perform maintenance with inherited stdio (CLI pass-through).
+  default boolean maintain(Task task) {
+    return maintain(task, null);
+  }
+
+  /// Return the backend command lines about to execute for maintaining this task.
+  default List<List<String>> maintainCommands(Task task) {
+    return List.of();
+  }
+
+  default List<List<String>> maintainCommands(Backup task) {
+    return maintainCommands((Task) task);
+  }
+
+  default List<List<String>> maintainCommands(Restore task) {
+    return maintainCommands((Task) task);
+  }
+
+  default List<List<String>> maintainCommands(Rclone task) {
+    return maintainCommands((Task) task);
+  }
+
   /// Default system process backend executor.
   static Executor system() {
     return new SystemExecutor();

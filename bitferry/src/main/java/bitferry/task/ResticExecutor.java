@@ -35,6 +35,28 @@ final class ResticExecutor {
     return false;
   }
 
+  /// Maintain the restic-backed task repository. Return true on success.
+  boolean maintain(Restic restic, Consumer<String> output) {
+    if (restic instanceof Backup backup) {
+      return maintainBackup(backup, output);
+    } else if (restic instanceof Restore restore) {
+      return maintainRestore(restore, output);
+    }
+    String message = "unsupported restic operation for maintenance: " + restic.operation();
+    LOG.log(Level.ERROR, () -> message);
+    if (output != null) output.accept(message);
+    return false;
+  }
+
+  List<List<String>> maintainCommands(Restic restic) {
+    if (restic instanceof Backup backup) {
+      return maintainCommands(backup);
+    } else if (restic instanceof Restore restore) {
+      return maintainCommands(restore);
+    }
+    return List.of();
+  }
+
   /// Perform conformance check of the candidate repository password against the existing repository.
   void conform(Restic restic) {
     if (restic instanceof Backup backup && Boolean.TRUE.equals(backup.formatMode())) {
@@ -183,20 +205,25 @@ final class ResticExecutor {
     return cmd;
   }
 
-  List<String> checkCommand(Backup backup) {
-    if (backup.check() == null || backup.check().isEmpty()) return null;
+  List<List<String>> commands(Backup backup) {
+    return List.of(ExecutorSupport.displayCommand(backupCommand(backup)));
+  }
+
+  List<String> maintainCheckCommand(Backup backup) {
     Manager manager = backup.manager();
     List<String> checkCmd = new ArrayList<>();
     checkCmd.add(resolveExecutable());
     checkCmd.add("check");
-    checkCmd.addAll(backup.check());
+    if (backup.check() != null) {
+      checkCmd.addAll(backup.check());
+    }
     checkCmd.addAll(commonOptions(manager));
     checkCmd.add("-r");
     checkCmd.add(backup.destination().processOpts());
     return checkCmd;
   }
 
-  List<String> forgetCommand(Backup backup) {
+  List<String> maintainForgetCommand(Backup backup) {
     if (backup.forget() == null || backup.forget().isEmpty()) return null;
     Manager manager = backup.manager();
     List<String> forgetCmd = new ArrayList<>();
@@ -204,7 +231,11 @@ final class ResticExecutor {
     forgetCmd.add("forget");
     forgetCmd.add("--tag");
     forgetCmd.add("bitferry," + backup.tag());
-    forgetCmd.addAll(backup.forget());
+    for (String opt : backup.forget()) {
+      if (!"--prune".equals(opt)) {
+        forgetCmd.add(opt);
+      }
+    }
     forgetCmd.addAll(commonOptions(manager));
     if (manager.simulate) {
       forgetCmd.add("--dry-run");
@@ -214,14 +245,42 @@ final class ResticExecutor {
     return forgetCmd;
   }
 
-  List<List<String>> commands(Backup backup) {
+  List<String> pruneCommand(Backup backup) {
+    Manager manager = backup.manager();
+    List<String> pruneCmd = new ArrayList<>();
+    pruneCmd.add(resolveExecutable());
+    pruneCmd.add("prune");
+    pruneCmd.addAll(commonOptions(manager));
+    if (manager.simulate) {
+      pruneCmd.add("--dry-run");
+    }
+    pruneCmd.add("-r");
+    pruneCmd.add(backup.destination().processOpts());
+    return pruneCmd;
+  }
+
+  List<List<String>> maintainCommands(Backup backup) {
     List<List<String>> cmds = new ArrayList<>();
-    cmds.add(ExecutorSupport.displayCommand(backupCommand(backup)));
-    List<String> check = checkCommand(backup);
-    if (check != null) cmds.add(ExecutorSupport.displayCommand(check));
-    List<String> forget = forgetCommand(backup);
+    cmds.add(ExecutorSupport.displayCommand(maintainCheckCommand(backup)));
+    List<String> forget = maintainForgetCommand(backup);
     if (forget != null) cmds.add(ExecutorSupport.displayCommand(forget));
+    cmds.add(ExecutorSupport.displayCommand(pruneCommand(backup)));
     return cmds;
+  }
+
+  List<String> maintainCheckCommand(Restore restore) {
+    Manager manager = restore.manager();
+    List<String> checkCmd = new ArrayList<>();
+    checkCmd.add(resolveExecutable());
+    checkCmd.add("check");
+    checkCmd.addAll(commonOptions(manager));
+    checkCmd.add("-r");
+    checkCmd.add(restore.source().processOpts());
+    return checkCmd;
+  }
+
+  List<List<String>> maintainCommands(Restore restore) {
+    return List.of(ExecutorSupport.displayCommand(maintainCheckCommand(restore)));
   }
 
   List<String> restoreCommand(Restore restore) {
@@ -259,7 +318,26 @@ final class ResticExecutor {
   private boolean runBackup(Backup backup, Consumer<String> output) {
     Manager manager = backup.manager();
     String repo = backup.destination().processOpts();
+    Path repoDir = Path.of(repo);
     Path cwd = Path.of(backup.source().processOpts());
+
+    // Maintenance check before backup: if due or state missing/corrupt, run maintenance first
+    if (backup.cadence() != null) {
+      RepoState state = RepoState.load(repoDir);
+      if (state.isDue(backup.cadence())) {
+        LOG.log(Level.INFO, () -> "maintenance cadence triggered for task #" + backup.tag() + "; running maintenance before backup");
+        if (output != null) {
+          output.accept("maintenance cadence triggered for task #" + backup.tag() + "; running maintenance before backup");
+        }
+        boolean maintained = maintainBackup(backup, output);
+        if (!maintained) {
+          String msg = "maintenance failed before backup for task #" + backup.tag() + "; aborting backup";
+          LOG.log(Level.ERROR, () -> msg);
+          if (output != null) output.accept(msg);
+          return false;
+        }
+      }
+    }
 
     if (output != null) {
       output.accept("backing up '" + backup.source().processOpts() + "' into repository '" + repo + "'");
@@ -270,29 +348,81 @@ final class ResticExecutor {
     boolean success = ExecutorSupport.execute(commandExecutor, manager, cmd, cwd, environment, backup.tag(), output);
     if (!success) return false;
 
-    // Optional integrity check
-    List<String> checkCmd = checkCommand(backup);
-    if (checkCmd != null) {
-      if (output != null) {
-        output.accept("checking repository '" + repo + "'");
-      }
-      if (!ExecutorSupport.execute(commandExecutor, manager, checkCmd, null, environment, backup.tag(), output)) {
-        return false;
-      }
+    // Record completed backup in repository state
+    if (!manager.simulate) {
+      RepoState state = RepoState.load(repoDir);
+      state.recordBackup();
+      state.save(repoDir);
     }
 
-    // Optional retention forget
-    List<String> forgetCmd = forgetCommand(backup);
+    return true;
+  }
+
+  boolean maintainBackup(Backup backup, Consumer<String> output) {
+    Manager manager = backup.manager();
+    String repo = backup.destination().processOpts();
+    Map<String, String> environment = backup.processEnvironment();
+
+    if (output != null) {
+      output.accept("maintaining repository '" + repo + "'");
+    }
+
+    // Step 1: Structural check (gatekeeper before any retention/prune)
+    List<String> checkCmd = maintainCheckCommand(backup);
+    if (output != null) {
+      output.accept("checking repository '" + repo + "'");
+    }
+    boolean checkOk = ExecutorSupport.execute(commandExecutor, manager, checkCmd, null, environment, backup.tag(), output);
+    if (!checkOk) {
+      String msg = "maintenance aborted for task #" + backup.tag() + ": repository check failed";
+      LOG.log(Level.ERROR, () -> msg);
+      if (output != null) output.accept(msg);
+      return false;
+    }
+
+    // Step 2: Forget (retention)
+    List<String> forgetCmd = maintainForgetCommand(backup);
     if (forgetCmd != null) {
       if (output != null) {
         output.accept("applying retention policy to repository '" + repo + "'");
       }
-      if (!ExecutorSupport.execute(commandExecutor, manager, forgetCmd, null, environment, backup.tag(), output)) {
+      boolean forgetOk = ExecutorSupport.execute(commandExecutor, manager, forgetCmd, null, environment, backup.tag(), output);
+      if (!forgetOk) {
         return false;
       }
     }
 
+    // Step 3: Prune (reclaim space)
+    List<String> pruneCmd = pruneCommand(backup);
+    if (output != null) {
+      output.accept("pruning repository '" + repo + "'");
+    }
+    boolean pruneOk = ExecutorSupport.execute(commandExecutor, manager, pruneCmd, null, environment, backup.tag(), output);
+    if (!pruneOk) {
+      return false;
+    }
+
+    // Step 4: Record maintenance in repository state
+    if (!manager.simulate) {
+      Path repoDir = Path.of(repo);
+      RepoState state = RepoState.load(repoDir);
+      state.recordMaintenance();
+      state.save(repoDir);
+    }
     return true;
+  }
+
+  boolean maintainRestore(Restore restore, Consumer<String> output) {
+    Manager manager = restore.manager();
+    String repo = restore.source().processOpts();
+    Map<String, String> environment = restore.processEnvironment();
+
+    if (output != null) {
+      output.accept("checking repository '" + repo + "'");
+    }
+
+    List<String> checkCmd = maintainCheckCommand(restore);
+    return ExecutorSupport.execute(commandExecutor, manager, checkCmd, null, environment, restore.tag(), output);
   }
 
   private boolean runRestore(Restore restore, Consumer<String> output) {

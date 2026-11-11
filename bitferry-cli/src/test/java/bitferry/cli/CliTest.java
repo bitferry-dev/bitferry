@@ -88,6 +88,7 @@ class CliTest {
     String bHelp = backupOut.toString();
     assertTrue(bHelp.contains("profile (@default)"));
     assertTrue(bHelp.contains("profile (@default, @full)"));
+    assertTrue(bHelp.contains("-M, --maintain"));
     assertFalse(bHelp.contains("@default: --no-cache"));
     assertFalse(bHelp.contains("@full:    --no-cache"));
     assertFalse(bHelp.contains("--prune"));
@@ -98,23 +99,27 @@ class CliTest {
     backupVerboseCmd.setOut(new PrintWriter(backupVerboseOut));
     assertEquals(0, backupVerboseCmd.execute("create", "task", "backup", "--help", "-v"));
     String bVerboseHelp = backupVerboseOut.toString();
-    assertTrue(bVerboseHelp.contains("@default: --no-cache"));
-    assertTrue(bVerboseHelp.contains("@full:    --no-cache --read-data"));
-    assertTrue(bVerboseHelp.contains("@default: --prune --no-cache"));
+    assertTrue(bVerboseHelp.contains("@full:    --read-data"));
+    assertTrue(bVerboseHelp.contains("@default:"));
+    assertTrue(bVerboseHelp.contains("@default: --prune"));
+    assertTrue(bVerboseHelp.contains("7d,5"));
+    assertFalse(bVerboseHelp.contains("--no-cache"));
 
     // Verbose help with combined flag (-vh)
     CommandLine backupCombinedCmd = Main.createCommandLine();
     StringWriter backupCombinedOut = new StringWriter();
     backupCombinedCmd.setOut(new PrintWriter(backupCombinedOut));
     assertEquals(0, backupCombinedCmd.execute("create", "task", "backup", "-vh"));
-    assertTrue(backupCombinedOut.toString().contains("@default: --no-cache"));
+    assertTrue(backupCombinedOut.toString().contains("@default: --prune"));
+    assertFalse(backupCombinedOut.toString().contains("--no-cache"));
 
     // Verbose help with option before subcommand (-v create task backup -h)
     CommandLine backupParentVerboseCmd = Main.createCommandLine();
     StringWriter backupParentVerboseOut = new StringWriter();
     backupParentVerboseCmd.setOut(new PrintWriter(backupParentVerboseOut));
     assertEquals(0, backupParentVerboseCmd.execute("-v", "create", "task", "backup", "-h"));
-    assertTrue(backupParentVerboseOut.toString().contains("@default: --no-cache"));
+    assertTrue(backupParentVerboseOut.toString().contains("@default: --prune"));
+    assertFalse(backupParentVerboseOut.toString().contains("--no-cache"));
 
     // Synchronize help: non-verbose vs verbose
     CommandLine syncCmd = Main.createCommandLine();
@@ -141,14 +146,15 @@ class CliTest {
     assertEquals(0, restoreCmd.execute("create", "task", "restore", "--help"));
     String rHelp = restoreOut.toString();
     assertTrue(rHelp.contains("profile (@default)"));
-    assertFalse(rHelp.contains("@default: --no-cache --sparse"));
+    assertFalse(rHelp.contains("@default: --sparse"));
 
     CommandLine restoreVerboseCmd = Main.createCommandLine();
     StringWriter restoreVerboseOut = new StringWriter();
     restoreVerboseCmd.setOut(new PrintWriter(restoreVerboseOut));
     assertEquals(0, restoreVerboseCmd.execute("create", "task", "restore", "-v", "--help"));
     String rVerboseHelp = restoreVerboseOut.toString();
-    assertTrue(rVerboseHelp.contains("@default: --no-cache --sparse"));
+    assertTrue(rVerboseHelp.contains("@default: --sparse"));
+    assertFalse(rVerboseHelp.contains("--no-cache"));
   }
 
   @Test
@@ -176,9 +182,10 @@ class CliTest {
     dummyCmd.setOut(new PrintWriter(verboseOut));
     assertEquals(0, dummyCmd.execute("--help", "-v"));
     String helpText = verboseOut.toString();
-    assertTrue(helpText.contains("@default: --no-cache"));
-    assertTrue(helpText.contains("@full:    --no-cache --read-data"));
+    assertTrue(helpText.contains("@full:    --read-data"));
+    assertTrue(helpText.contains("@default:"));
     assertTrue(helpText.contains("@default: --metadata"));
+    assertFalse(helpText.contains("--no-cache"));
   }
 
   @Test
@@ -854,7 +861,7 @@ class CliTest {
     Backup task1 = (Backup) m.tasks().values().iterator().next();
     assertEquals(Backup.FORGET.get("default"), Task.strings(task1.serialize().get("restic").get("forget"), false));
     assertEquals(Backup.CHECK.get("full"), Task.strings(task1.serialize().get("restic").get("check"), false));
-    assertEquals(List.of("--no-cache"), Task.strings(task1.serialize().get("restic").get("execute"), false));
+    assertNull(task1.serialize().get("restic").get("execute"));
 
     // Delete task1 to test shorthand creation cleanly
     assertEquals(0, cmd.execute("--path", volDir.toString(), "delete", "task", task1.tag()));
@@ -952,5 +959,82 @@ class CliTest {
     var colorScheme = new picocli.CommandLine.Help.ColorScheme.Builder().build();
     VerboseHelp.INSTANCE.create(spec, colorScheme);
     assertTrue(spec.usageMessage().autoWidth());
+  }
+
+  @Test
+  void createBackupWithCadenceOptions() throws IOException {
+    Path volDir = tempDir.resolve("cadence_vol");
+    Path repoDir = tempDir.resolve("cadence_repo");
+    Files.createDirectories(volDir);
+    Files.createDirectories(repoDir);
+
+    assertEquals(0, cmd.execute("create", "volume", volDir.toString()));
+    String vtag = volumeTag(managerFor(volDir), volDir);
+
+    // 1. Explicit -M 14d,10
+    int code = executeWithPassword("secret1", "--path", volDir.toString(),
+      "create", "task", "backup", ":" + vtag + ":", "local:" + repoDir, "-a", "-M", "14d,10");
+    assertEquals(0, code, () -> "stderr: " + err.toString());
+
+    Manager m = managerFor(volDir);
+    Backup task1 = (Backup) m.selectTasks().values().iterator().next();
+    assertEquals("14d,10", task1.cadence().format());
+    assertEquals("14d,10", task1.serialize().get("restic").get("maintain").asString());
+
+    assertEquals(0, cmd.execute("--path", volDir.toString(), "delete", "task", task1.tag()));
+
+    // 2. Shorthand -m sets @default (7d,5)
+    code = executeWithPassword("secret1", "--path", volDir.toString(),
+      "create", "task", "backup", ":" + vtag + ":", "local:" + repoDir, "-a", "-m");
+    assertEquals(0, code, () -> "stderr: " + err.toString());
+
+    m = managerFor(volDir);
+    Backup task2 = (Backup) m.selectTasks().values().iterator().next();
+    assertEquals("7d,5", task2.cadence().format());
+    assertNull(task2.serialize().get("restic"));
+
+    assertEquals(0, cmd.execute("--path", volDir.toString(), "delete", "task", task2.tag()));
+
+    // 3. Disable with -M -
+    code = executeWithPassword("secret1", "--path", volDir.toString(),
+      "create", "task", "backup", ":" + vtag + ":", "local:" + repoDir, "-a", "-M", "-");
+    assertEquals(0, code, () -> "stderr: " + err.toString());
+
+    m = managerFor(volDir);
+    Backup task3 = (Backup) m.selectTasks().values().iterator().next();
+    assertNull(task3.cadence());
+    assertEquals("-", task3.serialize().get("restic").get("maintain").asString());
+
+    assertEquals(0, cmd.execute("--path", volDir.toString(), "delete", "task", task3.tag()));
+
+    // 4. Mutual exclusivity: -m and -M both specified
+    code = executeWithPassword("secret1", "--path", volDir.toString(),
+      "create", "task", "backup", ":" + vtag + ":", "local:" + repoDir, "-a", "-m", "-M", "14d");
+    assertNotEquals(0, code);
+    assertTrue(err.toString().contains("maintenance cadence specified twice"));
+  }
+
+  @Test
+  void maintainCommandExecution() throws IOException {
+    Path volDir = tempDir.resolve("maint_vol");
+    Path dataDir = tempDir.resolve("maint_data");
+    Files.createDirectories(volDir);
+    Files.createDirectories(dataDir);
+
+    assertEquals(0, cmd.execute("create", "volume", volDir.toString()));
+    String vtag = volumeTag(managerFor(volDir), volDir);
+
+    // Create a synchronize task
+    assertEquals(0, cmd.execute("--path", volDir.toString(),
+      "create", "task", "synchronize", ":" + vtag + ":", "local:" + dataDir));
+
+    // Run maintain in simulation mode
+    assertEquals(0, cmd.execute("--path", volDir.toString(), "-n", "maintain"));
+    assertTrue(out.toString().contains("maintained successfully") || out.toString().contains("1/1"));
+
+    // Run maintain via alias 'm'
+    out.getBuffer().setLength(0);
+    assertEquals(0, cmd.execute("--path", volDir.toString(), "-n", "m"));
+    assertTrue(out.toString().contains("maintained successfully") || out.toString().contains("1/1"));
   }
 }
