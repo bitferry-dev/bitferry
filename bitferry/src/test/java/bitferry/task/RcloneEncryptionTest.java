@@ -47,6 +47,8 @@ class RcloneEncryptionTest {
     // The password never travels with the descriptor
     assertFalse(data.has("password"));
     assertEquals("encrypt", task.encryption().operation());
+    assertEquals("encrypt+synchronize", task.displayOperation());
+    assertEquals("encrypt+synchronize " + volumeSource().describe() + " --> " + volumeEncrypted().describe(), task.describe());
   }
 
   @Test
@@ -75,6 +77,8 @@ class RcloneEncryptionTest {
     assertEquals(Rclone.PROFILE.get("default"), Task.strings(data.get("rclone").get("decrypt"), false));
     assertFalse(data.get("rclone").has("encrypt"));
     assertEquals("decrypt", task.encryption().operation());
+    assertEquals("decrypt+copy", task.displayOperation());
+    assertEquals("decrypt+copy " + volumeEncrypted().describe() + " --> " + volumeSource().describe(), task.describe());
   }
 
   @Test
@@ -146,6 +150,8 @@ class RcloneEncryptionTest {
     assertFalse(data.get("rclone").has("encrypt"));
     assertFalse(data.get("rclone").has("decrypt"));
     assertTrue(task.encryption().processEnvironment().isEmpty());
+    assertEquals("synchronize", task.displayOperation());
+    assertEquals("synchronize " + volumeSource().describe() + " --> " + volumeEncrypted().describe(), task.describe());
     assertThrows(BitferryError.class, () -> task.vaultVolume());
   }
 

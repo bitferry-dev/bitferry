@@ -202,8 +202,8 @@ public class Manager {
         .map(Map.Entry::getValue)
         .toList();
       if (perTag != null) {
-        if (es.size() < perTag) throw new BitferryError("too few entities matching specified tag part <" + t + ">");
-        if (es.size() > perTag) throw new BitferryError("too many entities matching specified tag part <" + t + ">");
+        if (es.isEmpty()) throw new BitferryError("no entries matching specified tag part <" + t + ">");
+        if (es.size() > perTag) throw new BitferryError("too many entries matching specified tag part <" + t + ">");
       }
       xs.addAll(es);
     }

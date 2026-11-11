@@ -166,7 +166,7 @@ public final class CliUtils {
   /// Format a task with ANSI color markup.
   public static String formatTask(Task task) {
     return String.format("%s %s %s %s",
-      Ansi.AUTO.string("@|bold " + task.operation() + "|@"),
+      Ansi.AUTO.string("@|bold " + task.displayOperation() + "|@"),
       formatEndpoint(task.source()),
       formatDirector(task),
       formatEndpoint(task.destination())

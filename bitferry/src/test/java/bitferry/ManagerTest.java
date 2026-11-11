@@ -121,7 +121,7 @@ class ManagerTest {
   void tagPickingRequiresUnambiguousMatches() {
     Map<String, String> entities = Map.of("abc1", "x", "abc2", "y", "def1", "z");
     assertThrows(BitferryError.class, () -> Manager.pick(entities, List.of("abc"), 1)); // Too many matches
-    assertThrows(BitferryError.class, () -> Manager.pick(entities, List.of("qqq"), 1)); // Too few matches
+    assertThrows(BitferryError.class, () -> Manager.pick(entities, List.of("qqq"), 1)); // No matches
     assertEquals(List.of("x"), Manager.pick(entities, List.of("abc1"), 1));
     // Without the per-tag requirement the matches are not required to be unique
     assertEquals(2, Manager.pick(entities, List.of("abc"), null).size());

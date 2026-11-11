@@ -390,6 +390,14 @@ class CliTest {
       .findFirst().orElseThrow();
     assertInstanceOf(Rclone.Encrypt.class, task.encryption());
     assertEquals("crypt-secret", task.encryption().password());
+    assertEquals("encrypt+synchronize", task.displayOperation());
+
+    // Printing task info surfaces the encrypt+synchronize operation status
+    cmd = Main.createCommandLine();
+    out = new StringWriter();
+    cmd.setOut(new PrintWriter(out));
+    assertEquals(0, cmd.execute("--path", volDir.toString(), "info"));
+    assertTrue(out.toString().contains("encrypt+synchronize"));
   }
 
   @Test
@@ -743,6 +751,17 @@ class CliTest {
     assertTrue(output.contains("rclone sync"), () -> "expected rclone sync in: " + output);
     assertTrue(output.contains("+ *.txt"), () -> "expected + *.txt in: " + output);
     assertTrue(output.contains("- " + Bitferry.STORAGE), () -> "expected storage exclude in: " + output);
+    assertTrue(output.contains("# Task #" + ttag + ": synchronize"));
+    assertTrue(output.contains("Status:        ✓ intact"));
+    assertTrue(output.contains("Backend:       rclone"));
+    assertTrue(output.contains("Operation:     synchronize"));
+    assertTrue(output.contains("Encryption:    none"));
+    assertTrue(output.contains("# Filters"));
+    assertTrue(output.contains("Include:       *.txt"));
+    assertTrue(output.contains("# Commands"));
+    assertTrue(output.contains("Execute:"));
+    assertTrue(output.contains("Maintain:"));
+    assertTrue(output.contains("rclone check"));
 
     // 2. Alias: i t <tag>
     cmd = Main.createCommandLine();
@@ -753,6 +772,23 @@ class CliTest {
     code = cmd.execute("--path", volDir.toString(), "i", "t", ttag);
     assertEquals(0, code, () -> "stderr: " + err2.toString());
     assertEquals(output, out.toString().trim());
+
+    // 2b. Bare commands mode: info task <tag> -c and --commands
+    cmd = Main.createCommandLine();
+    out = new StringWriter();
+    cmd.setOut(new PrintWriter(out));
+    assertEquals(0, cmd.execute("--path", volDir.toString(), "info", "task", ttag, "-c"));
+    String bareOutput = out.toString().trim();
+    assertTrue(bareOutput.startsWith("rclone sync"));
+    assertFalse(bareOutput.contains("# Task"));
+    assertFalse(bareOutput.contains("# Filters"));
+    assertFalse(bareOutput.contains("# Commands"));
+
+    cmd = Main.createCommandLine();
+    out = new StringWriter();
+    cmd.setOut(new PrintWriter(out));
+    assertEquals(0, cmd.execute("--path", volDir.toString(), "info", "task", ttag, "--commands"));
+    assertEquals(bareOutput, out.toString().trim());
 
     // 3. info task with no tags requires TAGS parameter (exit code 2)
     cmd = Main.createCommandLine();
@@ -772,7 +808,7 @@ class CliTest {
     cmd.setErr(new PrintWriter(err));
     code = cmd.execute("--path", volDir.toString(), "info", "task", "nonexistent");
     assertEquals(1, code);
-    assertTrue(err.toString().contains("too few entities matching specified tag part <nonexistent>"));
+    assertTrue(err.toString().contains("no entries matching specified tag part <nonexistent>"));
 
     // 5. Existing 'info' and 'i' without subcommand still print intact volumes/tasks
     cmd = Main.createCommandLine();
@@ -1028,13 +1064,188 @@ class CliTest {
     assertEquals(0, cmd.execute("--path", volDir.toString(),
       "create", "task", "synchronize", ":" + vtag + ":", "local:" + dataDir));
 
+    Task task = managerFor(volDir).selectTasks().values().iterator().next();
+
     // Run maintain in simulation mode
-    assertEquals(0, cmd.execute("--path", volDir.toString(), "-n", "maintain"));
+    assertEquals(0, cmd.execute("--path", volDir.toString(), "-n", "maintain", task.tag()),
+      () -> "stderr: " + err);
     assertTrue(out.toString().contains("maintained successfully") || out.toString().contains("1/1"));
 
     // Run maintain via alias 'm'
     out.getBuffer().setLength(0);
-    assertEquals(0, cmd.execute("--path", volDir.toString(), "-n", "m"));
+    assertEquals(0, cmd.execute("--path", volDir.toString(), "-n", "m", task.tag()),
+      () -> "stderr: " + err);
     assertTrue(out.toString().contains("maintained successfully") || out.toString().contains("1/1"));
+  }
+
+  @Test
+  void taskInfoPrintsEncryptionStatusForEncryptAndDecrypt() throws IOException {
+    Path volDir = tempDir.resolve("enc_info_vol");
+    Path encDir = tempDir.resolve("enc_info_data");
+    Files.createDirectories(volDir);
+    Files.createDirectories(encDir);
+
+    assertEquals(0, cmd.execute("create", "volume", volDir.toString()));
+    String vtag = volumeTag(managerFor(volDir), volDir);
+
+    // 1. Create an encrypt synchronize task: :vtag: -> local:enc
+    int code = executeWithPassword("pass1", "--path", volDir.toString(),
+      "create", "task", "synchronize", ":" + vtag + ":", "local:" + encDir, "-e");
+    assertEquals(0, code, () -> "stderr: " + err.toString());
+
+    // 2. Create a decrypt copy task: local:enc -> :vtag:dec
+    code = executeWithPassword("pass1", "--path", volDir.toString(),
+      "create", "task", "copy", "local:" + encDir, ":" + vtag + ":dec", "-d");
+    assertEquals(0, code, () -> "stderr: " + err.toString());
+
+    // 3. Verify 'info' command prints encrypt+synchronize and decrypt+copy
+    cmd = Main.createCommandLine();
+    out = new StringWriter();
+    cmd.setOut(new PrintWriter(out));
+    assertEquals(0, cmd.execute("--path", volDir.toString(), "info"));
+    String infoOutput = out.toString();
+    assertTrue(infoOutput.contains("encrypt+synchronize"), () -> "Expected 'encrypt+synchronize' in info output:\n" + infoOutput);
+    assertTrue(infoOutput.contains("decrypt+copy"), () -> "Expected 'decrypt+copy' in info output:\n" + infoOutput);
+
+    // 4. Verify 'execute' command banner prints encrypt+synchronize and decrypt+copy
+    cmd = Main.createCommandLine();
+    out = new StringWriter();
+    cmd.setOut(new PrintWriter(out));
+    assertEquals(0, cmd.execute("--path", volDir.toString(), "-n", "execute"));
+    String execOutput = out.toString();
+    assertTrue(execOutput.contains("encrypt+synchronize"), () -> "Expected 'encrypt+synchronize' in execute output:\n" + execOutput);
+    assertTrue(execOutput.contains("decrypt+copy"), () -> "Expected 'decrypt+copy' in execute output:\n" + execOutput);
+  }
+
+  @Test
+  void infoTaskBreakdownEncryptedRclone() throws IOException {
+    Path volDir = tempDir.resolve("enc_breakdown_vol");
+    Path encDir = tempDir.resolve("enc_breakdown_data");
+    Files.createDirectories(volDir);
+    Files.createDirectories(encDir);
+
+    assertEquals(0, cmd.execute("create", "volume", volDir.toString()));
+    String vtag = volumeTag(managerFor(volDir), volDir);
+
+    int code = executeWithPassword("secret123", "--path", volDir.toString(),
+      "create", "task", "synchronize", ":" + vtag + ":", "local:" + encDir, "-e");
+    assertEquals(0, code, () -> "stderr: " + err.toString());
+
+    Manager m = managerFor(volDir);
+    Task task = m.tasks().values().iterator().next();
+    String ttag = task.tag();
+
+    cmd = Main.createCommandLine();
+    out = new StringWriter();
+    cmd.setOut(new PrintWriter(out));
+    assertEquals(0, cmd.execute("--path", volDir.toString(), "info", "task", ttag));
+    String breakdown = out.toString();
+
+    assertTrue(breakdown.contains("# Task #" + ttag + ": encrypt+synchronize"));
+    assertTrue(breakdown.contains("Status:        ✓ intact"));
+    assertTrue(breakdown.contains("Backend:       rclone"));
+    assertTrue(breakdown.contains("Operation:     synchronize"));
+    assertTrue(breakdown.contains("Encryption:    encrypt"));
+    assertTrue(breakdown.contains("Vault Volume:  #" + vtag));
+    assertTrue(breakdown.contains("# Commands"));
+    assertTrue(breakdown.contains("Execute:"));
+    assertTrue(breakdown.contains("Maintain:"));
+    assertTrue(breakdown.contains("rclone check"));
+
+    // Bare mode emits only rclone command line
+    cmd = Main.createCommandLine();
+    out = new StringWriter();
+    cmd.setOut(new PrintWriter(out));
+    assertEquals(0, cmd.execute("--path", volDir.toString(), "info", "task", ttag, "-c"));
+    String bare = out.toString().trim();
+    assertTrue(bare.startsWith("rclone sync"));
+    assertFalse(bare.contains("# Task"));
+  }
+
+  @Test
+  void infoTaskBreakdownResticBackupAndRestore() throws IOException {
+    Path volDir = tempDir.resolve("restic_breakdown_vol");
+    Path repoDir = tempDir.resolve("restic_breakdown_repo");
+    Path restoreDir = tempDir.resolve("restic_breakdown_restore");
+    Files.createDirectories(volDir);
+    Files.createDirectories(repoDir);
+    Files.createDirectories(restoreDir);
+
+    assertEquals(0, cmd.execute("create", "volume", volDir.toString()));
+    String vtag = volumeTag(managerFor(volDir), volDir);
+
+    // 1. Create backup task (attached mode with retention and check)
+    int code = executeWithPassword("repo-pass", "--path", volDir.toString(),
+      "create", "task", "backup", ":" + vtag + ":", "local:" + repoDir, "-a", "-f", "-c", "--exclude", "*.tmp");
+    assertEquals(0, code, () -> "stderr: " + err.toString());
+
+    Manager m = managerFor(volDir);
+    Task backupTask = m.tasks().values().stream().filter(t -> t instanceof Backup).findFirst().orElseThrow();
+    String backupTag = backupTask.tag();
+
+    // 2. Info task on backup
+    cmd = Main.createCommandLine();
+    out = new StringWriter();
+    cmd.setOut(new PrintWriter(out));
+    assertEquals(0, cmd.execute("--path", volDir.toString(), "info", "task", backupTag));
+    String bBreakdown = out.toString();
+
+    assertTrue(bBreakdown.contains("# Task #" + backupTag + ": backup"));
+    assertTrue(bBreakdown.contains("Status:        ✓ intact"));
+    assertTrue(bBreakdown.contains("Backend:       restic"));
+    assertTrue(bBreakdown.contains("Operation:     backup"));
+    assertTrue(bBreakdown.contains("Repository:"));
+    assertTrue(bBreakdown.contains("Vault Volume:  #" + vtag));
+    assertTrue(bBreakdown.contains("# Maintenance & Retention"));
+    assertTrue(bBreakdown.contains("Cadence:       7d,5 (profile: @default)"));
+    assertTrue(bBreakdown.contains("Status:        due"));
+    assertTrue(bBreakdown.contains("Last Backup:   never"));
+    assertTrue(bBreakdown.contains("Last Maint:    never"));
+    assertTrue(bBreakdown.contains("Retention:     --prune --keep-within-hourly 24h"));
+    assertTrue(bBreakdown.contains("Check:         @default (structural)"));
+    assertTrue(bBreakdown.contains("# Filters"));
+    assertTrue(bBreakdown.contains("Exclude:       *.tmp"));
+    assertTrue(bBreakdown.contains("# Commands"));
+    assertTrue(bBreakdown.contains("Execute:"));
+    assertTrue(bBreakdown.contains("restic backup"));
+    assertTrue(bBreakdown.contains("Maintain:"));
+    assertTrue(bBreakdown.contains("restic check"));
+    assertTrue(bBreakdown.contains("restic prune"));
+
+    // Bare mode on backup
+    cmd = Main.createCommandLine();
+    out = new StringWriter();
+    cmd.setOut(new PrintWriter(out));
+    assertEquals(0, cmd.execute("--path", volDir.toString(), "info", "task", backupTag, "-c"));
+    String bBare = out.toString().trim();
+    assertTrue(bBare.startsWith("restic backup"));
+    assertFalse(bBare.contains("# Task"));
+
+    // 3. Create restore task
+    code = executeWithPassword("repo-pass", "--path", volDir.toString(),
+      "create", "task", "restore", "local:" + repoDir, ":" + vtag + ":restore");
+    assertEquals(0, code, () -> "stderr: " + err.toString());
+
+    m = managerFor(volDir);
+    Task restoreTask = m.tasks().values().stream().filter(t -> t instanceof Restore).findFirst().orElseThrow();
+    String restoreTag = restoreTask.tag();
+
+    cmd = Main.createCommandLine();
+    out = new StringWriter();
+    cmd.setOut(new PrintWriter(out));
+    assertEquals(0, cmd.execute("--path", volDir.toString(), "info", "task", restoreTag));
+    String rBreakdown = out.toString();
+
+    assertTrue(rBreakdown.contains("# Task #" + restoreTag + ": restore"));
+    assertTrue(rBreakdown.contains("Backend:       restic"));
+    assertTrue(rBreakdown.contains("Operation:     restore"));
+    assertTrue(rBreakdown.contains("Repository:"));
+    assertTrue(rBreakdown.contains("Target:"));
+    assertTrue(rBreakdown.contains("Vault Volume:  #" + vtag));
+    assertTrue(rBreakdown.contains("# Commands"));
+    assertTrue(rBreakdown.contains("Execute:"));
+    assertTrue(rBreakdown.contains("restic restore"));
+    assertTrue(rBreakdown.contains("Maintain:"));
+    assertTrue(rBreakdown.contains("restic check"));
   }
 }

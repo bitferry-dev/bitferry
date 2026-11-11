@@ -342,9 +342,14 @@ public abstract class Task {
     return manager.backendExecutor().maintainCommands(this);
   }
 
+  /// Return the human-readable operation label used for descriptions and listings.
+  public String displayOperation() {
+    return operation();
+  }
+
   /// Return the task's short descriptor used in the listings.
   public String describe() {
-    return operation() + " " + source.describe() + " " + director() + " " + destination.describe();
+    return displayOperation() + " " + source.describe() + " " + director() + " " + destination.describe();
   }
 
   @Override

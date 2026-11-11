@@ -52,7 +52,7 @@ public final class VerboseHelp implements IHelpFactory {
     if (opt == null) return List.of();
     Profiles annotation = findProfilesAnnotation(commandSpec, opt);
     if (annotation == null) return List.of();
-    Map<String, List<String>> map = resolveProfilesMap(annotation);
+    Map<String, ?> map = resolveProfilesMap(annotation);
     if (map == null || map.isEmpty()) return List.of();
 
     List<String> keys;
@@ -61,24 +61,33 @@ public final class VerboseHelp implements IHelpFactory {
     } else {
       keys = map.keySet().stream()
         .filter(Objects::nonNull)
-        .filter(k -> map.get(k) != null && !map.get(k).isEmpty())
         .sorted((a, b) -> "default".equals(a) ? -1 : "default".equals(b) ? 1 : a.compareTo(b))
         .toList();
     }
 
     int maxPrefixLen = keys.stream()
-      .filter(k -> map.get(k) != null && !map.get(k).isEmpty())
       .mapToInt(k -> ("@" + k + ":").length())
       .max()
       .orElse(0);
 
     List<String> extra = new ArrayList<>();
     for (String key : keys) {
-      List<String> values = map.get(key);
-      if (values == null || values.isEmpty()) continue;
+      Object raw = map.get(key);
+      if (raw == null) continue;
       String prefix = "@" + key + ":";
       String padded = String.format("%-" + maxPrefixLen + "s", prefix);
-      extra.add("  " + padded + " " + String.join(" ", values));
+      if (raw instanceof List<?> list) {
+        if (list.isEmpty()) {
+          extra.add("  @|bold,cyan " + prefix + "|@");
+        } else {
+          String text = list.stream().map(Object::toString).collect(java.util.stream.Collectors.joining(" "));
+          extra.add("  @|bold,cyan " + padded + "|@ " + text);
+        }
+      } else if (raw instanceof bitferry.task.Cadence c) {
+        extra.add("  @|bold,cyan " + padded + "|@ " + c.format());
+      } else {
+        extra.add("  @|bold,cyan " + padded + "|@ " + raw);
+      }
     }
     return extra;
   }
@@ -109,7 +118,7 @@ public final class VerboseHelp implements IHelpFactory {
 
   /// Retrieve the profiles map from the class and field specified in the @Profiles annotation.
   @SuppressWarnings("unchecked")
-  public static Map<String, List<String>> resolveProfilesMap(Profiles annotation) {
+  public static Map<String, ?> resolveProfilesMap(Profiles annotation) {
     if (annotation == null) return null;
     Class<?> source = annotation.value();
     String fieldName = annotation.field();
@@ -117,14 +126,14 @@ public final class VerboseHelp implements IHelpFactory {
       Field f = source.getField(fieldName);
       Object val = f.get(null);
       if (val instanceof Map<?, ?> map) {
-        return (Map<String, List<String>>) map;
+        return (Map<String, ?>) map;
       }
     } catch (NoSuchFieldException e) {
       try {
         Method m = source.getMethod(fieldName);
         Object val = m.invoke(null);
         if (val instanceof Map<?, ?> map) {
-          return (Map<String, List<String>>) map;
+          return (Map<String, ?>) map;
         }
       } catch (Exception ignored) {}
     } catch (Exception ignored) {}

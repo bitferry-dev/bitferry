@@ -8,8 +8,8 @@ import java.util.concurrent.*;
 import picocli.CommandLine.*;
 import picocli.CommandLine.Model.*;
 
-/// Print the command line about to execute for specified tasks designated by tags.
-@Command(name = "task", aliases = {"t"}, mixinStandardHelpOptions = true, description = "Print the command line about to execute for specified tasks designated by tags.")
+/// Print complete breakdown of specified tasks designated by tags.
+@Command(name = "task", aliases = {"t"}, mixinStandardHelpOptions = true, description = "Print complete breakdown of specified tasks designated by tags.")
 public class InfoTaskCommand implements Callable<Integer>, HasCommonOptions {
 
   // Explicit no-arg constructor: the command classes are instantiated
@@ -21,6 +21,9 @@ public class InfoTaskCommand implements Callable<Integer>, HasCommonOptions {
 
   @Spec
   CommandSpec spec;
+
+  @Option(names = {"-c", "--commands"}, description = "Print only the backend command lines (bare format).")
+  boolean commandsOnly;
 
   @Parameters(arity = "1..*", description = "Tags matching tasks to inspect.", paramLabel = "TAGS")
   List<String> tags;
@@ -36,11 +39,21 @@ public class InfoTaskCommand implements Callable<Integer>, HasCommonOptions {
     CommonOptions opts = CliUtils.resolveOptions(spec, options);
     Manager m = CliUtils.restoreManager(opts);
     Map<String, Task> tasks = m.selectTasks(tags);
+    boolean first = true;
     for (Task t : tasks.values()) {
-      for (List<String> cmd : t.commands()) {
-        out.println(String.join(" ", cmd));
+      if (commandsOnly) {
+        for (List<String> cmd : t.commands()) {
+          out.println(String.join(" ", cmd));
+        }
+      } else {
+        if (!first) {
+          out.println();
+        }
+        first = false;
+        out.print(TaskBreakdown.format(t));
       }
     }
+    out.flush();
     return 0;
   }
 }

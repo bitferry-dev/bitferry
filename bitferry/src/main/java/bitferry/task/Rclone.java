@@ -64,6 +64,13 @@ public abstract class Rclone extends Task {
     return List.of(operation());
   }
 
+  /// Return the human-readable operation label incorporating the encryption mode when active.
+  @Override
+  public String displayOperation() {
+    String enc = encryption != null ? encryption.operation() : null;
+    return enc != null ? enc + "+" + operation() : operation();
+  }
+
   /// Return the task's encryption mode.
   public Encryption encryption() {
     return encryption;
