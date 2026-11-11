@@ -6,8 +6,8 @@ import java.time.Instant;
 import java.util.*;
 import java.util.regex.*;
 
-/// Maintenance cadence dual-threshold specifier: elapsed time and backup count.
-/// Maintenance is triggered whenever either threshold is crossed ("whichever wins").
+/// Service cadence dual-threshold specifier: elapsed time and backup count.
+/// Service is triggered whenever either threshold is crossed ("whichever wins").
 public record Cadence(Duration duration, int count) {
 
   private static final Pattern SPEC_PATTERN = Pattern.compile("^([0-9]+[smhdw])?(?:,([0-9]+))?$|^([0-9]+)$");
@@ -122,11 +122,11 @@ public record Cadence(Duration duration, int count) {
     return d.toSeconds() + "s";
   }
 
-  /// Check whether maintenance is due given the last maintenance timestamp and backup count.
-  public boolean isDue(Instant lastMaintenance, int backupsSinceMaintenance) {
-    if (lastMaintenance == null) return true;
-    if (backupsSinceMaintenance >= count) return true;
-    Duration elapsed = Duration.between(lastMaintenance, Instant.now());
+  /// Check whether serve is due given the last serve timestamp and backup count.
+  public boolean isDue(Instant lastServe, int backupsSinceServe) {
+    if (lastServe == null) return true;
+    if (backupsSinceServe >= count) return true;
+    Duration elapsed = Duration.between(lastServe, Instant.now());
     return elapsed.compareTo(duration) >= 0;
   }
 }

@@ -50,9 +50,9 @@ public final class TaskBreakdown {
       appendProperty(sb, "Modified:", modified);
     }
 
-    // 2. Specific sections: Maintenance & Retention for Backup
+    // 2. Specific sections: Service & Retention for Backup
     if (task instanceof Backup backup) {
-      appendMaintenanceSection(sb, backup);
+      appendServiceSection(sb, backup);
     }
 
     // 3. Filters
@@ -66,7 +66,7 @@ public final class TaskBreakdown {
     sb.append(Ansi.AUTO.string("@|bold # Commands|@")).append(System.lineSeparator());
 
     appendCommands(sb, "Execute:", task::commands);
-    appendCommands(sb, "Maintain:", task::maintainCommands);
+    appendCommands(sb, "Serve:", task::serveCommands);
 
     return sb.toString();
   }
@@ -162,9 +162,9 @@ public final class TaskBreakdown {
     appendProperty(sb, "Destination:", formatEndpoint(task.destination()));
   }
 
-  private static void appendMaintenanceSection(StringBuilder sb, Backup backup) {
+  private static void appendServiceSection(StringBuilder sb, Backup backup) {
     sb.append(System.lineSeparator());
-    sb.append(Ansi.AUTO.string("@|bold # Maintenance & Retention|@")).append(System.lineSeparator());
+    sb.append(Ansi.AUTO.string("@|bold # Service & Retention|@")).append(System.lineSeparator());
 
     Cadence cadence = backup.cadence();
     if (cadence == null) {
@@ -190,13 +190,13 @@ public final class TaskBreakdown {
     if (state == null) {
       appendProperty(sb, "Status:", "unavailable (destination volume missing)");
     } else if (!stateFileExists) {
-      appendProperty(sb, "Status:", Ansi.AUTO.string("@|yellow due (initial maintenance pending)|@"));
+      appendProperty(sb, "Status:", Ansi.AUTO.string("@|yellow due (initial service pending)|@"));
     } else if (state.isCorruptOrMissing()) {
       appendProperty(sb, "Status:", Ansi.AUTO.string("@|yellow due (corrupted state file)|@"));
     } else if (cadence != null && state.isDue(cadence)) {
-      if (cadence.count() < Integer.MAX_VALUE && state.backupsSinceMaintenance() >= cadence.count()) {
-        appendProperty(sb, "Status:", Ansi.AUTO.string(String.format("@|yellow due (threshold reached: %d backups since maintenance)|@", state.backupsSinceMaintenance())));
-      } else if (cadence.duration() != null && state.lastMaintenance() != null && Duration.between(state.lastMaintenance(), Instant.now()).compareTo(cadence.duration()) >= 0) {
+      if (cadence.count() < Integer.MAX_VALUE && state.backupsSinceServe() >= cadence.count()) {
+        appendProperty(sb, "Status:", Ansi.AUTO.string(String.format("@|yellow due (threshold reached: %d backups since service)|@", state.backupsSinceServe())));
+      } else if (cadence.duration() != null && state.lastServe() != null && Duration.between(state.lastServe(), Instant.now()).compareTo(cadence.duration()) >= 0) {
         appendProperty(sb, "Status:", Ansi.AUTO.string("@|yellow due (cadence duration elapsed)|@"));
       } else {
         appendProperty(sb, "Status:", Ansi.AUTO.string("@|yellow due|@"));
@@ -211,13 +211,13 @@ public final class TaskBreakdown {
       appendProperty(sb, "Last Backup:", "never");
     }
 
-    if (state != null && state.lastMaintenance() != null) {
+    if (state != null && state.lastServe() != null) {
       String countInfo = cadence != null && cadence.count() < Integer.MAX_VALUE
-        ? String.format(" (%d of %d backups)", state.backupsSinceMaintenance(), cadence.count())
-        : String.format(" (%d backups)", state.backupsSinceMaintenance());
-      appendProperty(sb, "Last Maint:", formatInstant(state.lastMaintenance()) + " (" + formatElapsed(state.lastMaintenance(), Instant.now()) + ")" + countInfo);
+        ? String.format(" (%d of %d backups)", state.backupsSinceServe(), cadence.count())
+        : String.format(" (%d backups)", state.backupsSinceServe());
+      appendProperty(sb, "Last Service:", formatInstant(state.lastServe()) + " (" + formatElapsed(state.lastServe(), Instant.now()) + ")" + countInfo);
     } else {
-      appendProperty(sb, "Last Maint:", "never");
+      appendProperty(sb, "Last Service:", "never");
     }
 
     if (backup.forget() == null || backup.forget().isEmpty()) {

@@ -80,7 +80,7 @@ class CadenceTest {
   void evaluateThresholds() {
     Cadence cadence = new Cadence(Duration.ofDays(7), 5);
 
-    // Missing lastMaintenance -> always due
+    // Missing lastServe -> always due
     assertTrue(cadence.isDue(null, 0));
 
     // Count threshold crossed

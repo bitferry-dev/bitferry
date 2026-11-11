@@ -39,6 +39,9 @@ public interface Executor {
     conform((Task) task);
   }
 
+  /// Change or update the repository password for a restic task.
+  default void passwd(Restic task, String newPassword) {}
+
   /// Return the command lines about to execute for the task.
   default List<List<String>> commands(Task task) {
     return List.of();
@@ -64,32 +67,32 @@ public interface Executor {
     return commands((Task) task);
   }
 
-  /// Perform maintenance (integrity verification, snapshot retention, and garbage collection)
+  /// Perform service (integrity verification, snapshot retention, and garbage collection)
   /// on the task or its target repository. Return true on success.
-  default boolean maintain(Task task, Consumer<String> output) {
+  default boolean serve(Task task, Consumer<String> output) {
     return true;
   }
 
-  /// Perform maintenance with inherited stdio (CLI pass-through).
-  default boolean maintain(Task task) {
-    return maintain(task, null);
+  /// Perform service with inherited stdio (CLI pass-through).
+  default boolean serve(Task task) {
+    return serve(task, null);
   }
 
-  /// Return the backend command lines about to execute for maintaining this task.
-  default List<List<String>> maintainCommands(Task task) {
+  /// Return the backend command lines about to execute for servicing this task.
+  default List<List<String>> serveCommands(Task task) {
     return List.of();
   }
 
-  default List<List<String>> maintainCommands(Backup task) {
-    return maintainCommands((Task) task);
+  default List<List<String>> serveCommands(Backup task) {
+    return serveCommands((Task) task);
   }
 
-  default List<List<String>> maintainCommands(Restore task) {
-    return maintainCommands((Task) task);
+  default List<List<String>> serveCommands(Restore task) {
+    return serveCommands((Task) task);
   }
 
-  default List<List<String>> maintainCommands(Rclone task) {
-    return maintainCommands((Task) task);
+  default List<List<String>> serveCommands(Rclone task) {
+    return serveCommands((Task) task);
   }
 
   /// Default system process backend executor.

@@ -48,14 +48,14 @@ public class SystemExecutor implements Executor {
   }
 
   @Override
-  public boolean maintain(Task task, Consumer<String> output) {
-    LOG.log(Level.INFO, () -> "maintaining task #" + task.tag());
+  public boolean serve(Task task, Consumer<String> output) {
+    LOG.log(Level.INFO, () -> "servicing task #" + task.tag());
     if (task instanceof Rclone rclone) {
-      return rcloneExecutor.maintain(rclone, output);
+      return rcloneExecutor.serve(rclone, output);
     } else if (task instanceof Restic restic) {
-      return resticExecutor.maintain(restic, output);
+      return resticExecutor.serve(restic, output);
     }
-    String message = "unsupported task backend for maintenance of task #" + task.tag() + ": " + task.getClass().getName();
+    String message = "unsupported task backend for service of task #" + task.tag() + ": " + task.getClass().getName();
     LOG.log(Level.ERROR, () -> message);
     if (output != null) output.accept(message);
     return false;
@@ -77,6 +77,11 @@ public class SystemExecutor implements Executor {
   }
 
   @Override
+  public void passwd(Restic restic, String newPassword) {
+    resticExecutor.passwd(restic, newPassword);
+  }
+
+  @Override
   public List<List<String>> commands(Rclone rclone) {
     return rcloneExecutor.commands(rclone);
   }
@@ -92,28 +97,28 @@ public class SystemExecutor implements Executor {
   }
 
   @Override
-  public List<List<String>> maintainCommands(Task task) {
+  public List<List<String>> serveCommands(Task task) {
     if (task instanceof Rclone rclone) {
-      return rcloneExecutor.maintainCommands(rclone);
+      return rcloneExecutor.serveCommands(rclone);
     } else if (task instanceof Restic restic) {
-      return resticExecutor.maintainCommands(restic);
+      return resticExecutor.serveCommands(restic);
     }
     return List.of();
   }
 
   @Override
-  public List<List<String>> maintainCommands(Rclone rclone) {
-    return rcloneExecutor.maintainCommands(rclone);
+  public List<List<String>> serveCommands(Rclone rclone) {
+    return rcloneExecutor.serveCommands(rclone);
   }
 
   @Override
-  public List<List<String>> maintainCommands(Backup backup) {
-    return resticExecutor.maintainCommands(backup);
+  public List<List<String>> serveCommands(Backup backup) {
+    return resticExecutor.serveCommands(backup);
   }
 
   @Override
-  public List<List<String>> maintainCommands(Restore restore) {
-    return resticExecutor.maintainCommands(restore);
+  public List<List<String>> serveCommands(Restore restore) {
+    return resticExecutor.serveCommands(restore);
   }
 
   /// @see ExecutorSupport#executableName(String)

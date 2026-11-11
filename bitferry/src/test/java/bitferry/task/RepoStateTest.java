@@ -20,8 +20,8 @@ class RepoStateTest {
     RepoState state = RepoState.load(tempDir);
     assertTrue(state.isCorruptOrMissing());
     assertNull(state.lastBackup());
-    assertNull(state.lastMaintenance());
-    assertEquals(0, state.backupsSinceMaintenance());
+    assertNull(state.lastServe());
+    assertEquals(0, state.backupsSinceServe());
 
     // isDue returns true for any cadence when corrupt or missing
     Cadence cadence = new Cadence(Duration.ofDays(7), 5);
@@ -47,7 +47,7 @@ class RepoStateTest {
   @Test
   void saveAndLoadRoundtrip() {
     RepoState state = new RepoState();
-    state.recordMaintenance();
+    state.recordServe();
     state.recordBackup();
     state.recordBackup();
 
@@ -56,27 +56,27 @@ class RepoStateTest {
     RepoState loaded = RepoState.load(tempDir);
     assertFalse(loaded.isCorruptOrMissing());
     assertNotNull(loaded.lastBackup());
-    assertNotNull(loaded.lastMaintenance());
-    assertEquals(2, loaded.backupsSinceMaintenance());
+    assertNotNull(loaded.lastServe());
+    assertEquals(2, loaded.backupsSinceServe());
   }
 
   @Test
-  void recordMaintenanceResetsCount() {
+  void recordServeResetsCount() {
     RepoState state = new RepoState();
     state.recordBackup();
     state.recordBackup();
-    assertEquals(2, state.backupsSinceMaintenance());
+    assertEquals(2, state.backupsSinceServe());
 
-    state.recordMaintenance();
-    assertEquals(0, state.backupsSinceMaintenance());
-    assertNotNull(state.lastMaintenance());
+    state.recordServe();
+    assertEquals(0, state.backupsSinceServe());
+    assertNotNull(state.lastServe());
     assertFalse(state.isCorruptOrMissing());
   }
 
   @Test
   void disabledCadenceNeverDueWhenStateValid() {
     RepoState state = new RepoState();
-    state.recordMaintenance();
+    state.recordServe();
     state.recordBackup();
     state.save(tempDir);
 

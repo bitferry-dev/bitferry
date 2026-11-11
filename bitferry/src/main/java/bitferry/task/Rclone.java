@@ -57,6 +57,11 @@ public abstract class Rclone extends Task {
     return processOptions == null ? List.of() : java.util.Collections.unmodifiableList(processOptions);
   }
 
+  public void setProcessOptions(String process) {
+    this.processOptions = optional(process, PROCESS);
+    touch();
+  }
+
   /// The backend operation arguments prepended to the rclone command line.
   /// The base implementation maps the operation discriminator verbatim;
   /// the concrete operations override it with their subcommands and modifiers.

@@ -20,6 +20,7 @@ public abstract class Restic extends Task {
     route(Map.of("default", List.of()), List.of());
 
   protected List<String> processOptions;
+  protected final Map<String, List<String>> processRoute;
 
   private final Vault vault;
   private String cachedPassword;
@@ -43,6 +44,7 @@ public abstract class Restic extends Task {
   protected Restic(Manager manager, Endpoint source, Endpoint destination, String password, String process, Map<String, List<String>> processRoute, Collection<String> include, Collection<String> exclude) {
     super(manager, source, destination, include, exclude);
     this.vault = Vault.volume();
+    this.processRoute = processRoute;
     this.processOptions = optional(process, processRoute);
     setPassword(password);
   }
@@ -53,6 +55,7 @@ public abstract class Restic extends Task {
   protected Restic(Manager manager, Endpoint source, Endpoint destination, String tag, OffsetDateTime modified, List<String> include, List<String> exclude, Backend backend, Map<String, List<String>> processRoute) {
     super(manager, source, destination, tag, modified, include, exclude);
     this.vault = Vault.volume();
+    this.processRoute = processRoute;
     this.processOptions = optional(backend == null ? null : backend.execute(), processRoute);
     this.cached = false;
   }
@@ -62,7 +65,7 @@ public abstract class Restic extends Task {
     @JsonProperty("execute") List<String> execute,
     @JsonProperty("forget") List<String> forget,
     @JsonProperty("check") List<String> check,
-    @JsonProperty("maintain") String maintain
+    @JsonProperty("serve") @JsonAlias("maintain") String serve
   ) {
     public Backend(List<String> execute, List<String> forget, List<String> check) {
       this(execute, forget, check, null);
@@ -71,6 +74,16 @@ public abstract class Restic extends Task {
 
   public List<String> processOptions() {
     return processOptions == null ? List.of() : java.util.Collections.unmodifiableList(processOptions);
+  }
+
+  public void setProcessOptions(String process) {
+    this.processOptions = optional(process, processRoute);
+    touch();
+  }
+
+  public void updatePassword(String newPassword) {
+    setPassword(newPassword);
+    touch();
   }
 
   /// Obscure and store the password with the vault provider caching the plain value.

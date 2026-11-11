@@ -106,7 +106,7 @@ class TaskTest {
     assertNull(data.get("restic").get("execute"));
     assertEquals(Backup.FORGET.get("default"), toStringList(data.get("restic").get("forget")));
     assertEquals(Backup.CHECK.get("full"), toStringList(data.get("restic").get("check")));
-    assertEquals("7d,5", data.get("restic").get("maintain").asString());
+    assertEquals("7d,5", data.get("restic").get("serve").asString());
     // The password never travels with the descriptor
     assertFalse(data.has("password"));
 

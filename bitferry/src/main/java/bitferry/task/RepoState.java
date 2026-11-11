@@ -1,6 +1,7 @@
 package bitferry.task;
 
 import bitferry.Storage;
+import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -10,7 +11,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 
-/// Runtime maintenance state of a repository tracked in `<repo>/bitferry.json`.
+/// Runtime service state of a repository tracked in `<repo>/bitferry.json`.
 public final class RepoState {
 
   public static final String FILENAME = "bitferry.json";
@@ -19,11 +20,13 @@ public final class RepoState {
   @JsonProperty("last_backup")
   private Instant lastBackup;
 
-  @JsonProperty("last_maintenance")
-  private Instant lastMaintenance;
+  @JsonProperty("last_serve")
+  @JsonAlias("last_maintenance")
+  private Instant lastServe;
 
-  @JsonProperty("backups_since_maintenance")
-  private int backupsSinceMaintenance;
+  @JsonProperty("backups_since_serve")
+  @JsonAlias("backups_since_maintenance")
+  private int backupsSinceServe;
 
   @JsonIgnore
   private boolean corruptOrMissing;
@@ -35,16 +38,16 @@ public final class RepoState {
   @JsonCreator
   public RepoState(
     @JsonProperty("last_backup") Instant lastBackup,
-    @JsonProperty("last_maintenance") Instant lastMaintenance,
-    @JsonProperty("backups_since_maintenance") int backupsSinceMaintenance
+    @JsonProperty("last_serve") @JsonAlias("last_maintenance") Instant lastServe,
+    @JsonProperty("backups_since_serve") @JsonAlias("backups_since_maintenance") int backupsSinceServe
   ) {
-    this(lastBackup, lastMaintenance, backupsSinceMaintenance, false);
+    this(lastBackup, lastServe, backupsSinceServe, false);
   }
 
-  public RepoState(Instant lastBackup, Instant lastMaintenance, int backupsSinceMaintenance, boolean corruptOrMissing) {
+  public RepoState(Instant lastBackup, Instant lastServe, int backupsSinceServe, boolean corruptOrMissing) {
     this.lastBackup = lastBackup;
-    this.lastMaintenance = lastMaintenance;
-    this.backupsSinceMaintenance = backupsSinceMaintenance;
+    this.lastServe = lastServe;
+    this.backupsSinceServe = backupsSinceServe;
     this.corruptOrMissing = corruptOrMissing;
   }
 
@@ -52,12 +55,12 @@ public final class RepoState {
     return lastBackup;
   }
 
-  public Instant lastMaintenance() {
-    return lastMaintenance;
+  public Instant lastServe() {
+    return lastServe;
   }
 
-  public int backupsSinceMaintenance() {
-    return backupsSinceMaintenance;
+  public int backupsSinceServe() {
+    return backupsSinceServe;
   }
 
   public boolean isCorruptOrMissing() {
@@ -65,7 +68,7 @@ public final class RepoState {
   }
 
   /// Load repository state from `<repoDir>/bitferry.json`.
-  /// If missing or corrupt, logs a warning and returns an uninitialized state that triggers maintenance.
+  /// If missing or corrupt, logs a warning and returns an uninitialized state that triggers service.
   public static RepoState load(Path repoDir) {
     if (repoDir == null) {
       return new RepoState(null, null, 0, true);
@@ -77,14 +80,14 @@ public final class RepoState {
     try {
       byte[] bytes = Files.readAllBytes(file);
       if (bytes.length == 0) {
-        LOG.log(Level.WARNING, () -> "empty repository state file in " + file + ", will trigger maintenance");
+        LOG.log(Level.WARNING, () -> "empty repository state file in " + file + ", will trigger service");
         return new RepoState(null, null, 0, true);
       }
       RepoState state = Storage.mapper().readValue(bytes, RepoState.class);
       state.corruptOrMissing = false;
       return state;
     } catch (Exception e) {
-      LOG.log(Level.WARNING, () -> "corrupted repository state file in " + file + " (" + e.getMessage() + "), will trigger maintenance");
+      LOG.log(Level.WARNING, () -> "corrupted repository state file in " + file + " (" + e.getMessage() + "), will trigger service");
       return new RepoState(null, null, 0, true);
     }
   }
@@ -105,17 +108,17 @@ public final class RepoState {
   /// Record a completed backup run.
   public void recordBackup() {
     this.lastBackup = Instant.now();
-    this.backupsSinceMaintenance++;
+    this.backupsSinceServe++;
   }
 
-  /// Record a completed maintenance run.
-  public void recordMaintenance() {
-    this.lastMaintenance = Instant.now();
-    this.backupsSinceMaintenance = 0;
+  /// Record a completed serve run.
+  public void recordServe() {
+    this.lastServe = Instant.now();
+    this.backupsSinceServe = 0;
     this.corruptOrMissing = false;
   }
 
-  /// Check whether maintenance is due according to the cadence policy.
+  /// Check whether serve is due according to the cadence policy.
   public boolean isDue(Cadence cadence) {
     if (corruptOrMissing) {
       return true;
@@ -123,6 +126,6 @@ public final class RepoState {
     if (cadence == null) {
       return false;
     }
-    return cadence.isDue(lastMaintenance, backupsSinceMaintenance);
+    return cadence.isDue(lastServe, backupsSinceServe);
   }
 }

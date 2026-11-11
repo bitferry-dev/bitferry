@@ -320,10 +320,10 @@ class SystemExecutorTest {
     boolean result = executor.run(backup, null);
 
     assertTrue(result);
-    // 4 invocations: maintenance check, forget, prune before backup, then backup
+    // 4 invocations: service check, forget, prune before backup, then backup
     assertEquals(4, recorder.invocations.size());
 
-    // 1. Maintenance Check invocation
+    // 1. Service Check invocation
     RecordingCommandExecutor.Invocation invCheck = recorder.invocations.get(0);
     assertEquals("secret", invCheck.environment().get("RESTIC_PASSWORD"));
     List<String> cmdCheck = invCheck.command();
@@ -331,7 +331,7 @@ class SystemExecutorTest {
     assertEquals("check", cmdCheck.get(1));
     assertFalse(cmdCheck.contains("--no-cache"));
 
-    // 2. Maintenance Forget invocation
+    // 2. Service Forget invocation
     RecordingCommandExecutor.Invocation invForget = recorder.invocations.get(1);
     assertEquals("secret", invForget.environment().get("RESTIC_PASSWORD"));
     List<String> cmdForget = invForget.command();
@@ -339,7 +339,7 @@ class SystemExecutorTest {
     assertEquals("forget", cmdForget.get(1));
     assertFalse(cmdForget.contains("--prune"));
 
-    // 3. Maintenance Prune invocation
+    // 3. Service Prune invocation
     RecordingCommandExecutor.Invocation invPrune = recorder.invocations.get(2);
     assertEquals("secret", invPrune.environment().get("RESTIC_PASSWORD"));
     List<String> cmdPrune = invPrune.command();
@@ -419,12 +419,12 @@ class SystemExecutorTest {
     assertEquals(1, backupCmds.size());
     assertEquals("backup", backupCmds.get(0).get(1));
 
-    // Backup maintainCommands return check, forget, prune
-    List<List<String>> maintainCmds = backupDefault.maintainCommands();
-    assertEquals(3, maintainCmds.size());
-    assertEquals("check", maintainCmds.get(0).get(1));
-    assertEquals("forget", maintainCmds.get(1).get(1));
-    assertEquals("prune", maintainCmds.get(2).get(1));
+    // Backup serveCommands return check, forget, prune
+    List<List<String>> serveCmds = backupDefault.serveCommands();
+    assertEquals(3, serveCmds.size());
+    assertEquals("check", serveCmds.get(0).get(1));
+    assertEquals("forget", serveCmds.get(1).get(1));
+    assertEquals("prune", serveCmds.get(2).get(1));
 
     // Backup skipping check and forget
     Backup backupSkip = new Backup(manager, volumeSource(), destination(), "secret", null, null, "-", "-", List.of(), List.of());
@@ -907,7 +907,7 @@ class SystemExecutorTest {
   }
 
   @Test
-  void routineBackupDoesNotTriggerMaintenanceWhenNotDue() throws IOException {
+  void routineBackupDoesNotTriggerServiceWhenNotDue() throws IOException {
     RecordingCommandExecutor recorder = new RecordingCommandExecutor();
     SystemExecutor executor = new SystemExecutor(recorder);
 
@@ -915,9 +915,9 @@ class SystemExecutorTest {
     Files.createDirectories(repoDir);
     Endpoint repo = Endpoints.parse(manager, "local:" + repoDir);
 
-    // Baseline state: maintenance done recently, count low
+    // Baseline state: service done recently, count low
     RepoState state = new RepoState();
-    state.recordMaintenance();
+    state.recordServe();
     state.recordBackup();
     state.save(repoDir);
 
@@ -925,17 +925,17 @@ class SystemExecutorTest {
     boolean ok = executor.run(backup, null);
     assertTrue(ok);
 
-    // Only 1 invocation: backup (maintenance was not due)
+    // Only 1 invocation: backup (service was not due)
     assertEquals(1, recorder.invocations.size());
     assertEquals("backup", recorder.invocations.get(0).command().get(1));
 
     // Backups count incremented
     RepoState updated = RepoState.load(repoDir);
-    assertEquals(2, updated.backupsSinceMaintenance());
+    assertEquals(2, updated.backupsSinceServe());
   }
 
   @Test
-  void routineBackupTriggersMaintenanceWhenDueAndResetsCount() throws IOException {
+  void routineBackupTriggersServiceWhenDueAndResetsCount() throws IOException {
     RecordingCommandExecutor recorder = new RecordingCommandExecutor();
     SystemExecutor executor = new SystemExecutor(recorder);
 
@@ -943,7 +943,7 @@ class SystemExecutorTest {
     Files.createDirectories(repoDir);
     Endpoint repo = Endpoints.parse(manager, "local:" + repoDir);
 
-    // Threshold crossed: 5 backups done since maintenance
+    // Threshold crossed: 5 backups done since service
     RepoState state = new RepoState(Instant.now(), Instant.now(), 5, false);
     state.save(repoDir);
 
@@ -958,13 +958,13 @@ class SystemExecutorTest {
     assertEquals("prune", recorder.invocations.get(2).command().get(1));
     assertEquals("backup", recorder.invocations.get(3).command().get(1));
 
-    // Count was reset to 0 by maintenance, then incremented to 1 by the completed backup
+    // Count was reset to 0 by service, then incremented to 1 by the completed backup
     RepoState updated = RepoState.load(repoDir);
-    assertEquals(1, updated.backupsSinceMaintenance());
+    assertEquals(1, updated.backupsSinceServe());
   }
 
   @Test
-  void maintenanceAbortsBeforeForgetAndPruneWhenCheckFails() throws IOException {
+  void serviceAbortsBeforeForgetAndPruneWhenCheckFails() throws IOException {
     RecordingCommandExecutor recorder = new RecordingCommandExecutor();
     recorder.returnCode = 1; // Check command fails
     SystemExecutor executor = new SystemExecutor(recorder);
@@ -974,7 +974,7 @@ class SystemExecutorTest {
     Endpoint repo = Endpoints.parse(manager, "local:" + repoDir);
 
     Backup backup = new Backup(manager, volumeSource(), repo, "secret", null, null, "@default", "@default", "7d,5", List.of(), List.of());
-    boolean ok = executor.maintain(backup, null);
+    boolean ok = executor.serve(backup, null);
     assertFalse(ok);
 
     // Halted immediately after failed check: forget and prune never executed
@@ -983,8 +983,8 @@ class SystemExecutorTest {
   }
 
   @Test
-  void batchMaintenanceFaultIsolation() throws IOException {
-    // Failing task 1 check should not prevent task 2 maintenance
+  void batchServiceFaultIsolation() throws IOException {
+    // Failing task 1 check should not prevent task 2 service
     List<RecordingCommandExecutor.Invocation> invocations = new ArrayList<>();
     CommandExecutor dynamicExecutor = (command, workingDirectory, environment, output) -> {
       invocations.add(new RecordingCommandExecutor.Invocation(command, workingDirectory, environment, output));
@@ -1005,22 +1005,22 @@ class SystemExecutorTest {
     Backup b1 = new Backup(manager, volumeSource(), Endpoints.parse(manager, "local:" + repo1), "sec1", null, null, null, null, "7d,5", List.of(), List.of());
     Backup b2 = new Backup(manager, volumeSource(), Endpoints.parse(manager, "local:" + repo2), "sec2", null, null, null, null, "7d,5", List.of(), List.of());
 
-    boolean overall = manager.maintain(List.of(b1.tag(), b2.tag()), null);
+    boolean overall = manager.serve(List.of(b1.tag(), b2.tag()), null);
     assertFalse(overall);
 
     // b1 check ran (and failed, aborting its prune)
     assertTrue(invocations.stream().anyMatch(inv -> inv.command().contains(repo1.toString())));
-    // b2 was still maintained!
+    // b2 was still serviced!
     assertTrue(invocations.stream().anyMatch(inv -> inv.command().contains(repo2.toString())));
   }
 
   @Test
-  void rcloneMaintenanceRunsCheck() {
+  void rcloneServiceRunsCheck() {
     RecordingCommandExecutor recorder = new RecordingCommandExecutor();
     SystemExecutor executor = new SystemExecutor(recorder);
 
     Synchronize sync = new Synchronize(manager, source(), destination(), null, List.of("*.txt"), List.of("*.bak"));
-    boolean ok = executor.maintain(sync, null);
+    boolean ok = executor.serve(sync, null);
     assertTrue(ok);
 
     assertEquals(1, recorder.invocations.size());
@@ -1029,5 +1029,117 @@ class SystemExecutorTest {
     assertEquals("check", cmd.get(1));
     assertTrue(cmd.contains("+ *.txt"));
     assertTrue(cmd.contains("- *.bak"));
+  }
+
+  @Test
+  void resticPasswdRotatesKeyWhenCurrentValidAndNewDifferent() throws IOException {
+    Path repoDir = dir.resolve("passwd-repo-rotate");
+    Files.createDirectories(repoDir);
+    Files.writeString(repoDir.resolve("config"), "dummy-config");
+
+    List<RecordingCommandExecutor.Invocation> invocations = new ArrayList<>();
+    CommandExecutor dynamicExecutor = (command, workingDirectory, environment, output) -> {
+      invocations.add(new RecordingCommandExecutor.Invocation(command, workingDirectory, environment, output));
+      if (command.contains("cat")) {
+        // If probing with new password, fail; if probing with old password, succeed
+        return "new-secret".equals(environment.get("RESTIC_PASSWORD")) ? 1 : 0;
+      }
+      if (command.contains("key") && command.contains("passwd")) {
+        return 0; // passwd succeeds
+      }
+      return 0;
+    };
+
+    SystemExecutor executor = new SystemExecutor(dynamicExecutor);
+    Backup backup = new Backup(manager, volumeSource(), Endpoints.parse(manager, "local:" + repoDir), "old-secret", null, null, null, null, List.of(), List.of());
+
+    executor.passwd(backup, "new-secret");
+
+    assertEquals("new-secret", backup.password());
+    // 3 invocations: test new -> test old -> key passwd
+    assertEquals(3, invocations.size());
+    assertEquals("cat", invocations.get(0).command().get(3));
+    assertEquals("new-secret", invocations.get(0).environment().get("RESTIC_PASSWORD"));
+
+    assertEquals("cat", invocations.get(1).command().get(3));
+    assertEquals("old-secret", invocations.get(1).environment().get("RESTIC_PASSWORD"));
+
+    assertEquals("key", invocations.get(2).command().get(1));
+    assertEquals("passwd", invocations.get(2).command().get(2));
+    assertEquals("old-secret", invocations.get(2).environment().get("RESTIC_PASSWORD"));
+    assertTrue(invocations.get(2).command().contains("--new-password-file"));
+  }
+
+  @Test
+  void resticPasswdSkipsKeyRotationWhenNewPasswordAlreadyMatches() throws IOException {
+    Path repoDir = dir.resolve("passwd-repo-matches");
+    Files.createDirectories(repoDir);
+    Files.writeString(repoDir.resolve("config"), "dummy-config");
+
+    RecordingCommandExecutor recorder = new RecordingCommandExecutor();
+    recorder.returnCode = 0; // Probing with new password immediately succeeds
+    SystemExecutor executor = new SystemExecutor(recorder);
+
+    Backup backup = new Backup(manager, volumeSource(), Endpoints.parse(manager, "local:" + repoDir), "old-secret", null, null, null, null, List.of(), List.of());
+
+    executor.passwd(backup, "new-secret");
+
+    assertEquals("new-secret", backup.password());
+    assertEquals(1, recorder.invocations.size());
+    assertEquals("cat", recorder.invocations.get(0).command().get(3));
+    assertFalse(recorder.invocations.stream().anyMatch(inv -> inv.command().contains("passwd")));
+  }
+
+  @Test
+  void resticPasswdFailsWhenOldPasswordInvalid() throws IOException {
+    Path repoDir = dir.resolve("passwd-repo-invalid-old");
+    Files.createDirectories(repoDir);
+    Files.writeString(repoDir.resolve("config"), "dummy-config");
+
+    RecordingCommandExecutor recorder = new RecordingCommandExecutor();
+    recorder.returnCode = 1; // Both fail
+    SystemExecutor executor = new SystemExecutor(recorder);
+
+    Backup backup = new Backup(manager, volumeSource(), Endpoints.parse(manager, "local:" + repoDir), "old-secret", null, null, null, null, List.of(), List.of());
+
+    BitferryError err = assertThrows(BitferryError.class, () -> executor.passwd(backup, "new-secret"));
+    assertTrue(err.getMessage().contains("is not accepted by the repository"));
+    assertEquals("old-secret", backup.password());
+  }
+
+  @Test
+  void resticPasswdFailsForRestoreWhenRepoDoesNotAcceptNewPassword() throws IOException {
+    Path repoDir = dir.resolve("passwd-restore-fail");
+    Files.createDirectories(repoDir);
+    Files.writeString(repoDir.resolve("config"), "dummy-config");
+
+    RecordingCommandExecutor recorder = new RecordingCommandExecutor();
+    recorder.returnCode = 1; // Probing with new password fails
+    SystemExecutor executor = new SystemExecutor(recorder);
+
+    Restore restore = new Restore(manager, Endpoints.parse(manager, "local:" + repoDir), volumeRestored(), "old-secret", null, List.of(), List.of());
+
+    BitferryError err = assertThrows(BitferryError.class, () -> executor.passwd(restore, "new-secret"));
+    assertTrue(err.getMessage().contains("does not accept the provided password"));
+  }
+
+  @Test
+  void resticPasswdSynchronizesPairedRestoreTask() throws IOException {
+    Path repoDir = dir.resolve("passwd-repo-sync-paired");
+    Files.createDirectories(repoDir);
+    Files.writeString(repoDir.resolve("config"), "dummy-config");
+
+    RecordingCommandExecutor recorder = new RecordingCommandExecutor();
+    recorder.returnCode = 0; // Probe with new password succeeds
+    SystemExecutor executor = new SystemExecutor(recorder);
+
+    Endpoint repoEndpoint = Endpoints.parse(manager, "local:" + repoDir);
+    Backup backup = new Backup(manager, volumeSource(), repoEndpoint, "old-secret", null, null, null, null, List.of(), List.of());
+    Restore restore = new Restore(manager, repoEndpoint, volumeRestored(), "old-secret", null, List.of(), List.of());
+
+    executor.passwd(backup, "new-secret");
+
+    assertEquals("new-secret", backup.password());
+    assertEquals("new-secret", restore.password());
   }
 }

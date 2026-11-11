@@ -328,34 +328,39 @@ public class Manager {
     return process(Arrays.asList(tags), output);
   }
 
+  /// Change or update the repository password for a restic task.
+  public void passwd(Restic restic, String newPassword) {
+    backendExecutor().passwd(restic, newPassword);
+  }
+
   /// Process the intact tasks matched by the specified (partial) tags or all intact tasks with CLI pass-through.
   public boolean process(String... tags) {
     return process(Arrays.asList(tags), null);
   }
 
-  /// Maintain the intact tasks matched by the specified (partial) tags or all intact tasks
+  /// Service the intact tasks matched by the specified (partial) tags or all intact tasks
   /// forwarding output to the consumer (null for CLI pass-through).
-  public boolean maintain(List<String> tags, java.util.function.Consumer<String> output) {
+  public boolean serve(List<String> tags, java.util.function.Consumer<String> output) {
     boolean outcome = true;
     for (Task t : selectTasks(tags).values()) {
-      outcome = t.maintain(output) && outcome;
+      outcome = t.serve(output) && outcome;
     }
     return outcome;
   }
 
-  /// Maintain the intact tasks matched by the specified (partial) tags or all intact tasks with CLI pass-through.
-  public boolean maintain(List<String> tags) {
-    return maintain(tags, null);
+  /// Service the intact tasks matched by the specified (partial) tags or all intact tasks with CLI pass-through.
+  public boolean serve(List<String> tags) {
+    return serve(tags, null);
   }
 
-  /// Maintain the intact tasks with captured output.
-  public boolean maintain(java.util.function.Consumer<String> output, String... tags) {
-    return maintain(Arrays.asList(tags), output);
+  /// Service the intact tasks with captured output.
+  public boolean serve(java.util.function.Consumer<String> output, String... tags) {
+    return serve(Arrays.asList(tags), output);
   }
 
-  /// Maintain the intact tasks matched by the specified (partial) tags or all intact tasks with CLI pass-through.
-  public boolean maintain(String... tags) {
-    return maintain(Arrays.asList(tags), null);
+  /// Service the intact tasks matched by the specified (partial) tags or all intact tasks with CLI pass-through.
+  public boolean serve(String... tags) {
+    return serve(Arrays.asList(tags), null);
   }
 
   /// Return the backend executor used for the task processing.

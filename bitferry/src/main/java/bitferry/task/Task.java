@@ -169,6 +169,32 @@ public abstract class Task {
     return java.util.Collections.unmodifiableList(exclude);
   }
 
+  public void setInclude(Collection<String> include) {
+    this.include.clear();
+    if (include != null) {
+      this.include.addAll(include);
+    }
+    touch();
+  }
+
+  public void setExclude(Collection<String> exclude) {
+    this.exclude.clear();
+    if (exclude != null) {
+      this.exclude.addAll(exclude);
+    }
+    touch();
+  }
+
+  public void clearInclude() {
+    this.include.clear();
+    touch();
+  }
+
+  public void clearExclude() {
+    this.exclude.clear();
+    touch();
+  }
+
   @JsonIgnore
   public boolean isLive() {
     return live;
@@ -314,19 +340,19 @@ public abstract class Task {
     }
   }
 
-  /// Maintain the task repository/endpoints by delegating to the manager's executor.
+  /// Service the task repository/endpoints by delegating to the manager's executor.
   /// The referred volumes are checked for presence, and the processing-in-progress guard
   /// rejects re-entrancy. Return true on success.
-  public boolean maintain(Consumer<String> output) {
+  public boolean serve(Consumer<String> output) {
     if (processing) throw new BitferryError("task #" + tag + " is already being processed");
     processing = true;
     try {
-      LOG.log(Level.INFO, () -> "maintaining task #" + tag);
+      LOG.log(Level.INFO, () -> "servicing task #" + tag);
       for (String vtag : referredVolumes()) {
         Volume v = manager.volume(vtag);
         if (v != null) v.checkPresence();
       }
-      return manager.backendExecutor().maintain(this, output);
+      return manager.backendExecutor().serve(this, output);
     } finally {
       processing = false;
     }
@@ -337,9 +363,9 @@ public abstract class Task {
     return manager.backendExecutor().commands(this);
   }
 
-  /// Return the backend command lines about to execute for maintaining this task.
-  public List<List<String>> maintainCommands() {
-    return manager.backendExecutor().maintainCommands(this);
+  /// Return the backend command lines about to execute for servicing this task.
+  public List<List<String>> serveCommands() {
+    return manager.backendExecutor().serveCommands(this);
   }
 
   /// Return the human-readable operation label used for descriptions and listings.

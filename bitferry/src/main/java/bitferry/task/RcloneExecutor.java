@@ -221,7 +221,7 @@ final class RcloneExecutor {
     return ExecutorSupport.execute(commandExecutor, rclone.manager(), cmd, null, rclone.processEnvironment(), rclone.tag(), output);
   }
 
-  List<String> maintainCommand(Rclone rclone) {
+  List<String> serveCommand(Rclone rclone) {
     Manager manager = rclone.manager();
     List<String> cmd = new ArrayList<>();
     cmd.add(ExecutorSupport.resolveExecutable("rclone"));
@@ -264,13 +264,13 @@ final class RcloneExecutor {
     return cmd;
   }
 
-  List<List<String>> maintainCommands(Rclone rclone) {
-    return List.of(ExecutorSupport.displayCommand(maintainCommand(rclone)));
+  List<List<String>> serveCommands(Rclone rclone) {
+    return List.of(ExecutorSupport.displayCommand(serveCommand(rclone)));
   }
 
-  /// Perform maintenance (integrity checking) on the rclone-backed task. Return true on success.
-  boolean maintain(Rclone rclone, Consumer<String> output) {
-    List<String> cmd = maintainCommand(rclone);
+  /// Perform service (integrity checking) on the rclone-backed task. Return true on success.
+  boolean serve(Rclone rclone, Consumer<String> output) {
+    List<String> cmd = serveCommand(rclone);
     return ExecutorSupport.execute(commandExecutor, rclone.manager(), cmd, null, rclone.processEnvironment(), rclone.tag(), output);
   }
 }

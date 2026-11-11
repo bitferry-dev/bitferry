@@ -4,6 +4,7 @@ import bitferry.*;
 import java.io.*;
 import java.lang.System.Logger.Level;
 import java.nio.file.*;
+import java.nio.file.attribute.*;
 import java.util.*;
 import java.util.function.*;
 import java.util.stream.*;
@@ -35,24 +36,24 @@ final class ResticExecutor {
     return false;
   }
 
-  /// Maintain the restic-backed task repository. Return true on success.
-  boolean maintain(Restic restic, Consumer<String> output) {
+  /// Service the restic-backed task repository. Return true on success.
+  boolean serve(Restic restic, Consumer<String> output) {
     if (restic instanceof Backup backup) {
-      return maintainBackup(backup, output);
+      return serveBackup(backup, output);
     } else if (restic instanceof Restore restore) {
-      return maintainRestore(restore, output);
+      return serveRestore(restore, output);
     }
-    String message = "unsupported restic operation for maintenance: " + restic.operation();
+    String message = "unsupported restic operation for service: " + restic.operation();
     LOG.log(Level.ERROR, () -> message);
     if (output != null) output.accept(message);
     return false;
   }
 
-  List<List<String>> maintainCommands(Restic restic) {
+  List<List<String>> serveCommands(Restic restic) {
     if (restic instanceof Backup backup) {
-      return maintainCommands(backup);
+      return serveCommands(backup);
     } else if (restic instanceof Restore restore) {
-      return maintainCommands(restore);
+      return serveCommands(restore);
     }
     return List.of();
   }
@@ -141,6 +142,98 @@ final class ResticExecutor {
     return Files.isRegularFile(Path.of(repo).resolve("config"));
   }
 
+  void passwd(Restic restic, String newPassword) {
+    if (newPassword == null || newPassword.isEmpty()) {
+      throw new BitferryError("new password must be specified");
+    }
+    String repo = repoPath(restic);
+    Path repoDir = Path.of(repo);
+    if (!Files.isDirectory(repoDir) || !hasRepository(repo)) {
+      throw new BitferryError("the repository at '" + repo + "' is not a valid restic repository");
+    }
+    Manager manager = restic.manager();
+    if (manager.simulate) {
+      LOG.log(Level.INFO, () -> "simulated password change for task #" + restic.tag());
+      return;
+    }
+    boolean alreadyMatches = testPassword(manager, repo, newPassword);
+    if (!alreadyMatches) {
+      if (restic instanceof Restore) {
+        throw new BitferryError("the repository at '" + repo + "' does not accept the provided password");
+      }
+      boolean currentValid = testPassword(manager, repo, restic.password());
+      if (!currentValid) {
+        throw new BitferryError("current stored password for task #" + restic.tag() + " is not accepted by the repository at '" + repo + "'");
+      }
+      rotateKey(manager, repo, restic.password(), newPassword);
+    }
+    restic.updatePassword(newPassword);
+
+    for (Task t : manager.tasks().values()) {
+      if (t != restic && t.isIntact() && t instanceof Restic otherRestic) {
+        if (repo.equals(repoPath(otherRestic))) {
+          otherRestic.updatePassword(newPassword);
+        }
+      }
+    }
+  }
+
+  private boolean testPassword(Manager manager, String repo, String password) {
+    List<String> cmd = new ArrayList<>();
+    cmd.add(resolveExecutable());
+    cmd.add("-r");
+    cmd.add(repo);
+    cmd.add("cat");
+    cmd.add("config");
+    cmd.addAll(commonOptions(manager));
+    try {
+      ExecutorSupport.echoCommandLine(manager, cmd, null);
+      List<String> output = new ArrayList<>();
+      int exitCode = commandExecutor.execute(cmd, null, Map.of("RESTIC_PASSWORD", password), output::add);
+      return exitCode == 0;
+    } catch (IOException | InterruptedException e) {
+      if (e instanceof InterruptedException) Thread.currentThread().interrupt();
+      return false;
+    }
+  }
+
+  private void rotateKey(Manager manager, String repo, String oldPassword, String newPassword) {
+    Path tempFile = null;
+    try {
+      tempFile = Files.createTempFile("bitferry-pw-", ".tmp");
+      try {
+        Files.setPosixFilePermissions(tempFile, Set.of(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE));
+      } catch (UnsupportedOperationException ignored) {}
+      Files.writeString(tempFile, newPassword);
+
+      List<String> cmd = new ArrayList<>();
+      cmd.add(resolveExecutable());
+      cmd.add("key");
+      cmd.add("passwd");
+      cmd.add("-r");
+      cmd.add(repo);
+      cmd.add("--new-password-file");
+      cmd.add(tempFile.toString());
+      cmd.addAll(commonOptions(manager));
+
+      ExecutorSupport.echoCommandLine(manager, cmd, null);
+      List<String> output = new ArrayList<>();
+      int exitCode = commandExecutor.execute(cmd, null, Map.of("RESTIC_PASSWORD", oldPassword), output::add);
+      if (exitCode != 0) {
+        throw new BitferryError("restic key passwd failed (exit code " + exitCode + "): " + String.join("\n", output));
+      }
+    } catch (IOException | InterruptedException e) {
+      if (e instanceof InterruptedException) Thread.currentThread().interrupt();
+      throw new BitferryError("failed to change repository password: " + e.getMessage(), e);
+    } finally {
+      if (tempFile != null) {
+        try {
+          Files.deleteIfExists(tempFile);
+        } catch (IOException ignored) {}
+      }
+    }
+  }
+
   private static String repoPath(Restic restic) {
     return restic instanceof Backup backup
       ? backup.destination().processOpts()
@@ -205,7 +298,7 @@ final class ResticExecutor {
     return List.of(ExecutorSupport.displayCommand(backupCommand(backup)));
   }
 
-  List<String> maintainCheckCommand(Backup backup) {
+  List<String> serveCheckCommand(Backup backup) {
     Manager manager = backup.manager();
     List<String> checkCmd = new ArrayList<>();
     checkCmd.add(resolveExecutable());
@@ -219,7 +312,7 @@ final class ResticExecutor {
     return checkCmd;
   }
 
-  List<String> maintainForgetCommand(Backup backup) {
+  List<String> serveForgetCommand(Backup backup) {
     if (backup.forget() == null || backup.forget().isEmpty()) return null;
     Manager manager = backup.manager();
     List<String> forgetCmd = new ArrayList<>();
@@ -255,16 +348,16 @@ final class ResticExecutor {
     return pruneCmd;
   }
 
-  List<List<String>> maintainCommands(Backup backup) {
+  List<List<String>> serveCommands(Backup backup) {
     List<List<String>> cmds = new ArrayList<>();
-    cmds.add(ExecutorSupport.displayCommand(maintainCheckCommand(backup)));
-    List<String> forget = maintainForgetCommand(backup);
+    cmds.add(ExecutorSupport.displayCommand(serveCheckCommand(backup)));
+    List<String> forget = serveForgetCommand(backup);
     if (forget != null) cmds.add(ExecutorSupport.displayCommand(forget));
     cmds.add(ExecutorSupport.displayCommand(pruneCommand(backup)));
     return cmds;
   }
 
-  List<String> maintainCheckCommand(Restore restore) {
+  List<String> serveCheckCommand(Restore restore) {
     Manager manager = restore.manager();
     List<String> checkCmd = new ArrayList<>();
     checkCmd.add(resolveExecutable());
@@ -275,8 +368,8 @@ final class ResticExecutor {
     return checkCmd;
   }
 
-  List<List<String>> maintainCommands(Restore restore) {
-    return List.of(ExecutorSupport.displayCommand(maintainCheckCommand(restore)));
+  List<List<String>> serveCommands(Restore restore) {
+    return List.of(ExecutorSupport.displayCommand(serveCheckCommand(restore)));
   }
 
   List<String> restoreCommand(Restore restore) {
@@ -317,17 +410,17 @@ final class ResticExecutor {
     Path repoDir = Path.of(repo);
     Path cwd = Path.of(backup.source().processOpts());
 
-    // Maintenance check before backup: if due or state missing/corrupt, run maintenance first
+    // Service check before backup: if due or state missing/corrupt, run service first
     if (backup.cadence() != null) {
       RepoState state = RepoState.load(repoDir);
       if (state.isDue(backup.cadence())) {
-        LOG.log(Level.INFO, () -> "maintenance cadence triggered for task #" + backup.tag() + "; running maintenance before backup");
+        LOG.log(Level.INFO, () -> "serve cadence triggered for task #" + backup.tag() + "; running service before backup");
         if (output != null) {
-          output.accept("maintenance cadence triggered for task #" + backup.tag() + "; running maintenance before backup");
+          output.accept("serve cadence triggered for task #" + backup.tag() + "; running service before backup");
         }
-        boolean maintained = maintainBackup(backup, output);
-        if (!maintained) {
-          String msg = "maintenance failed before backup for task #" + backup.tag() + "; aborting backup";
+        boolean served = serveBackup(backup, output);
+        if (!served) {
+          String msg = "service failed before backup for task #" + backup.tag() + "; aborting backup";
           LOG.log(Level.ERROR, () -> msg);
           if (output != null) output.accept(msg);
           return false;
@@ -354,30 +447,30 @@ final class ResticExecutor {
     return true;
   }
 
-  boolean maintainBackup(Backup backup, Consumer<String> output) {
+  boolean serveBackup(Backup backup, Consumer<String> output) {
     Manager manager = backup.manager();
     String repo = backup.destination().processOpts();
     Map<String, String> environment = backup.processEnvironment();
 
     if (output != null) {
-      output.accept("maintaining repository '" + repo + "'");
+      output.accept("servicing repository '" + repo + "'");
     }
 
     // Step 1: Structural check (gatekeeper before any retention/prune)
-    List<String> checkCmd = maintainCheckCommand(backup);
+    List<String> checkCmd = serveCheckCommand(backup);
     if (output != null) {
       output.accept("checking repository '" + repo + "'");
     }
     boolean checkOk = ExecutorSupport.execute(commandExecutor, manager, checkCmd, null, environment, backup.tag(), output);
     if (!checkOk) {
-      String msg = "maintenance aborted for task #" + backup.tag() + ": repository check failed";
+      String msg = "service aborted for task #" + backup.tag() + ": repository check failed";
       LOG.log(Level.ERROR, () -> msg);
       if (output != null) output.accept(msg);
       return false;
     }
 
     // Step 2: Forget (retention)
-    List<String> forgetCmd = maintainForgetCommand(backup);
+    List<String> forgetCmd = serveForgetCommand(backup);
     if (forgetCmd != null) {
       if (output != null) {
         output.accept("applying retention policy to repository '" + repo + "'");
@@ -398,17 +491,17 @@ final class ResticExecutor {
       return false;
     }
 
-    // Step 4: Record maintenance in repository state
+    // Step 4: Record serve in repository state
     if (!manager.simulate) {
       Path repoDir = Path.of(repo);
       RepoState state = RepoState.load(repoDir);
-      state.recordMaintenance();
+      state.recordServe();
       state.save(repoDir);
     }
     return true;
   }
 
-  boolean maintainRestore(Restore restore, Consumer<String> output) {
+  boolean serveRestore(Restore restore, Consumer<String> output) {
     Manager manager = restore.manager();
     String repo = restore.source().processOpts();
     Map<String, String> environment = restore.processEnvironment();
@@ -417,7 +510,7 @@ final class ResticExecutor {
       output.accept("checking repository '" + repo + "'");
     }
 
-    List<String> checkCmd = maintainCheckCommand(restore);
+    List<String> checkCmd = serveCheckCommand(restore);
     return ExecutorSupport.execute(commandExecutor, manager, checkCmd, null, environment, restore.tag(), output);
   }
 

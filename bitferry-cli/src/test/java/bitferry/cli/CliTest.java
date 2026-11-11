@@ -2,10 +2,7 @@ package bitferry.cli;
 
 import bitferry.*;
 import bitferry.endpoint.VolumeEndpoint;
-import bitferry.task.Backup;
-import bitferry.task.Rclone;
-import bitferry.task.Restore;
-import bitferry.task.Task;
+import bitferry.task.*;
 import bitferry.vault.Passwords;
 import java.io.*;
 import java.nio.charset.*;
@@ -88,7 +85,7 @@ class CliTest {
     String bHelp = backupOut.toString();
     assertTrue(bHelp.contains("profile (@default)"));
     assertTrue(bHelp.contains("profile (@default, @full)"));
-    assertTrue(bHelp.contains("-M, --maintain"));
+    assertTrue(bHelp.contains("-S, --serve"));
     assertFalse(bHelp.contains("@default: --no-cache"));
     assertFalse(bHelp.contains("@full:    --no-cache"));
     assertFalse(bHelp.contains("--prune"));
@@ -760,7 +757,7 @@ class CliTest {
     assertTrue(output.contains("Include:       *.txt"));
     assertTrue(output.contains("# Commands"));
     assertTrue(output.contains("Execute:"));
-    assertTrue(output.contains("Maintain:"));
+    assertTrue(output.contains("Serve:"));
     assertTrue(output.contains("rclone check"));
 
     // 2. Alias: i t <tag>
@@ -1007,21 +1004,21 @@ class CliTest {
     assertEquals(0, cmd.execute("create", "volume", volDir.toString()));
     String vtag = volumeTag(managerFor(volDir), volDir);
 
-    // 1. Explicit -M 14d,10
+    // 1. Explicit -S 14d,10
     int code = executeWithPassword("secret1", "--path", volDir.toString(),
-      "create", "task", "backup", ":" + vtag + ":", "local:" + repoDir, "-M", "14d,10");
+      "create", "task", "backup", ":" + vtag + ":", "local:" + repoDir, "-S", "14d,10");
     assertEquals(0, code, () -> "stderr: " + err.toString());
 
     Manager m = managerFor(volDir);
     Backup task1 = (Backup) m.selectTasks().values().iterator().next();
     assertEquals("14d,10", task1.cadence().format());
-    assertEquals("14d,10", task1.serialize().get("restic").get("maintain").asString());
+    assertEquals("14d,10", task1.serialize().get("restic").get("serve").asString());
 
     assertEquals(0, cmd.execute("--path", volDir.toString(), "delete", "task", task1.tag()));
 
-    // 2. Shorthand -m sets @default (7d,5)
+    // 2. Shorthand -s sets @default (7d,5)
     code = executeWithPassword("secret1", "--path", volDir.toString(),
-      "create", "task", "backup", ":" + vtag + ":", "local:" + repoDir, "-m");
+      "create", "task", "backup", ":" + vtag + ":", "local:" + repoDir, "-s");
     assertEquals(0, code, () -> "stderr: " + err.toString());
 
     m = managerFor(volDir);
@@ -1031,29 +1028,29 @@ class CliTest {
 
     assertEquals(0, cmd.execute("--path", volDir.toString(), "delete", "task", task2.tag()));
 
-    // 3. Disable with -M -
+    // 3. Disable with -S -
     code = executeWithPassword("secret1", "--path", volDir.toString(),
-      "create", "task", "backup", ":" + vtag + ":", "local:" + repoDir, "-M", "-");
+      "create", "task", "backup", ":" + vtag + ":", "local:" + repoDir, "-S", "-");
     assertEquals(0, code, () -> "stderr: " + err.toString());
 
     m = managerFor(volDir);
     Backup task3 = (Backup) m.selectTasks().values().iterator().next();
     assertNull(task3.cadence());
-    assertEquals("-", task3.serialize().get("restic").get("maintain").asString());
+    assertEquals("-", task3.serialize().get("restic").get("serve").asString());
 
     assertEquals(0, cmd.execute("--path", volDir.toString(), "delete", "task", task3.tag()));
 
-    // 4. Mutual exclusivity: -m and -M both specified
+    // 4. Mutual exclusivity: -s and -S both specified
     code = executeWithPassword("secret1", "--path", volDir.toString(),
-      "create", "task", "backup", ":" + vtag + ":", "local:" + repoDir, "-m", "-M", "14d");
+      "create", "task", "backup", ":" + vtag + ":", "local:" + repoDir, "-s", "-S", "14d");
     assertNotEquals(0, code);
-    assertTrue(err.toString().contains("maintenance cadence specified twice"));
+    assertTrue(err.toString().contains("serve cadence specified twice"));
   }
 
   @Test
-  void maintainCommandExecution() throws IOException {
-    Path volDir = tempDir.resolve("maint_vol");
-    Path dataDir = tempDir.resolve("maint_data");
+  void serveCommandExecution() throws IOException {
+    Path volDir = tempDir.resolve("serve_vol");
+    Path dataDir = tempDir.resolve("serve_data");
     Files.createDirectories(volDir);
     Files.createDirectories(dataDir);
 
@@ -1066,16 +1063,23 @@ class CliTest {
 
     Task task = managerFor(volDir).selectTasks().values().iterator().next();
 
-    // Run maintain in simulation mode
-    assertEquals(0, cmd.execute("--path", volDir.toString(), "-n", "maintain", task.tag()),
+    // Run serve in simulation mode
+    assertEquals(0, cmd.execute("--path", volDir.toString(), "-n", "serve", task.tag()),
       () -> "stderr: " + err);
-    assertTrue(out.toString().contains("maintained successfully") || out.toString().contains("1/1"));
+    assertTrue(out.toString().contains("serviced successfully") || out.toString().contains("1/1"));
 
-    // Run maintain via alias 'm'
+    // Run serve via alias 's'
     out.getBuffer().setLength(0);
-    assertEquals(0, cmd.execute("--path", volDir.toString(), "-n", "m", task.tag()),
+    assertEquals(0, cmd.execute("--path", volDir.toString(), "-n", "s", task.tag()),
       () -> "stderr: " + err);
-    assertTrue(out.toString().contains("maintained successfully") || out.toString().contains("1/1"));
+    assertTrue(out.toString().contains("serviced successfully") || out.toString().contains("1/1"));
+
+    // Old 'maintain' command is rejected (no backward hooks)
+    out.getBuffer().setLength(0);
+    err.getBuffer().setLength(0);
+    int code = cmd.execute("--path", volDir.toString(), "-n", "maintain", task.tag());
+    assertNotEquals(0, code);
+    assertTrue(err.toString().contains("Unmatched argument") || err.toString().contains("maintain"));
   }
 
   @Test
@@ -1149,7 +1153,7 @@ class CliTest {
     assertTrue(breakdown.contains("Vault Volume:  #" + vtag));
     assertTrue(breakdown.contains("# Commands"));
     assertTrue(breakdown.contains("Execute:"));
-    assertTrue(breakdown.contains("Maintain:"));
+    assertTrue(breakdown.contains("Serve:"));
     assertTrue(breakdown.contains("rclone check"));
 
     // Bare mode emits only rclone command line
@@ -1196,11 +1200,11 @@ class CliTest {
     assertTrue(bBreakdown.contains("Operation:     backup"));
     assertTrue(bBreakdown.contains("Repository:"));
     assertTrue(bBreakdown.contains("Vault Volume:  #" + vtag));
-    assertTrue(bBreakdown.contains("# Maintenance & Retention"));
+    assertTrue(bBreakdown.contains("# Service & Retention"));
     assertTrue(bBreakdown.contains("Cadence:       7d,5 (profile: @default)"));
     assertTrue(bBreakdown.contains("Status:        due"));
     assertTrue(bBreakdown.contains("Last Backup:   never"));
-    assertTrue(bBreakdown.contains("Last Maint:    never"));
+    assertTrue(bBreakdown.contains("Last Service:  never"));
     assertTrue(bBreakdown.contains("Retention:     --prune --keep-within-hourly 24h"));
     assertTrue(bBreakdown.contains("Check:         @default (structural)"));
     assertTrue(bBreakdown.contains("# Filters"));
@@ -1208,7 +1212,7 @@ class CliTest {
     assertTrue(bBreakdown.contains("# Commands"));
     assertTrue(bBreakdown.contains("Execute:"));
     assertTrue(bBreakdown.contains("restic backup"));
-    assertTrue(bBreakdown.contains("Maintain:"));
+    assertTrue(bBreakdown.contains("Serve:"));
     assertTrue(bBreakdown.contains("restic check"));
     assertTrue(bBreakdown.contains("restic prune"));
 
@@ -1245,7 +1249,7 @@ class CliTest {
     assertTrue(rBreakdown.contains("# Commands"));
     assertTrue(rBreakdown.contains("Execute:"));
     assertTrue(rBreakdown.contains("restic restore"));
-    assertTrue(rBreakdown.contains("Maintain:"));
+    assertTrue(rBreakdown.contains("Serve:"));
     assertTrue(rBreakdown.contains("restic check"));
   }
 
@@ -1264,5 +1268,256 @@ class CliTest {
       "create", "task", "restore", "local:" + notRepo, ":" + vtag + ":restored");
     assertEquals(1, code);
     assertTrue(err.toString().contains("is not a valid restic repository"));
+  }
+
+  @Test
+  void modifyTaskBackupPoliciesAndOptions() throws IOException {
+    Path volDir = tempDir.resolve("mod_backup_vol");
+    Path repoDir = tempDir.resolve("mod_backup_repo");
+    Files.createDirectories(volDir);
+    Files.createDirectories(repoDir);
+
+    assertEquals(0, cmd.execute("create", "volume", volDir.toString()));
+    String vtag = volumeTag(managerFor(volDir), volDir);
+
+    int code = executeWithPassword("secret1", "--path", volDir.toString(),
+      "create", "task", "backup", ":" + vtag + ":", "local:" + repoDir);
+    assertEquals(0, code);
+
+    Backup task = (Backup) managerFor(volDir).selectTasks().values().iterator().next();
+
+    // 1. Modify task using 'modify task' with shorthands -f -c -m -X @default
+    cmd = Main.createCommandLine();
+    out = new StringWriter();
+    err = new StringWriter();
+    cmd.setOut(new PrintWriter(out));
+    cmd.setErr(new PrintWriter(err));
+    code = cmd.execute("--path", volDir.toString(), "modify", "task", task.tag(), "-f", "-c", "-s", "-X", "@default");
+    assertEquals(0, code, () -> "stderr: " + err);
+    assertTrue(out.toString().contains("modified successfully"));
+
+    Manager m = managerFor(volDir);
+    Backup updated1 = (Backup) m.selectTasks().get(task.tag());
+    assertEquals(Backup.FORGET.get("default"), updated1.forget());
+    assertEquals(Backup.CHECK.get("default"), updated1.check());
+    assertEquals(Cadence.PROFILES.get("default"), updated1.cadence());
+    assertEquals(Backup.PROCESS.get("default"), updated1.processOptions());
+
+    // 2. Modify task using 'm t' with explicit values and include/exclude
+    cmd = Main.createCommandLine();
+    out = new StringWriter();
+    err = new StringWriter();
+    cmd.setOut(new PrintWriter(out));
+    cmd.setErr(new PrintWriter(err));
+    code = cmd.execute("--path", volDir.toString(), "m", "t", task.tag(),
+      "-F", "--keep-daily,7", "-C", "--read-data", "-S", "14d,10", "-X", "--no-cache",
+      "--include", "src/**", "--exclude", "*.tmp");
+    assertEquals(0, code, () -> "stderr: " + err);
+
+    m = managerFor(volDir);
+    Backup updated2 = (Backup) m.selectTasks().get(task.tag());
+    assertEquals(List.of("--keep-daily", "7"), updated2.forget());
+    assertEquals(List.of("--read-data"), updated2.check());
+    assertEquals(new Cadence(java.time.Duration.ofDays(14), 10), updated2.cadence());
+    assertEquals(List.of("--no-cache"), updated2.processOptions());
+    assertEquals(List.of("src/**"), updated2.include());
+    assertEquals(List.of("*.tmp"), updated2.exclude());
+
+    // 3. Clear/disable options using '-' and '--clear-*'
+    cmd = Main.createCommandLine();
+    out = new StringWriter();
+    err = new StringWriter();
+    cmd.setOut(new PrintWriter(out));
+    cmd.setErr(new PrintWriter(err));
+    code = cmd.execute("--path", volDir.toString(), "m", "t", task.tag(),
+      "-F", "-", "-C", "-", "-S", "-", "-X", "-", "--clear-include", "--clear-exclude");
+    assertEquals(0, code, () -> "stderr: " + err);
+
+    m = managerFor(volDir);
+    Backup updated3 = (Backup) m.selectTasks().get(task.tag());
+    assertNull(updated3.forget());
+    assertNull(updated3.check());
+    assertNull(updated3.cadence());
+    assertTrue(updated3.processOptions().isEmpty());
+    assertTrue(updated3.include().isEmpty());
+    assertTrue(updated3.exclude().isEmpty());
+  }
+
+  @Test
+  void modifyTaskBackupPasswordRotation() throws IOException {
+    Assumptions.assumeTrue(available("restic"), "restic not available for the integration check");
+
+    Path volDir = tempDir.resolve("mod_pw_vol");
+    Path repoDir = tempDir.resolve("mod_pw_repo");
+    Files.createDirectories(volDir);
+    Files.createDirectories(repoDir);
+
+    assertEquals(0, cmd.execute("create", "volume", volDir.toString()));
+    String vtag = volumeTag(managerFor(volDir), volDir);
+
+    // Create a real restic backup task
+    int code = executeWithPassword("initial-secret", "--path", volDir.toString(),
+      "create", "task", "backup", ":" + vtag + ":", "local:" + repoDir);
+    assertEquals(0, code, () -> "stderr: " + err);
+
+    Backup task = (Backup) managerFor(volDir).selectTasks().values().iterator().next();
+    assertEquals("initial-secret", task.password());
+
+    // Rotate password via 'm t <tag> -p'
+    cmd = Main.createCommandLine();
+    out = new StringWriter();
+    err = new StringWriter();
+    cmd.setOut(new PrintWriter(out));
+    cmd.setErr(new PrintWriter(err));
+    code = executeWithPassword("rotated-new-secret", "--path", volDir.toString(),
+      "m", "t", task.tag(), "-p");
+    assertEquals(0, code, () -> "stderr: " + err);
+
+    // Verify stored password was updated
+    Manager m = managerFor(volDir);
+    Backup updated = (Backup) m.selectTasks().get(task.tag());
+    assertEquals("rotated-new-secret", updated.password());
+
+    // Verify the restic repo now accepts the new password and rejects the old password
+    CommandExecutor ce = CommandExecutor.system();
+    List<String> probeCmd = List.of("restic", "-r", repoDir.toString(), "cat", "config");
+    try {
+      int exitCodeNew = ce.execute(probeCmd, null, Map.of("RESTIC_PASSWORD", "rotated-new-secret"), null);
+      assertEquals(0, exitCodeNew);
+
+      int exitCodeOld = ce.execute(probeCmd, null, Map.of("RESTIC_PASSWORD", "initial-secret"), null);
+      assertNotEquals(0, exitCodeOld);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+    }
+  }
+
+  @Test
+  void modifyTaskRestoreOptions() throws IOException {
+    Path volDir = tempDir.resolve("mod_restore_vol");
+    Files.createDirectories(volDir);
+
+    assertEquals(0, cmd.execute("create", "volume", volDir.toString()));
+    String vtag = volumeTag(managerFor(volDir), volDir);
+
+    int code = executeWithPassword("secret1", "--path", volDir.toString(),
+      "create", "task", "restore", ":" + vtag + ":repo", ":" + vtag + ":restored");
+    assertEquals(0, code);
+
+    Restore task = (Restore) managerFor(volDir).selectTasks().values().iterator().next();
+
+    // 1. Modifying execute options succeeds
+    cmd = Main.createCommandLine();
+    out = new StringWriter();
+    err = new StringWriter();
+    cmd.setOut(new PrintWriter(out));
+    cmd.setErr(new PrintWriter(err));
+    code = cmd.execute("--path", volDir.toString(), "m", "t", task.tag(), "-X", "--verify");
+    assertEquals(0, code, () -> "stderr: " + err);
+
+    Manager m = managerFor(volDir);
+    Restore updated = (Restore) m.selectTasks().get(task.tag());
+    assertEquals(List.of("--verify"), updated.processOptions());
+
+    // 2. Modifying backup-only options on restore fails
+    cmd = Main.createCommandLine();
+    out = new StringWriter();
+    err = new StringWriter();
+    cmd.setOut(new PrintWriter(out));
+    cmd.setErr(new PrintWriter(err));
+    code = cmd.execute("--path", volDir.toString(), "m", "t", task.tag(), "-f");
+    assertNotEquals(0, code);
+    assertTrue(err.toString().contains("forget, check, and serve options are only applicable to backup tasks"));
+  }
+
+  @Test
+  void modifyTaskRcloneOptionsAndRejections() throws IOException {
+    Path volDir = tempDir.resolve("mod_rclone_vol");
+    Path dataDir = tempDir.resolve("mod_rclone_data");
+    Files.createDirectories(volDir);
+    Files.createDirectories(dataDir);
+
+    assertEquals(0, cmd.execute("create", "volume", volDir.toString()));
+    String vtag = volumeTag(managerFor(volDir), volDir);
+
+    int code = cmd.execute("--path", volDir.toString(),
+      "create", "task", "synchronize", ":" + vtag + ":", "local:" + dataDir);
+    assertEquals(0, code);
+
+    Synchronize task = (Synchronize) managerFor(volDir).selectTasks().values().iterator().next();
+
+    // 1. Modifying execute and filters succeeds
+    cmd = Main.createCommandLine();
+    out = new StringWriter();
+    err = new StringWriter();
+    cmd.setOut(new PrintWriter(out));
+    cmd.setErr(new PrintWriter(err));
+    code = cmd.execute("--path", volDir.toString(), "m", "t", task.tag(), "-X", "@default", "--include", "docs/**");
+    assertEquals(0, code, () -> "stderr: " + err);
+
+    Manager m = managerFor(volDir);
+    Synchronize updated = (Synchronize) m.selectTasks().get(task.tag());
+    assertEquals(Rclone.PROCESS.get("default"), updated.processOptions());
+    assertEquals(List.of("docs/**"), updated.include());
+
+    // 2. Modifying password on rclone fails
+    cmd = Main.createCommandLine();
+    out = new StringWriter();
+    err = new StringWriter();
+    cmd.setOut(new PrintWriter(out));
+    cmd.setErr(new PrintWriter(err));
+    code = cmd.execute("--path", volDir.toString(), "m", "t", task.tag(), "-p");
+    assertNotEquals(0, code);
+    assertTrue(err.toString().contains("rclone crypt parameters and passwords cannot be modified on an existing task"));
+
+    // 3. Modifying backup options on rclone fails
+    cmd = Main.createCommandLine();
+    out = new StringWriter();
+    err = new StringWriter();
+    cmd.setOut(new PrintWriter(out));
+    cmd.setErr(new PrintWriter(err));
+    code = cmd.execute("--path", volDir.toString(), "m", "t", task.tag(), "-S", "@default");
+    assertNotEquals(0, code);
+    assertTrue(err.toString().contains("forget, check, and serve options are only applicable to backup tasks"));
+  }
+
+  @Test
+  void modifyTaskValidationFailures() throws IOException {
+    Path volDir = tempDir.resolve("mod_val_vol");
+    Path dataDir = tempDir.resolve("mod_val_data");
+    Files.createDirectories(volDir);
+    Files.createDirectories(dataDir);
+
+    assertEquals(0, cmd.execute("create", "volume", volDir.toString()));
+    String vtag = volumeTag(managerFor(volDir), volDir);
+
+    int code = cmd.execute("--path", volDir.toString(),
+      "create", "task", "synchronize", ":" + vtag + ":", "local:" + dataDir);
+    assertEquals(0, code);
+
+    Task task = managerFor(volDir).selectTasks().values().iterator().next();
+
+    // 1. No modifications specified
+    cmd = Main.createCommandLine();
+    err = new StringWriter();
+    cmd.setErr(new PrintWriter(err));
+    code = cmd.execute("--path", volDir.toString(), "m", "t", task.tag());
+    assertNotEquals(0, code);
+    assertTrue(err.toString().contains("no modifications specified for task #" + task.tag()));
+
+    // 2. Conflicting flags
+    cmd = Main.createCommandLine();
+    err = new StringWriter();
+    cmd.setErr(new PrintWriter(err));
+    code = cmd.execute("--path", volDir.toString(), "m", "t", task.tag(), "-f", "-F", "@default");
+    assertNotEquals(0, code);
+    assertTrue(err.toString().contains("cannot specify both -f and -F"));
+
+    cmd = Main.createCommandLine();
+    err = new StringWriter();
+    cmd.setErr(new PrintWriter(err));
+    code = cmd.execute("--path", volDir.toString(), "m", "t", task.tag(), "--include", "a", "--clear-include");
+    assertNotEquals(0, code);
+    assertTrue(err.toString().contains("cannot specify both --include/--include-ext and --clear-include"));
   }
 }

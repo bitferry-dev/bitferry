@@ -24,7 +24,7 @@ public class Backup extends Restic {
     "full", List.of("--read-data")
   ), null);
 
-  /// Maintenance cadence profiles; default is 7 days or 5 backups.
+  /// Service cadence profiles; default is 7 days or 5 backups.
   public static final Map<String, Cadence> CADENCE = Cadence.PROFILES;
 
   /// The repository initialization mode: null for automatic creation/attachment,
@@ -37,13 +37,13 @@ public class Backup extends Restic {
 
   private static final System.Logger LOG = System.getLogger(Backup.class.getName());
 
-  /// Constructor for a new task instance with an explicit maintenance cadence.
-  public Backup(Manager manager, Endpoint source, Endpoint destination, String password, Boolean format, String process, String forget, String check, String maintain, Collection<String> include, Collection<String> exclude) {
+  /// Constructor for a new task instance with an explicit service cadence.
+  public Backup(Manager manager, Endpoint source, Endpoint destination, String password, Boolean format, String process, String forget, String check, String serve, Collection<String> include, Collection<String> exclude) {
     super(manager, source, destination, password, process, PROCESS, include, exclude);
     this.format = format;
     this.forget = optional(forget, FORGET);
     this.check = optional(check, CHECK);
-    this.cadence = Cadence.parse(maintain);
+    this.cadence = Cadence.parse(serve);
   }
 
   /// Constructor for a new task instance (cadence defaults to @default).
@@ -73,9 +73,9 @@ public class Backup extends Restic {
     this.format = null;
     this.forget = backendOpts == null ? null : backendOpts.forget();
     this.check = backendOpts == null ? null : backendOpts.check();
-    this.cadence = backendOpts == null || backendOpts.maintain() == null
+    this.cadence = backendOpts == null || backendOpts.serve() == null
       ? Cadence.PROFILES.get("default")
-      : Cadence.parse(backendOpts.maintain());
+      : Cadence.parse(backendOpts.serve());
   }
 
   @Override
@@ -110,15 +110,30 @@ public class Backup extends Restic {
     return cadence;
   }
 
+  public void setForget(String forget) {
+    this.forget = optional(forget, FORGET);
+    touch();
+  }
+
+  public void setCheck(String check) {
+    this.check = optional(check, CHECK);
+    touch();
+  }
+
+  public void setCadence(String serve) {
+    this.cadence = Cadence.parse(serve);
+    touch();
+  }
+
   @Override
   @JsonProperty("restic")
   Backend storeBackend() {
-    String m = cadence == null ? "-" : cadence.format();
+    String s = cadence == null ? "-" : cadence.format();
     boolean empty = (processOptions == null || processOptions.isEmpty())
       && (forget == null || forget.isEmpty())
       && check == null
       && Cadence.PROFILES.get("default").equals(cadence);
-    return empty ? null : new Backend(orNull(processOptions), orNull(forget), check, m);
+    return empty ? null : new Backend(orNull(processOptions), orNull(forget), check, s);
   }
 
   /// Initialize the repository upon the task creation.
@@ -133,7 +148,7 @@ public class Backup extends Restic {
   }
 
   @Override
-  public List<List<String>> maintainCommands() {
-    return manager.backendExecutor().maintainCommands(this);
+  public List<List<String>> serveCommands() {
+    return manager.backendExecutor().serveCommands(this);
   }
 }

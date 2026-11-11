@@ -9,13 +9,13 @@ import picocli.CommandLine.*;
 import picocli.CommandLine.Help.*;
 import picocli.CommandLine.Model.*;
 
-/// Perform maintenance (integrity check, retention, pruning) on matched tasks or repositories.
-@Command(name = "maintain", aliases = {"m"}, mixinStandardHelpOptions = true, description = "Perform maintenance (integrity check, retention, pruning) on matched tasks or repositories.")
-public class MaintainCommand implements Callable<Integer>, HasCommonOptions {
+/// Perform service tasks (integrity check, retention, pruning) on matched tasks or repositories.
+@Command(name = "serve", aliases = {"s"}, mixinStandardHelpOptions = true, description = "Perform service tasks (integrity check, retention, pruning) on matched tasks or repositories.")
+public class ServeCommand implements Callable<Integer>, HasCommonOptions {
 
   // Explicit no-arg constructor: the command classes are instantiated
   // reflectively by picocli.
-  public MaintainCommand() {}
+  public ServeCommand() {}
 
   @Mixin
   CommonOptions options = new CommonOptions();
@@ -23,7 +23,7 @@ public class MaintainCommand implements Callable<Integer>, HasCommonOptions {
   @Spec
   CommandSpec spec;
 
-  @Parameters(arity = "0..*", description = "Tags matching tasks to maintain.", paramLabel = "TAGS")
+  @Parameters(arity = "0..*", description = "Tags matching tasks to service.", paramLabel = "TAGS")
   List<String> tags;
 
   @Override
@@ -55,7 +55,7 @@ public class MaintainCommand implements Callable<Integer>, HasCommonOptions {
         String line = String.format("@|bold [%d/%d]|@ @|cyan #%s|@  %s", i, n, t.tag(), CliUtils.formatTask(t));
         out.println(Ansi.AUTO.string(line));
       }
-      boolean ok = t.maintain(null);
+      boolean ok = t.serve(null);
       outcome = ok && outcome;
       if (!m.quiet) {
         String status = ok ? "@|green     ✓ success|@" : "@|red     ✗ failure|@";
@@ -65,8 +65,8 @@ public class MaintainCommand implements Callable<Integer>, HasCommonOptions {
     if (!m.quiet) {
       out.println();
       String summary = outcome
-        ? String.format("@|green All %d task(s) maintained successfully.|@", n)
-        : String.format("@|red Some of the %d task(s) failed maintenance.|@", n);
+        ? String.format("@|green All %d task(s) serviced successfully.|@", n)
+        : String.format("@|red Some of the %d task(s) failed servicing.|@", n);
       out.println(Ansi.AUTO.string(summary));
     }
     return outcome ? 0 : 1;
