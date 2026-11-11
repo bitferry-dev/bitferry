@@ -11,7 +11,8 @@ import picocli.CommandLine.Model.CommandSpec;
 import picocli.CommandLine.Model.OptionSpec;
 
 /// Custom help factory and renderer that expands profile contents in option descriptions
-/// only when verbose mode (-v, --verbose) is specified.
+/// only when verbose mode (-v, --verbose) is specified. The help layout adapts to the
+/// terminal window width through picocli's own auto-width machinery (enabled here).
 public final class VerboseHelp implements IHelpFactory {
 
   public static final VerboseHelp INSTANCE = new VerboseHelp();
@@ -20,6 +21,7 @@ public final class VerboseHelp implements IHelpFactory {
 
   @Override
   public Help create(CommandSpec commandSpec, ColorScheme colorScheme) {
+    commandSpec.usageMessage().autoWidth(true);
     return new CustomHelp(commandSpec, colorScheme, isVerbose(commandSpec));
   }
 

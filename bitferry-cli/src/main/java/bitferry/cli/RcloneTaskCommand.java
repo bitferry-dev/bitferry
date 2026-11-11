@@ -48,10 +48,10 @@ public abstract class RcloneTaskCommand implements Callable<Integer>, HasCommonO
   @Option(names = "-x", split = ",", description = "Exclude file extensions (comma-separated list).")
   List<String> excludeExts;
 
-  @Option(names = "-e", description = "Encrypt files in destination using default profile.")
+  @Option(names = "-e", description = "Encrypt files in destination using @default profile.")
   boolean encryptDefault;
 
-  @Option(names = "-d", description = "Decrypt source files using default profile.")
+  @Option(names = "-d", description = "Decrypt source files using @default profile.")
   boolean decryptDefault;
 
   @Profiles(value = Rclone.class, field = "PROFILE")

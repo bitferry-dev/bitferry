@@ -945,4 +945,12 @@ class CliTest {
       return false;
     }
   }
+
+  @Test
+  void verboseHelpEnablesPicocliAutoWidth() {
+    var spec = Main.createCommandLine().getCommandSpec();
+    var colorScheme = new picocli.CommandLine.Help.ColorScheme.Builder().build();
+    VerboseHelp.INSTANCE.create(spec, colorScheme);
+    assertTrue(spec.usageMessage().autoWidth());
+  }
 }
