@@ -1,0 +1,23 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "CLI",
+      "type": "f5anything",
+      "request": "launch",
+      "command": "./gradlew :bitferry-cli:run",
+      "windows": {
+        "command": "gradlew.bat :bitferry-cli:run"
+      }
+    },
+    {
+      "name": "GUI",
+      "type": "f5anything",
+      "request": "launch",
+      "command": "./gradlew :bitferry-gui:run",
+      "windows": {
+        "command": "gradlew.bat :bitferry-gui:run"
+      }
+    }
+  ]
+}
