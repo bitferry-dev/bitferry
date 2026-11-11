@@ -229,12 +229,19 @@ class CliTest {
     assertEquals(0, cmd.execute("--path", firstDir + "," + secondDir, "create", "task", "synchronize", ":" + ftag + ":", ":" + stag + ":backup"),
       () -> "stderr: " + err.toString());
 
-    // The absent peer volume makes the task stale: it is neither executed nor
-    // silently forgotten - the skip is noted on the stderr
+    // The absent peer volume makes the task stale: in normal mode nothing is printed to stderr;
+    // in verbose mode (-v) the skipped tasks are surfaced
     cmd = Main.createCommandLine();
     err = new StringWriter();
     cmd.setErr(new PrintWriter(err));
     int code = cmd.execute("--path", firstDir.toString(), "-n", "execute");
+    assertEquals(0, code, () -> "stderr: " + err.toString());
+    assertFalse(err.toString().contains("task(s) skipped"), () -> "stderr: " + err.toString());
+
+    cmd = Main.createCommandLine();
+    err = new StringWriter();
+    cmd.setErr(new PrintWriter(err));
+    code = cmd.execute("--path", firstDir.toString(), "-n", "-v", "execute");
     assertEquals(0, code, () -> "stderr: " + err.toString());
     assertTrue(err.toString().contains("task(s) skipped"), () -> "stderr: " + err.toString());
   }

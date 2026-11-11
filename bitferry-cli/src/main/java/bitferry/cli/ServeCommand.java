@@ -37,10 +37,9 @@ public class ServeCommand implements Callable<Integer>, HasCommonOptions {
     PrintWriter err = spec != null ? spec.commandLine().getErr() : new PrintWriter(System.err, true);
     CommonOptions opts = CliUtils.resolveOptions(spec, options);
     Manager m = CliUtils.restoreManager(opts);
-    // The tasks skipped due to the absent volumes are surfaced: a silent success here
-    // would look like the execution ran while nothing did
+    // The tasks skipped due to the absent volumes are surfaced in verbose mode
     List<Task> stale = m.liveTasks().values().stream().filter(t -> !t.isIntact()).toList();
-    if (!stale.isEmpty() && !m.quiet) {
+    if (!stale.isEmpty() && m.verbose()) {
       err.println(Ansi.AUTO.string("@|faint " + stale.size() + " task(s) skipped: their volumes are currently absent (see 'bitferry info -v')|@"));
     }
     Map<String, Task> tasks = m.selectTasks(tags);
