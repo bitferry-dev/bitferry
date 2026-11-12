@@ -164,7 +164,11 @@ final class RcloneExecutor {
     }
   }
 
-  List<String> command(Rclone rclone) {
+  /// Assemble the rclone command line. The passthrough flag reflects the execution
+  /// mode (true: stdout inherited - the real terminal; false: captured for a consumer):
+  /// the interactive progress display travels only with the passthrough runs, while
+  /// the verbosity applies to both modes.
+  List<String> command(Rclone rclone, boolean passthrough) {
     Manager manager = rclone.manager();
     List<String> cmd = new ArrayList<>();
     cmd.add(ExecutorSupport.resolveExecutable("rclone"));
@@ -191,9 +195,15 @@ final class RcloneExecutor {
     // Common options
     cmd.add("--config");
     cmd.add(ExecutorSupport.isWindows() ? "NUL" : "/dev/null");
+    // The verbosity applies to both execution modes; the interactive progress display
+    // is requested only for the passthrough runs (stdout inherited, the real terminal):
+    // over the captured pipes the rclone's own progress degrades to the periodic
+    // single-line stats and would only add noise to the consumer
     if (manager.verbose()) {
       cmd.add("--verbose");
-      cmd.add("--progress");
+      if (passthrough) {
+        cmd.add("--progress");
+      }
     }
     if (manager.quiet) {
       cmd.add("--quiet");
@@ -212,12 +222,13 @@ final class RcloneExecutor {
   }
 
   List<List<String>> commands(Rclone rclone) {
-    return List.of(ExecutorSupport.displayCommand(command(rclone)));
+    // The preview reflects the CLI passthrough form (the only execution mode today)
+    return List.of(ExecutorSupport.displayCommand(command(rclone, true)));
   }
 
   /// Process the rclone-backed task. Return true on success.
   boolean run(Rclone rclone, Consumer<String> output) {
-    List<String> cmd = command(rclone);
+    List<String> cmd = command(rclone, output == null);
     return ExecutorSupport.execute(commandExecutor, rclone.manager(), cmd, null, rclone.processEnvironment(), rclone.tag(), output);
   }
 

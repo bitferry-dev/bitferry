@@ -356,6 +356,50 @@ tasks.register('copyToolsToJpackageImage') {
     }
 }
 
+// Unpack the platform jansi native into the image trees. jansi's loader probes the
+// library path (java.home/lib on unix, java.home\bin on windows) before falling back
+// to the temp-dir extraction, so with the native loose in the image the extraction
+// never fires: the noexec-tempdir hazard disappears and the unicode output keeps
+// rendering on the legacy code page consoles. Each image carries only its own
+// platform's native - the table maps the build targets to the jansi jar layout.
+def jansiNatives = [
+    'windows-x64'   : [jarEntry: 'Windows/x86_64/jansi.dll',   tree: 'bin',                   jpackage: 'runtime/bin'],
+    'linux-x64'     : [jarEntry: 'Linux/x86_64/libjansi.so',   tree: 'lib',                   jpackage: 'lib/runtime/lib'],
+    'linux-aarch64' : [jarEntry: 'Linux/aarch64/libjansi.so',  tree: 'lib',                   jpackage: 'lib/runtime/lib'],
+    'macos-x64'     : [jarEntry: 'Mac/x86_64/libjansi.jnilib', tree: 'lib',                   jpackage: 'lib/runtime/lib'],
+    'macos-aarch64' : [jarEntry: 'Mac/aarch64/libjansi.jnilib', tree: 'lib',                  jpackage: 'lib/runtime/lib'],
+]
+
+tasks.register('copyJansiNative') {
+    group = 'bitferry'
+    description = "Unpacks the platform jansi native (${jansiNatives[platformName].jarEntry}) into the image trees."
+    dependsOn tasks.named('jlink')
+    if (!cross) {
+        dependsOn tasks.named('jpackageImage')
+    }
+    doLast {
+        def jansiJar = configurations.runtimeClasspath.files.find { it.name.startsWith('jansi-') }
+        if (jansiJar == null) {
+            throw new GradleException('the jansi jar was not found on the runtime classpath')
+        }
+        def spec = jansiNatives[platformName]
+        def nativeName = spec.jarEntry.substring(spec.jarEntry.lastIndexOf('/') + 1)
+        def targets = [new File(runtimeImageDir, spec.tree + '/' + nativeName),
+                       new File(jpackageImageDir, spec.jpackage + '/' + nativeName)]
+        new java.util.jar.JarFile(jansiJar).withCloseable { jar ->
+            def entry = jar.getJarEntry('org/fusesource/jansi/internal/native/' + spec.jarEntry)
+            if (entry == null) {
+                throw new GradleException("jansi native '${spec.jarEntry}' not found in '${jansiJar.name}'")
+            }
+            for (File target : targets) {
+                target.parentFile.mkdirs()
+                java.nio.file.Files.copy(jar.getInputStream(entry), target.toPath(),
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+            }
+        }
+    }
+}
+
 
 def cliAotCache = new File(aotDir, 'cli.aot')
 def guiAotCache = new File(aotDir, 'gui.aot')
@@ -439,7 +483,7 @@ def msiFile = layout.buildDirectory.dir('installer')
 tasks.register('msi', Exec) {
     group = 'bitferry'
     description = 'Builds the per-user Windows MSI installer (WiX) from the jpackage app-image.'
-    dependsOn 'copyAotCachesToJpackageImage'
+    dependsOn 'copyAotCachesToJpackageImage', 'copyJansiNative'
     onlyIf { !cross && OperatingSystem.current().windows }
     inputs.dir jpackageImageDir
     inputs.dir wixSourceDir

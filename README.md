@@ -95,8 +95,10 @@ threshold must sponsor the project).
 The MSI is meant for user-guided installs: double-clicking it shows only the basic MSI
 progress and completion UI — no wizard, license or readme dialogs. It installs the
 app-image tree to `%LOCALAPPDATA%\Programs\Bitferry` for the current user (no elevation),
-adds that directory — where `bitferry.exe` lives — to the user PATH, and adds a Start
-Menu shortcut launching `bitferry-gui.exe`. Uninstall removes everything it laid down. Note
+adds that directory — where the `bitferry.bat` CLI launcher lives — to the user PATH, and adds a Start
+Menu shortcut launching `bitferry-gui.exe`. The CLI launcher switches the console to
+UTF-8 and runs the CLI from the bundled runtime, so the unicode output and the colors
+render correctly in PowerShell and Windows Terminal. Uninstall removes everything it laid down. Note
 that WiX assigns a fresh ProductCode to every build, so uninstall automation must read
 the code from the built MSI (the Property table) rather than reusing a memorized GUID.
 
@@ -187,6 +189,7 @@ untrained until the target builds its own.
 
 ```bash
 ./bitferry.sh info                          # build + run the CLI from the local build tree
+bitferry.bat info                           # the same on Windows
 ./gradlew :bitferry-cli:run --args="info"   # via the gradle run task (no interactive terminal)
 ./gradlew :bitferry-gui:run
 ```
