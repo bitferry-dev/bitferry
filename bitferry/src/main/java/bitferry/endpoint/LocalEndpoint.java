@@ -6,9 +6,9 @@ import java.nio.file.*;
 
 /// Local directory endpoint; the path is taken as is (not resolved against volumes).
 /// The canonical constructor serves as the Jackson creator binding the 'root' descriptor property.
-public record Local(Path root) implements Endpoint {
+public record LocalEndpoint(Path root) implements Endpoint {
 
-  public Local {
+  public LocalEndpoint {
     root = Bitferry.canonicalize(root);
   }
 

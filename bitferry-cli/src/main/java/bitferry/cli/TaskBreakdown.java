@@ -82,7 +82,7 @@ public final class TaskBreakdown {
   }
 
   private static String formatEndpoint(Endpoint endpoint) {
-    if (endpoint instanceof Local l) {
+    if (endpoint instanceof LocalEndpoint l) {
       return Ansi.AUTO.string("local:@|blue " + l.root() + "|@");
     } else if (endpoint instanceof VolumeEndpoint ve) {
       String path = ve.path().equals(".") ? "" : ve.path();

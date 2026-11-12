@@ -8,10 +8,10 @@ import tools.jackson.databind.*;
 /// The concrete endpoint type is discriminated by the 'endpoint' descriptor property.
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "endpoint")
 @JsonSubTypes({
-  @JsonSubTypes.Type(value = Local.class, name = "local"),
+  @JsonSubTypes.Type(value = LocalEndpoint.class, name = "local"),
   @JsonSubTypes.Type(value = VolumeEndpoint.class, name = "bitferry")
 })
-public sealed interface Endpoint permits Local, VolumeEndpoint {
+public sealed interface Endpoint permits LocalEndpoint, VolumeEndpoint {
 
   /// Serialize the endpoint into the storage descriptor node.
   default JsonNode serialize() {

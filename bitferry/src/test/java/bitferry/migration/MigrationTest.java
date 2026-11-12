@@ -148,7 +148,7 @@ class MigrationTest {
     Task syncTask = volume.tasks().get("89e1c119");
     assertNotNull(syncTask);
     assertInstanceOf(Synchronize.class, syncTask);
-    Local src = assertInstanceOf(Local.class, syncTask.source());
+    LocalEndpoint src = assertInstanceOf(LocalEndpoint.class, syncTask.source());
     assertEquals(Bitferry.canonicalize(Path.of("/data/work")), src.root());
     VolumeEndpoint dst = assertInstanceOf(VolumeEndpoint.class, syncTask.destination());
     assertEquals("d2f10024", dst.vtag());

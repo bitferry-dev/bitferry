@@ -37,7 +37,7 @@ public final class Endpoints {
   public static Endpoint parse(Manager manager, String specifier) {
     Matcher x = EXPLICIT_LOCAL.matcher(specifier);
     if (x.matches()) {
-      return new Local(Path.of(x.group("root")));
+      return new LocalEndpoint(Path.of(x.group("root")));
     }
     x = BARE_LOCAL.matcher(specifier);
     if (x.matches()) {

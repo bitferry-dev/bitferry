@@ -142,7 +142,7 @@ public final class CliUtils {
 
   /// Format an endpoint with ANSI color markup for CLI display.
   public static String formatEndpoint(Endpoint endpoint) {
-    if (endpoint instanceof Local l) {
+    if (endpoint instanceof LocalEndpoint l) {
       return Ansi.AUTO.string("@|blue " + l.root() + "|@");
     } else if (endpoint instanceof VolumeEndpoint ve) {
       // The volume root's '.' path is omitted in the listings

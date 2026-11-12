@@ -36,13 +36,13 @@ class EndpointsTest {
   @Test
   void explicitLocalPrefixYieldsThePlainLocalFormOutsideVolumes() {
     // The only way to reference the paths outside the volumes
-    Local local = assertInstanceOf(Local.class, Endpoints.parse(manager, "local:/no/such/path/anywhere"));
+    LocalEndpoint local = assertInstanceOf(LocalEndpoint.class, Endpoints.parse(manager, "local:/no/such/path/anywhere"));
     assertEquals(Bitferry.canonicalize(Path.of("/no/such/path/anywhere")), local.root());
   }
 
   @Test
   void explicitLocalPrefixSpecifiesLocalEndpoint() {
-    assertInstanceOf(Local.class, Endpoints.parse(manager, "local:" + dir.resolve("data")));
+    assertInstanceOf(LocalEndpoint.class, Endpoints.parse(manager, "local:" + dir.resolve("data")));
   }
 
   @Test
@@ -79,20 +79,20 @@ class EndpointsTest {
 
   @Test
   void explicitLocalPrefixForcesThePlainLocalFormInsideAVolume() {
-    Local local = assertInstanceOf(Local.class, Endpoints.parse(manager, "local:" + dir.resolve("volume").resolve("sub/dir")));
+    LocalEndpoint local = assertInstanceOf(LocalEndpoint.class, Endpoints.parse(manager, "local:" + dir.resolve("volume").resolve("sub/dir")));
     assertEquals(Bitferry.canonicalize(dir.resolve("volume").resolve("sub/dir")), local.root());
   }
 
   @Test
   void explicitLocalPrefixSupportsColonsInPath() {
     if (System.getProperty("os.name", "").toLowerCase().contains("win")) return; // Windows filesystem disallows ':' in path components
-    Local local = assertInstanceOf(Local.class, Endpoints.parse(manager, "local:/path/with:colons/sub"));
+    LocalEndpoint local = assertInstanceOf(LocalEndpoint.class, Endpoints.parse(manager, "local:/path/with:colons/sub"));
     assertEquals(Bitferry.canonicalize(Path.of("/path/with:colons/sub")), local.root());
   }
 
   @Test
   void explicitLocalPrefixSupportsWindowsDrivePath() {
-    Local local = assertInstanceOf(Local.class, Endpoints.parse(manager, "local:C:\\test\\dir"));
+    LocalEndpoint local = assertInstanceOf(LocalEndpoint.class, Endpoints.parse(manager, "local:C:\\test\\dir"));
     assertEquals(Bitferry.canonicalize(Path.of("C:\\test\\dir")), local.root());
   }
 
@@ -159,7 +159,7 @@ class EndpointsTest {
 
     Endpoint local = Endpoints.parse(manager, "local:" + dir.resolve("data"));
     Endpoint restoredLocal = Endpoints.restore(manager, local.serialize());
-    Local l = assertInstanceOf(Local.class, restoredLocal);
+    LocalEndpoint l = assertInstanceOf(LocalEndpoint.class, restoredLocal);
     assertEquals(local.processOpts(), l.processOpts());
   }
 
