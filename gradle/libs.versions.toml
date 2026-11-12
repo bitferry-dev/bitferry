@@ -4,6 +4,7 @@ jackson-annotations = "2.22"
 junit = "6.1.3"
 junit-launcher = "6.1.3"
 picocli = "4.7.7"
+jansi = "2.4.3"
 javafx = "27.0.1"
 jlink-plugin = "4.2.0"
 
@@ -13,6 +14,7 @@ jackson-annotations = { module = "com.fasterxml.jackson.core:jackson-annotations
 junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit" }
 junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher", version.ref = "junit-launcher" }
 picocli = { module = "info.picocli:picocli", version.ref = "picocli" }
+jansi = { module = "org.fusesource.jansi:jansi", version.ref = "jansi" }
 
 [plugins]
 jlink = { id = "org.beryx.jlink", version.ref = "jlink-plugin" }

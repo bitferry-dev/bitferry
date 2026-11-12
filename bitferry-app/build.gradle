@@ -116,7 +116,10 @@ jlink {
         name = 'bitferry'
         // {{BIN_DIR}} resolves to the image bin dir in jlink start scripts and
         // to $APPDIR/.. in jpackage launcher configs.
-        jvmArgs = ["-XX:AOTCache={{BIN_DIR}}/../lib/aot/cli.aot"] + bundledToolProps
+        // --enable-native-access: the jansi console loads its native library via
+        // System::load (a restricted method) - required since the strong encapsulation
+        jvmArgs = ["-XX:AOTCache={{BIN_DIR}}/../lib/aot/cli.aot",
+                   "--enable-native-access=org.fusesource.jansi"] + bundledToolProps
         unixScriptTemplate = file('src/packaging/unixStartScript.txt')
     }
     secondaryLauncher {
@@ -368,6 +371,10 @@ tasks.register('trainCliAot', Exec) {
     doFirst { aotDir.mkdirs() }
     commandLine javaBin.absolutePath,
             '-XX:AOTCacheOutput=' + cliAotCache.absolutePath,
+            // Must match the launcher's runtime flags exactly: the AOT system
+            // invalidates the cache when the module graph configuration differs
+            // (the enable-native-access set is part of the archived module graph)
+            '--enable-native-access=org.fusesource.jansi',
             '-m', 'bitferry.cli/bitferry.cli.Main',
             'info'
 }

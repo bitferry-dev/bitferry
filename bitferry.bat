@@ -8,6 +8,10 @@ rem terminal width detection), so the interactive flows work as intended.
 setlocal
 set "DIR=%~dp0"
 
+rem Switch the console to the UTF-8 code page: the backends write UTF-8, and the
+rem unicode glyphs (the task progress checkmarks etc.) render correctly
+chcp 65001 >nul
+
 call "%DIR%gradlew.bat" -p "%DIR%." --console=plain -q :bitferry-cli:installDist
 if errorlevel 1 exit /b %errorlevel%
 

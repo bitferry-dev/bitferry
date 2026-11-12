@@ -2,6 +2,7 @@ package bitferry.cli;
 
 import bitferry.*;
 import java.io.*;
+import org.fusesource.jansi.AnsiConsole;
 import picocli.*;
 import picocli.CommandLine.Help.*;
 
@@ -39,8 +40,17 @@ public final class Main {
   }
 
   public static void main(String[] args) {
-    CommandLine cmd = createCommandLine();
-    int exitCode = cmd.execute(args);
-    System.exit(exitCode);
+    // The jansi console translates the ANSI escapes and carries the unicode through
+    // the Windows console API (WriteConsoleW): this is what turns the colors and the
+    // unicode glyphs on in the Windows terminals (picocli's detection recognizes an
+    // installed jansi console). On the unix terminals it is a pass-through.
+    AnsiConsole.systemInstall();
+    try {
+      CommandLine cmd = createCommandLine();
+      int exitCode = cmd.execute(args);
+      System.exit(exitCode);
+    } finally {
+      AnsiConsole.systemUninstall();
+    }
   }
 }

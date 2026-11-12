@@ -8,6 +8,7 @@ dependencies {
     // types and the picocli machinery), so they travel in the api scope
     api project(':bitferry')
     api libs.picocli
+    implementation libs.jansi
 
     testImplementation libs.junit.jupiter
     testRuntimeOnly libs.junit.platform.launcher
@@ -18,6 +19,10 @@ tasks.named('test') {
 }
 
 application {
+    // The jansi console loads its native library via System::load (a restricted
+    // method) - enabled here so the installed distribution stays warning-free and
+    // keeps working on the future JDKs with the integrity by default
+    applicationDefaultJvmArgs = ['--enable-native-access=org.fusesource.jansi']
     applicationName = 'bitferry'
     mainModule = 'bitferry.cli'
     mainClass = 'bitferry.cli.Main'
