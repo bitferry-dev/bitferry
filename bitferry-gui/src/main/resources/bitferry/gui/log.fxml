@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.control.Tab?>
+<?import javafx.scene.control.TabPane?>
+<?import javafx.scene.control.TextArea?>
+
+<!-- The tabbed log window: the general application log tab (the per-run tabs are
+     appended dynamically by the controller). -->
+<TabPane fx:id="tabs" prefHeight="200" xmlns="http://javafx.com/javafx/17" xmlns:fx="http://javafx.com/fxml/1"
+         fx:controller="bitferry.gui.LogController">
+  <Tab fx:id="generalTab" text="Log" closable="false">
+    <TextArea fx:id="generalArea" editable="false" wrapText="false"
+              style="-fx-font-family: 'Consolas', 'Monospaced'; -fx-font-size: 12px;"/>
+  </Tab>
+</TabPane>

@@ -1,0 +1,139 @@
+package bitferry.gui;
+
+import bitferry.*;
+import javafx.application.Platform;
+import javafx.fxml.FXML;
+import javafx.scene.control.*;
+import javafx.scene.layout.VBox;
+
+import java.util.List;
+
+/// The main window controller: the global toolbar actions, the status bar with the
+/// run progress and the coordination of the embedded volumes/tasks/log controllers.
+public final class MainController {
+
+  @FXML
+  private Button executeAll;
+
+  @FXML
+  private Button reload;
+
+  @FXML
+  private ProgressBar progress;
+
+  @FXML
+  private Label status;
+
+  @FXML
+  private Label version;
+
+  // The included pane controllers (injected by the fx:include fx:id naming convention)
+  @FXML
+  private VolumesController volumesPaneController;
+
+  @FXML
+  private TasksController tasksPaneController;
+
+  @FXML
+  private LogController logPaneController;
+
+  private AppContext context;
+  private Runner runner;
+
+  public MainController() {}
+
+  @FXML
+  private void initialize() {
+    version.setText(Bitferry.VERSION);
+  }
+
+  /// Inject the shared context once the whole window is loaded (called by the
+  /// Application before the window shows).
+  public void init(AppContext context) {
+    this.context = context;
+    this.runner = new Runner(context, logPaneController);
+    context.logger = logPaneController::log;
+    VBox.setVgrow(logPaneController.root(), javafx.scene.layout.Priority.ALWAYS);
+    volumesPaneController.init(context, logPaneController);
+    tasksPaneController.init(context, logPaneController, this::startRun);
+    context.onModelChanged(() -> Platform.runLater(this::refreshPanes));
+  }
+
+  @FXML
+  private void onExecuteAll() {
+    startRun(List.of(), false);
+  }
+
+  @FXML
+  private void onReload() {
+    if (runner.isBusy()) {
+      logPaneController.log("reload rejected: a run is in progress");
+      return;
+    }
+    logPaneController.log("reloading the manager...");
+    context.reload();
+  }
+
+  /// The run starter seam for the tasks panel: route into the runner choosing the
+  /// execute or the service mode (the runner rejects while busy).
+  private void startRun(List<String> tags, boolean serve) {
+    if (runner.isBusy()) return;
+    String verb = serve ? "service" : "run";
+    if (serve) runner.submitServe(tags, buildRunListener(verb));
+    else runner.submit(tags, buildRunListener(verb));
+  }
+
+  /// Rebuild both panes from the current manager snapshot (application thread).
+  private void refreshPanes() {
+    Manager manager = context.manager();
+    volumesPaneController.refresh(manager);
+    tasksPaneController.refresh(manager);
+  }
+
+  /// The run listener driving the status bar, the busy gating and the post-run refresh.
+  private Runner.Listener buildRunListener(String verb) {
+    String doing = verb.equals("service") ? "Servicing" : "Executing";
+    return new Runner.Listener() {
+      @Override
+      public void runStarted(int total) {
+        setActionsDisabled(true);
+        status.setText(doing + " 0/" + total + "...");
+        progress.setProgress(-1); // indeterminate until the first task completes
+        progress.setVisible(true);
+      }
+
+      @Override
+      public void taskStarted(int index, int total, String tag) {
+        status.setText(doing + " task " + index + "/" + total + " (#" + tag + ")...");
+        progress.setProgress(-1);
+      }
+
+      @Override
+      public void taskFinished(int index, int total, int ok, int failed) {
+        progress.setProgress((double) index / total);
+        status.setText(doing + " " + index + "/" + total + " — " + ok + " ok, " + failed + " failed");
+        refreshPanes();
+      }
+
+      @Override
+      public void runFinished(boolean outcome, int ok, int failed) {
+        setActionsDisabled(false);
+        progress.setProgress(ok + failed == 0 ? 0 : (double) ok / (ok + failed));
+        String what = verb.equals("service") ? "service pass" : "run";
+        status.setText(outcome && ok == 0
+          ? "No intact tasks to " + (verb.equals("service") ? "service" : "execute")
+          : outcome
+            ? "All " + ok + " task(s) " + (verb.equals("service") ? "serviced" : "executed") + " successfully"
+            : what + " finished: " + ok + " ok, " + failed + " failed");
+        refreshPanes();
+      }
+    };
+  }
+
+  private void setActionsDisabled(boolean disabled) {
+    executeAll.setDisable(disabled);
+    reload.setDisable(disabled);
+    volumesPaneController.setActionsDisabled(disabled);
+    tasksPaneController.setActionsDisabled(disabled);
+  }
+}

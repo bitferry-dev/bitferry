@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.ProgressBar?>
+<?import javafx.scene.control.Separator?>
+<?import javafx.scene.control.Tab?>
+<?import javafx.scene.control.TabPane?>
+<?import javafx.scene.layout.BorderPane?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.Region?>
+<?import javafx.scene.layout.VBox?>
+<?import javafx.scene.control.Tooltip?>
+
+<!-- The main window skeleton: the global toolbar, the model tabs embedding the
+     volumes/tasks panes, the status bar and the tabbed log window. -->
+<BorderPane style="-fx-padding: 6;" xmlns="http://javafx.com/javafx/17" xmlns:fx="http://javafx.com/fxml/1"
+            fx:controller="bitferry.gui.MainController">
+  <top>
+    <HBox alignment="CENTER_LEFT" spacing="8">
+      <padding>
+        <Insets top="4" right="0" bottom="8" left="0"/>
+      </padding>
+      <Button fx:id="executeAll" text="Execute All" defaultButton="true" style="-fx-base: #e8f5e9;"
+              onAction="#onExecuteAll">
+        <tooltip>
+          <Tooltip text="Execute all intact tasks"/>
+        </tooltip>
+      </Button>
+      <Button fx:id="reload" text="Reload" onAction="#onReload">
+        <tooltip>
+          <Tooltip text="Re-probe the volumes and restore the manager"/>
+        </tooltip>
+      </Button>
+      <Separator orientation="VERTICAL"/>
+      <Region HBox.hgrow="ALWAYS"/>
+      <Label fx:id="version" style="-fx-text-fill: gray;"/>
+    </HBox>
+  </top>
+  <center>
+    <TabPane>
+      <Tab text="Volumes" closable="false">
+        <fx:include fx:id="volumesPane" source="volumes.fxml"/>
+      </Tab>
+      <Tab text="Tasks" closable="false">
+        <fx:include fx:id="tasksPane" source="tasks.fxml"/>
+      </Tab>
+    </TabPane>
+  </center>
+  <bottom>
+    <VBox>
+      <HBox fx:id="statusBar" alignment="CENTER_LEFT" spacing="12">
+        <padding>
+          <Insets top="6" right="4" bottom="0" left="4"/>
+        </padding>
+        <ProgressBar fx:id="progress" prefWidth="280" visible="false"/>
+        <Label fx:id="status" text="Ready"/>
+      </HBox>
+      <fx:include fx:id="logPane" source="log.fxml"/>
+    </VBox>
+  </bottom>
+</BorderPane>

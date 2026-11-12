@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.TableColumn?>
+<?import javafx.scene.control.TableView?>
+<?import javafx.scene.layout.BorderPane?>
+<?import javafx.scene.layout.Region?>
+<?import javafx.scene.layout.VBox?>
+
+<!-- The volumes tab: the framed vertical management panel (create, delete, wipe)
+     docked to the right of the volumes listing. -->
+<BorderPane xmlns="http://javafx.com/javafx/17" xmlns:fx="http://javafx.com/fxml/1"
+            fx:controller="bitferry.gui.VolumesController">
+  <center>
+    <TableView fx:id="table">
+      <columns>
+        <TableColumn fx:id="tagCol" text="Tag" prefWidth="90"/>
+        <TableColumn fx:id="rootCol" text="Root" prefWidth="380"/>
+        <TableColumn fx:id="stateCol" text="State" prefWidth="90"/>
+        <TableColumn fx:id="tasksCol" text="Tasks (intact/stale)" prefWidth="160"/>
+        <TableColumn fx:id="modifiedCol" text="Storage" prefWidth="110"/>
+      </columns>
+      <columnResizePolicy>
+        <TableView fx:constant="UNCONSTRAINED_RESIZE_POLICY"/>
+      </columnResizePolicy>
+      <placeholder>
+        <Label text="No volumes registered — create one or attach the volume media"/>
+      </placeholder>
+    </TableView>
+  </center>
+  <right>
+    <VBox spacing="8" style="-fx-border-color: #c9c9c9; -fx-background-color: rgba(0,0,0,0.03); -fx-padding: 12;">
+      <BorderPane.margin>
+        <Insets top="8" right="8" bottom="8" left="8"/>
+      </BorderPane.margin>
+      <Button fx:id="create" text="New Volume" onAction="#onCreate" maxWidth="Infinity"/>
+      <Region VBox.vgrow="ALWAYS"/>
+      <Button fx:id="delete" text="Delete" onAction="#onDelete" maxWidth="Infinity"/>
+      <Button fx:id="deleteWipe" text="Delete + Wipe" onAction="#onDeleteWipe" style="-fx-base: #ffebee;"
+              maxWidth="Infinity"/>
+    </VBox>
+  </right>
+</BorderPane>

@@ -31,12 +31,14 @@ dependencies {
     // in the api scope
     api project(':bitferry')
 
-    // The classifier pulls javafx-base/graphics/controls natives for the target platform.
-    // The no-classifier artifacts are empty stubs, so all modules are declared explicitly.
+    // The classifier pulls javafx-base/graphics/controls/fxml natives for the target
+    // platform. The no-classifier artifacts are empty stubs, so all modules are
+    // declared explicitly.
     def javafxVersion = libs.versions.javafx.get()
     api "org.openjfx:javafx-base:$javafxVersion:$javafxClassifier"
     api "org.openjfx:javafx-graphics:$javafxVersion:$javafxClassifier"
     api "org.openjfx:javafx-controls:$javafxVersion:$javafxClassifier"
+    api "org.openjfx:javafx-fxml:$javafxVersion:$javafxClassifier"
 }
 
 application {
