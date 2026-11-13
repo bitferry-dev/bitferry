@@ -58,7 +58,7 @@
     </HBox>
   </top>
   <center>
-    <SplitPane orientation="VERTICAL" dividerPositions="0.62">
+    <SplitPane fx:id="split" orientation="VERTICAL" dividerPositions="0.62">
       <TabPane>
         <Tab text="Volumes" closable="false">
           <fx:include fx:id="volumesPane" source="volumes.fxml"/>

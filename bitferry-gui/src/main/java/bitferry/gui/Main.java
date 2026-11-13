@@ -28,15 +28,26 @@ public final class Main extends Application {
     log.info(() -> "Starting bitferry-gui " + Bitferry.VERSION + " (train mode: " + train + ")");
 
     AppContext context = new AppContext();
+    WindowSettings settings = WindowSettings.load();
     FXMLLoader loader = new FXMLLoader(Main.class.getResource("main.fxml"));
     Parent root = loader.load();
     MainController controller = loader.getController();
-    controller.init(context);
+    controller.init(context, settings);
 
-    Scene scene = new Scene(root, 1080, 720);
+    Scene scene = new Scene(root);
     stage.setScene(scene);
     stage.setTitle("Bitferry " + Bitferry.VERSION);
+    settings.apply(stage);
+    // The normal bounds tracking seeds from the applied size and keeps the
+    // pre-maximize geometry current for the capture upon hiding
+    settings.attach(stage);
     stage.show();
+
+    // The window status (the placement, the size, the maximized flag, the log split
+    // position, the verbosity) travels back into the preferences store upon hiding
+    // (both the Exit action and the window manager close go through the same hook)
+    stage.setOnHiding(event ->
+      settings.capture(stage, controller.dividerPosition(), controller.verboseSelected()));
 
     // The initial manager restoration travels through the operations thread;
     // the panes fill in upon the model change notification

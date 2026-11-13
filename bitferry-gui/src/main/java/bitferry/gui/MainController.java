@@ -27,6 +27,9 @@ public final class MainController {
   private Button exit;
 
   @FXML
+  private SplitPane split;
+
+  @FXML
   private ProgressBar progress;
 
   @FXML
@@ -56,17 +59,32 @@ public final class MainController {
   }
 
   /// Inject the shared context once the whole window is loaded (called by the
-  /// Application before the window shows).
-  public void init(AppContext context) {
+  /// Application before the window shows). The persisted window status applies
+  /// its share (the log split position and the verbosity switch).
+  public void init(AppContext context, WindowSettings settings) {
     this.context = context;
     this.runner = new Runner(context, logPaneController);
     context.logger = logPaneController::log;
     volumesPaneController.init(context, logPaneController);
     tasksPaneController.init(context, logPaneController, this::startRun);
     context.onModelChanged(() -> Platform.runLater(this::refreshPanes));
+    split.setDividerPositions(settings.divider());
+    verbose.setSelected(settings.verbose());
+    context.verbose(settings.verbose());
     // The Execute All carries the default button role: park the focus on it so the
     // immediate execution goes through the Enter/Space keystroke right upon the launch
     Platform.runLater(() -> executeAll.requestFocus());
+  }
+
+  /// The log pane share of the content split (for the status capture upon hiding).
+  public double dividerPosition() {
+    double[] positions = split.getDividerPositions();
+    return positions.length > 0 ? positions[0] : 0.62;
+  }
+
+  /// The verbosity switch state (for the status capture upon hiding).
+  public boolean verboseSelected() {
+    return verbose.isSelected();
   }
 
   @FXML
