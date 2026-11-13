@@ -27,9 +27,9 @@ public final class LogController {
 
   /// A single log stream: the buffered lines plus the tab they belong to.
   private static final class Stream {
-    /// The scroll-position fudge for the tail test (px); the sub-pixel drift of the
-    /// skin's layout must not flip the tracking off spuriously.
-    private static final double TAIL_FUDGE = 2.0;
+    /// The normalized scroll position tolerance for the tail test: the vertical scrollbar
+    /// ranges in [0.0, 1.0], with 1.0 resting exactly at the tail.
+    private static final double TAIL_TOLERANCE = 0.01;
 
     private final Tab tab;
     private final TextArea area;
@@ -40,8 +40,14 @@ public final class LogController {
     /// off while the user is reading the history mid-run. Purely position-based -
     /// our own tail pin sets the scroll value to the tail (re-arming the tracking),
     /// any user scroll away from the tail disarms it, scrolling back to the bottom
-    /// re-arms it - so no pin/user distinction is needed anywhere.
+    /// re-arms it.
     private boolean follow = true;
+
+    /// Guard against the stream's own programmatic appends tripping the tail-tracking listener.
+    private boolean updating;
+
+    /// The approximate number of lines in the area (bounded by LINE_CAP).
+    private int lineCount;
 
     // The vertical scroll bar of the area's skin; resolved lazily (null until the
     // skin is laid out) and cached once found
@@ -50,6 +56,7 @@ public final class LogController {
     private Stream(Tab tab, TextArea area) {
       this.tab = tab;
       this.area = area;
+      this.lineCount = countLines(area.getText());
     }
 
     // Append on the emitting thread; the flush marshals the buffer to the UI
@@ -70,27 +77,59 @@ public final class LogController {
         lines = buffer.toString();
         buffer.setLength(0);
       }
-      String text = area.getText();
-      int overflow = Math.max(0, countLines(text) + countLines(lines) - LINE_CAP);
-      if (overflow > 0) text = dropLines(text, overflow);
-      area.setText(text + lines);
-      // The log follows the stream while the view rests at the tail; a user reading
-      // the history mid-run stops the tracking (any scroll away from the tail disarms
-      // it, scrolling back re-arms it - see [follow]). The pin travels through the
-      // next pulse: the immediate set is overridden by the content layout pass (the
-      // skin recomputes the scroll extent after the text change and clamps the stale
-      // value). The flag is re-tested at the pin time, so a scroll happening within
-      // the pulse window disarms the pending pin as well.
-      if (follow) Platform.runLater(() -> {
-        if (follow) area.setScrollTop(Double.MAX_VALUE);
-      });
+
+      int added = countLines(lines);
+      updating = true;
+      try {
+        if (lineCount + added <= LINE_CAP) {
+          // Fast-path: append text directly without recreating or resetting the TextArea.
+          // In JavaFX, setText() resets caret and scroll to top (0), causing severe
+          // flickering during live log tracking. appendText() preserves the viewport
+          // smoothly.
+          double savedScroll = area.getScrollTop();
+          area.appendText(lines);
+          lineCount += added;
+          if (follow) {
+            area.setScrollTop(Double.MAX_VALUE);
+          } else {
+            area.setScrollTop(savedScroll);
+            Platform.runLater(() -> {
+              if (!follow) area.setScrollTop(savedScroll);
+            });
+          }
+        } else {
+          // Line cap exceeded: drop oldest lines from text and re-set
+          String text = area.getText();
+          int currentLines = countLines(text);
+          int overflow = Math.max(0, currentLines + added - LINE_CAP);
+          if (overflow > 0) text = dropLines(text, overflow);
+          double savedScroll = area.getScrollTop();
+          area.setText(text + lines);
+          lineCount = countLines(text) + added;
+          if (follow) {
+            Platform.runLater(() -> {
+              if (follow) area.setScrollTop(Double.MAX_VALUE);
+            });
+          } else {
+            area.setScrollTop(savedScroll);
+            Platform.runLater(() -> {
+              if (!follow) area.setScrollTop(savedScroll);
+            });
+          }
+        }
+      } finally {
+        updating = false;
+      }
+
+      // Ensure the vertical scroll bar listener is wired once skin is ready
+      verticalBar();
     }
 
     /// Whether the view rests at the tail of the text; the not-yet-laid-out (and the
     /// non-scrollable) area counts as the tail.
     private boolean atTail() {
       ScrollBar bar = verticalBar();
-      return bar == null || bar.getValue() >= bar.getMax() - TAIL_FUDGE;
+      return bar == null || bar.getValue() >= bar.getMax() - TAIL_TOLERANCE;
     }
 
     // Resolve and cache the vertical scroll bar of the area's skin, wiring the
@@ -100,9 +139,13 @@ public final class LogController {
         for (Node node : area.lookupAll(".scroll-bar")) {
           if (node instanceof ScrollBar bar && bar.getOrientation() == Orientation.VERTICAL) {
             tailBar = bar;
-            // Every scroll change (ours or the user's) re-arms the tracking only
-            // when the position rests at the tail
-            bar.valueProperty().addListener((x, was, now) -> follow = atTail());
+            // Every user scroll change re-arms or disarms tracking depending on
+            // whether the position rests at the tail
+            bar.valueProperty().addListener((x, was, now) -> {
+              if (!updating) {
+                follow = atTail();
+              }
+            });
             break;
           }
         }
@@ -111,15 +154,16 @@ public final class LogController {
     }
 
     private static int countLines(String text) {
-      int count = 1;
+      int count = 0;
       for (int at = text.indexOf('\n'); at >= 0; at = text.indexOf('\n', at + 1)) count++;
-      return text.isEmpty() ? 0 : count;
+      if (!text.isEmpty() && !text.endsWith("\n")) count++;
+      return count;
     }
 
     private static String dropLines(String text, int count) {
       int at = 0;
-      for (int i = 0; i < count && at >= 0; i++) at = text.indexOf('\n', at + 1);
-      return at < 0 ? "" : text.substring(at + 1);
+      for (int i = 0; i < count && at >= 0; i++) at = text.indexOf('\n', at) + 1;
+      return at <= 0 ? "" : text.substring(at);
     }
   }
 
