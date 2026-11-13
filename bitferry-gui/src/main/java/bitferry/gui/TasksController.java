@@ -78,6 +78,9 @@ public final class TasksController {
   private Button create;
 
   @FXML
+  private Button modify;
+
+  @FXML
   private Button execute;
 
   @FXML
@@ -119,6 +122,15 @@ public final class TasksController {
         setGraphic(label);
       }
     });
+    table.setRowFactory(tv -> {
+      TableRow<Row> row = new TableRow<>();
+      row.setOnMouseClicked(event -> {
+        if (event.getClickCount() == 2 && !row.isEmpty()) {
+          onModify();
+        }
+      });
+      return row;
+    });
     table.getSelectionModel().selectedItemProperty().addListener((x, was, now) -> updateButtons());
     updateButtons();
   }
@@ -157,6 +169,7 @@ public final class TasksController {
 
   private void updateButtons() {
     boolean none = selected() == null;
+    modify.setDisable(locked || none);
     execute.setDisable(locked || none);
     serve.setDisable(locked || none);
     delete.setDisable(locked || none);
@@ -165,6 +178,13 @@ public final class TasksController {
   @FXML
   private void onCreate() {
     Dialogs.newTask(context, logs, () -> locked);
+  }
+
+  @FXML
+  private void onModify() {
+    Row row = selected();
+    if (row == null || locked) return;
+    Dialogs.modifyTask(context, logs, row.task, () -> locked);
   }
 
   // Run or service the selected task through the shared single-flight runner

@@ -396,7 +396,10 @@ public abstract class Task {
       if (profile == null) throw new BitferryError("unknown options profile '" + option + "'");
       return profile;
     }
-    return Arrays.asList(option.split(","));
+    return Arrays.stream(option.split(","))
+      .map(String::trim)
+      .filter(s -> !s.isEmpty())
+      .toList();
   }
 
   // Resolve the restored processing options list against the profile route

@@ -196,6 +196,18 @@ class TaskTest {
     assertTrue(reloaded.tasks().isEmpty());
   }
 
+  @Test
+  void optionsParsingTrimsWhitespaceAndIgnoresEmptyTokens() {
+    Copy copy = new Copy(manager, source(), destination(), "--fast-list, --transfers, 4", List.of(), List.of());
+    assertEquals(List.of("--fast-list", "--transfers", "4"), copy.processOptions());
+
+    copy.setProcessOptions("--checkers, 8, , --metadata");
+    assertEquals(List.of("--checkers", "8", "--metadata"), copy.processOptions());
+
+    copy.setProcessOptions("-");
+    assertEquals(List.of(), copy.processOptions());
+  }
+
   private static List<String> toStringList(JsonNode node) {
     return Task.strings(node, false);
   }
