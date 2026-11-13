@@ -63,7 +63,7 @@ final class UdisksEventSource implements AutoCloseable {
         .build();
       connection.addSigHandler(propRule, handler);
       return true;
-    } catch (DBusException | RuntimeException e) {
+    } catch (Throwable e) {
       LOG.log(java.lang.System.Logger.Level.DEBUG, () -> "udisks2 media events unavailable: " + e);
       close();
       return false;

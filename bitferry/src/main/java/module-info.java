@@ -10,9 +10,9 @@ module bitferry {
   requires com.microsoft.credentialstorage;
   // The drive type probing of the Windows fixed-media classification
   requires com.sun.jna.platform;
-  // The D-Bus machinery of the Linux media-change watcher (the udisks2 signals);
-  // the pure-JDK AF_UNIX transport module joins via its own service registration
+  // The D-Bus machinery of the Linux media-change watcher (the udisks2 signals)
   requires org.freedesktop.dbus;
+  requires org.freedesktop.dbus.transport.jre;
   // The compact console log formatter shared by the frontends
   requires java.logging;
 

@@ -97,7 +97,7 @@ public final class AppContext {
   /// entirely when the change does not touch any bitferry volume or task (the
   /// unrelated mounts must not spam the log nor flicker the tables).
   public void startMediaWatcher() {
-    mediaWatch = MediaWatch.start(this::reloadOnMediaChange, busy, Manager::mountSetSignature);
+    mediaWatch = MediaWatch.start(this::reloadOnMediaChange, () -> !busy.getAsBoolean(), Manager::mountSetSignature);
   }
 
   /// The media watcher consumer (the watcher thread): route the re-probe through
@@ -111,9 +111,16 @@ public final class AppContext {
       // The no-op suppression: the unrelated mount churn produces the identical
       // live model - swap silently (the fresh file store identities still matter
       // for the presence checks) without the log noise nor the table flicker
+      Map<String, Path> currentRoots = new LinkedHashMap<>();
+      if (current != null) {
+        for (Volume v : current.liveVolumes().values()) currentRoots.put(v.tag(), v.root());
+      }
+      Map<String, Path> restoredRoots = new LinkedHashMap<>();
+      for (Volume v : restored.liveVolumes().values()) restoredRoots.put(v.tag(), v.root());
       if (current != null
-        && current.liveVolumes().keySet().equals(restored.liveVolumes().keySet())
-        && current.liveTasks().keySet().equals(restored.liveTasks().keySet())) {
+        && currentRoots.equals(restoredRoots)
+        && current.liveTasks().keySet().equals(restored.liveTasks().keySet())
+        && current.selectTasks().keySet().equals(restored.selectTasks().keySet())) {
         return;
       }
       logger.accept("media change detected - manager restored: " + restored.liveVolumes().size()
