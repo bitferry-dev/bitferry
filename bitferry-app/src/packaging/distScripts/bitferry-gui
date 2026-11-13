@@ -9,5 +9,9 @@ if [ -n "$JAVA_HOME" ]; then
 else
     JAVACMD=java
 fi
-exec "$JAVACMD" $JAVA_OPTS --enable-native-access=javafx.graphics \
+# The JavaFX graphics, the jansi console and the JNA dispatch natives extract into
+# (or load from) the archive's lib/tmp subdir (see the CLI launcher note) and their
+# System::load carries the native-access whitelist
+exec "$JAVACMD" $JAVA_OPTS --enable-native-access=javafx.graphics,org.fusesource.jansi,com.sun.jna \
+        "-Djansi.tmpdir=$DIR/../lib/tmp" "-Djna.tmpdir=$DIR/../lib/tmp" \
         --module-path "$DIR/../lib" -m bitferry.gui/bitferry.gui.Main "$@"

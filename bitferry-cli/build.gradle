@@ -19,10 +19,10 @@ tasks.named('test') {
 }
 
 application {
-    // The jansi console loads its native library via System::load (a restricted
-    // method) - enabled here so the installed distribution stays warning-free and
-    // keeps working on the future JDKs with the integrity by default
-    applicationDefaultJvmArgs = ['--enable-native-access=org.fusesource.jansi']
+    // The jansi console and the JNA dispatch native load via System::load (a
+    // restricted method) - enabled here so the installed distribution stays
+    // warning-free and keeps working on the future JDKs with the integrity by default
+    applicationDefaultJvmArgs = ['--enable-native-access=org.fusesource.jansi,com.sun.jna']
     applicationName = 'bitferry'
     mainModule = 'bitferry.cli'
     mainClass = 'bitferry.cli.Main'

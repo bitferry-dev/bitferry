@@ -10,6 +10,8 @@ module bitferry {
   requires com.microsoft.credentialstorage;
   // The drive type probing of the Windows fixed-media classification
   requires com.sun.jna.platform;
+  // The compact console log formatter shared by the frontends
+  requires java.logging;
 
   exports bitferry;
   exports bitferry.endpoint;

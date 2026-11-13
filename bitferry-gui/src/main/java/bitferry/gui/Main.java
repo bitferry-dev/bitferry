@@ -67,6 +67,8 @@ public final class Main extends Application {
   }
 
   public static void main(String[] args) {
+    // The compact single-line console logging in place of the verbose JUL blocks
+    ConsoleLog.compact();
     // The GUI must not die on an uncaught background exception: surface it in the log
     Thread.setDefaultUncaughtExceptionHandler((thread, throwable) ->
       log.log(Level.SEVERE, "uncaught exception on " + thread.getName(), throwable));

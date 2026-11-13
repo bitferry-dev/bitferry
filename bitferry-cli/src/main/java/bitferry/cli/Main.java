@@ -40,6 +40,8 @@ public final class Main {
   }
 
   public static void main(String[] args) {
+    // The compact single-line console logging in place of the verbose JUL blocks
+    ConsoleLog.compact();
     // The jansi console translates the ANSI escapes and carries the unicode through
     // the Windows console API (WriteConsoleW): this is what turns the colors and the
     // unicode glyphs on in the Windows terminals (picocli's detection recognizes an

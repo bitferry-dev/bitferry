@@ -86,6 +86,14 @@ def jpackageImageDir = layout.buildDirectory.dir('jpackage').get().dir('bitferry
 
 // ---------------------------------------------------------------- jlink / jpackage
 
+// The native-access whitelists shared verbatim by the launchers and the AOT training
+// tasks: the AOT system records the enable-native-access set in the cache and
+// invalidates it on any drift between the training and the runtime flags, so the two
+// sides must never diverge (both are wired to the same variables below, and the
+// training tasks track the values as their inputs).
+def cliNativeAccess = 'org.fusesource.jansi,com.sun.jna'
+def guiNativeAccess = 'javafx.graphics,org.fusesource.jansi,com.sun.jna'
+
 jlink {
     imageDir = cross ? imageBaseDir.get().asFile : runtimeImageDir
 
@@ -116,10 +124,11 @@ jlink {
         name = 'bitferry'
         // {{BIN_DIR}} resolves to the image bin dir in jlink start scripts and
         // to $APPDIR/.. in jpackage launcher configs.
-        // --enable-native-access: the jansi console loads its native library via
-        // System::load (a restricted method) - required since the strong encapsulation
+        // --enable-native-access: the jansi console and the JNA dispatch native load
+        // via System::load (a restricted method) - required since the strong encapsulation
         jvmArgs = ["-XX:AOTCache={{BIN_DIR}}/../lib/aot/cli.aot",
-                   "--enable-native-access=org.fusesource.jansi"] + bundledToolProps
+                   "--enable-native-access=" + cliNativeAccess,
+                   "-Djna.boot.library.path={{BIN_DIR}}/../lib"] + bundledToolProps
         unixScriptTemplate = file('src/packaging/unixStartScript.txt')
     }
     secondaryLauncher {
@@ -127,7 +136,8 @@ jlink {
         moduleName = 'bitferry.gui'
         mainClass = 'bitferry.gui.Main'
         jvmArgs = ["-XX:AOTCache={{BIN_DIR}}/../lib/aot/gui.aot",
-                   "--enable-native-access=javafx.graphics"] + bundledToolProps
+                   "--enable-native-access=" + guiNativeAccess,
+                   "-Djna.boot.library.path={{BIN_DIR}}/../lib"] + bundledToolProps
         unixScriptTemplate = file('src/packaging/unixStartScript.txt')
         // A top-level --win-console is inherited by --add-launcher launchers unless overridden;
         // this keeps the GUI launcher a GUI-subsystem executable on Windows. jpackage ignores
@@ -190,6 +200,56 @@ tasks.named('jpackageImage') {
 tasks.named('jpackage') {
     onlyIf { !cross }
 }
+
+// Unpack the platform JNA core native into the image trees. JNA's loader consults
+// jna.boot.library.path (wired to <image>/lib in the launcher options, the same
+// {{BIN_DIR}}/../lib shape as the AOT cache arg) before falling back to the temp-dir
+// extraction, so with libjnidispatch loose in the image the extraction never fires:
+// the noexec-tempdir hazard disappears and the per-launch unpack/verify overhead
+// goes away. JNA is on the hot paths now: the Windows drive-type probing touches it
+// on every volume restore (every launch), and the OS keyring access everywhere else.
+// Each image carries only its own platform's native - the table maps the build
+// targets to the jna jar layout.
+def jnaNatives = [
+    'windows-x64'   : [jar: 'com/sun/jna/win32-x86-64/jnidispatch.dll',        native: 'jnidispatch.dll'],
+    'linux-x64'     : [jar: 'com/sun/jna/linux-x86-64/libjnidispatch.so',      native: 'libjnidispatch.so'],
+    'linux-aarch64' : [jar: 'com/sun/jna/linux-aarch64/libjnidispatch.so',     native: 'libjnidispatch.so'],
+    'macos-x64'     : [jar: 'com/sun/jna/darwin-x86-64/libjnidispatch.jnilib', native: 'libjnidispatch.jnilib'],
+    'macos-aarch64' : [jar: 'com/sun/jna/darwin-aarch64/libjnidispatch.jnilib', native: 'libjnidispatch.jnilib'],
+]
+
+tasks.register('copyJnaNative') {
+    group = 'bitferry'
+    description = "Unpacks the platform JNA native (${jnaNatives[platformName].jar}) into the image trees."
+    dependsOn tasks.named('jlink')
+    if (!cross) {
+        dependsOn tasks.named('jpackageImage')
+    }
+    doLast {
+        def jnaJar = configurations.runtimeClasspath.files.find { it.name ==~ /jna-\d.*/ }
+        if (jnaJar == null) {
+            throw new GradleException('the jna jar was not found on the runtime classpath')
+        }
+        def spec = jnaNatives[platformName]
+        // Both image flavors take the native into <image>/lib - the dir the launcher
+        // boot-path property resolves to (the jpackage layout quirk, if any, mirrors
+        // the AOT cache placement in lib/aot)
+        def targets = [new File(runtimeImageDir, 'lib/' + spec.native),
+                       new File(jpackageImageDir, 'lib/' + spec.native)]
+        new java.util.jar.JarFile(jnaJar).withCloseable { jar ->
+            def entry = jar.getJarEntry(spec.jar)
+            if (entry == null) {
+                throw new GradleException("jna native '${spec.jar}' not found in '${jnaJar.name}'")
+            }
+            for (File target : targets) {
+                target.parentFile.mkdirs()
+                java.nio.file.Files.copy(jar.getInputStream(entry), target.toPath(),
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+            }
+        }
+    }
+}
+
 
 // ---------------------------------------------------------------- AOT training
 //
@@ -412,13 +472,17 @@ tasks.register('trainCliAot', Exec) {
     outputs.file cliAotCache
     // Retrain when the image is relinked; without this a stale cache survives a relink.
     inputs.file new File(runtimeImageDir, 'lib/modules')
+    // Retrain when the launcher whitelist changes: the AOT system invalidates the
+    // cache on the enable-native-access drift, and without this tracking the stale
+    // (mismatched) cache would silently survive the build
+    inputs.property('nativeAccess', cliNativeAccess)
     doFirst { aotDir.mkdirs() }
     commandLine javaBin.absolutePath,
             '-XX:AOTCacheOutput=' + cliAotCache.absolutePath,
-            // Must match the launcher's runtime flags exactly: the AOT system
-            // invalidates the cache when the module graph configuration differs
-            // (the enable-native-access set is part of the archived module graph)
-            '--enable-native-access=org.fusesource.jansi',
+            // Must match the launcher's runtime flags exactly (the shared
+            // cliNativeAccess variable): the AOT system invalidates the cache when
+            // the module graph configuration differs
+            '--enable-native-access=' + cliNativeAccess,
             '-m', 'bitferry.cli/bitferry.cli.Main',
             'info'
 }
@@ -438,11 +502,12 @@ tasks.register('trainGuiAot', Exec) {
     outputs.file guiAotCache
     // Retrain when the image is relinked; without this a stale cache survives a relink.
     inputs.file new File(runtimeImageDir, 'lib/modules')
+    inputs.property('nativeAccess', guiNativeAccess)
     ignoreExitValue = guiHeadless
     doFirst { aotDir.mkdirs() }
     def cmd = [javaBin.absolutePath,
                '-XX:AOTCacheOutput=' + guiAotCache.absolutePath,
-               '--enable-native-access=javafx.graphics']
+               '--enable-native-access=' + guiNativeAccess]
     cmd += ['-m', 'bitferry.gui/bitferry.gui.Main', '--train']
     commandLine cmd
     if (guiHeadless) {
@@ -483,7 +548,7 @@ def msiFile = layout.buildDirectory.dir('installer')
 tasks.register('msi', Exec) {
     group = 'bitferry'
     description = 'Builds the per-user Windows MSI installer (WiX) from the jpackage app-image.'
-    dependsOn 'copyAotCachesToJpackageImage', 'copyJansiNative'
+    dependsOn 'copyAotCachesToJpackageImage', 'copyJansiNative', 'copyJnaNative'
     onlyIf { !cross && OperatingSystem.current().windows }
     inputs.dir jpackageImageDir
     inputs.dir wixSourceDir
@@ -564,7 +629,8 @@ tasks.register('fetchAppImageTool') {
 tasks.register('prepareAppImageDir', Sync) {
     group = 'bitferry'
     description = 'Assembles the AppImage AppDir (payload, AppRun, desktop entry, icon) from the jpackage app-image.'
-    dependsOn 'copyAotCachesToJpackageImage'
+    // The natives must land in the jpackage tree before the AppDir sync mirrors it
+    dependsOn 'copyAotCachesToJpackageImage', 'copyJansiNative', 'copyJnaNative'
     onlyIf { !cross && OperatingSystem.current().linux }
     // The AppRun/desktop sources and the whole AppDir (including the doLast-written root
     // files) must be tracked, or source edits slip past up-to-date checks.
@@ -708,6 +774,10 @@ tasks.register('dist') {
     def linuxHost = OperatingSystem.current().linux
     description = "Builds the full distribution for target '${platformName}' (jlink tree + portable zip/tar.gz${trainable ? ' + AOT caches + jpackage app-image' : ''}${trainable && OperatingSystem.current().windows ? ' + Windows MSI' : ''}${trainable && linuxHost ? ' + AppImage' : ''})."
     dependsOn 'bundle'
+    // The loose natives (jansi console, JNA dispatch) travel with every image flavor;
+    // the packaged paths pull them via the msi/AppImage chains, the jlink-tree-only
+    // deliveries need them explicitly
+    dependsOn 'copyJansiNative', 'copyJnaNative'
     if (trainable) {
         dependsOn 'copyAotCachesToJpackageImage'
         if (OperatingSystem.current().windows) {
