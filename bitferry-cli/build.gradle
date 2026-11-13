@@ -16,6 +16,10 @@ dependencies {
 
 tasks.named('test') {
     useJUnitPlatform()
+    // Force picocli's ANSI detection off for every CommandLine instance (the shared one
+    // only disables it explicitly): markup rendered as escapes would embed inside the
+    // asserted phrases in ANSI-capable terminals and break the output assertions
+    jvmArgs '-Dpicocli.ansi=false'
 }
 
 application {

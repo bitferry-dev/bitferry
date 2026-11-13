@@ -627,6 +627,52 @@ class CliTest {
   }
 
   @Test
+  void commonOptionsResolveAcrossTheWholeCommandHierarchy() {
+    // The options supplied to the intermediate group commands (between the root and the
+    // leaf) must be honored by the executed leaf: resolveOptions walks the whole spec
+    // hierarchy, not just the root. The regression guard for the dropped --dry-run on
+    // the destructive paths (e.g. delete -n volume TAG --wipe).
+    CommandLine.ParseResult parsed = cmd.parseArgs("delete", "-n", "--force", "volume", "UNKNOWN-TAG");
+    CommandLine.ParseResult leafResult = parsed.subcommand();
+    while (leafResult.subcommand() != null) leafResult = leafResult.subcommand();
+    CommandLine.Model.CommandSpec leafSpec = leafResult.commandSpec();
+    DeleteVolumeCommand leaf = (DeleteVolumeCommand) leafSpec.userObject();
+    CommonOptions resolved = CliUtils.resolveOptions(leafSpec, leaf.options);
+    assertTrue(resolved.simulate, "-n given to the 'delete' group must reach the leaf");
+    assertTrue(resolved.force, "--force given to the 'delete' group must reach the leaf");
+    // The root-level options keep working too
+    parsed = cmd.parseArgs("-n", "delete", "volume", "UNKNOWN-TAG");
+    leafResult = parsed.subcommand();
+    while (leafResult.subcommand() != null) leafResult = leafResult.subcommand();
+    leafSpec = leafResult.commandSpec();
+    leaf = (DeleteVolumeCommand) leafSpec.userObject();
+    assertTrue(CliUtils.resolveOptions(leafSpec, leaf.options).simulate, "-n at the root must reach the leaf");
+  }
+
+  @Test
+  void debugFlagResolvesAcrossTheWholeCommandHierarchy() {
+    assertTrue(Main.isDebug(cmd.parseArgs("info", "--debug", "task", "UNKNOWN-TAG")), "--debug at the group level must be seen");
+    assertTrue(Main.isDebug(cmd.parseArgs("--debug", "info", "task", "UNKNOWN-TAG")), "--debug at the root must be seen");
+    assertFalse(Main.isDebug(cmd.parseArgs("info", "task", "UNKNOWN-TAG")));
+  }
+
+  @Test
+  void encryptionOptionsRejectShorthandExplicitConflicts() throws IOException {
+    // The shorthand and the explicit profile forms of the same setting are mutually exclusive
+    int code = executeWithPassword("ignored", "create", "task", "copy", "some/src", "some/dst", "-e", "-E", "@extended");
+    assertEquals(1, code);
+    assertTrue(err.toString().contains("destination encryption specified twice"), () -> "stderr: " + err.toString());
+    err.getBuffer().setLength(0);
+    code = executeWithPassword("ignored", "create", "task", "copy", "some/src", "some/dst", "-d", "-D", "@extended");
+    assertEquals(1, code);
+    assertTrue(err.toString().contains("source decryption specified twice"), () -> "stderr: " + err.toString());
+    err.getBuffer().setLength(0);
+    code = executeWithPassword("ignored", "create", "task", "copy", "some/src", "some/dst", "-u", "-E", "@extended");
+    assertEquals(1, code);
+    assertTrue(err.toString().contains("conflicts with the explicitly specified encryption profile"), () -> "stderr: " + err.toString());
+  }
+
+  @Test
   void createEncryptedTaskConformanceRefusesIncompatibleBackend() throws Exception {
     Assumptions.assumeTrue(available("rclone"), "rclone not available for integration check");
     Path volDir = tempDir.resolve("cli_enc_vol");
@@ -636,13 +682,16 @@ class CliTest {
     Files.createDirectories(plainDir);
     Files.writeString(plainDir.resolve("test.txt"), "hello cli");
 
-    // Pre-create encrypted repository with password A
+    // Pre-create encrypted repository with password A (an empty config file: portable
+    // across the platforms, unlike the unix-only /dev/null)
+    Path emptyConfig = tempDir.resolve("empty_rclone.conf");
+    Files.writeString(emptyConfig, "");
     ProcessBuilder pb = new ProcessBuilder(
       "rclone", "sync", plainDir.toString(), ":crypt:",
       "--crypt-remote", encDir.toString(),
       "--crypt-filename-encryption", "standard",
       "--crypt-filename-encoding", "base32",
-      "--config", "/dev/null"
+      "--config", emptyConfig.toString()
     );
     pb.environment().put("RCLONE_CRYPT_PASSWORD", Passwords.obscure("passwordA"));
     Process p = pb.start();

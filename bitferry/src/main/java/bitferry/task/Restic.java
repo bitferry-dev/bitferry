@@ -30,6 +30,9 @@ public abstract class Restic extends Task {
   private boolean cached;
   private boolean conformed;
 
+  // The transient runtime flag (the probe-conformance state): not a part of the
+  // storage descriptor
+  @JsonIgnore
   public boolean isConformed() {
     return conformed;
   }

@@ -119,6 +119,37 @@ class TaskTest {
   }
 
   @Test
+  void descriptorsCarryExactlyTheExpectedFieldSet() {
+    // The stray bean properties leak into the persisted storages (e.g. an is-getter
+    // without @JsonIgnore): the descriptor shape is pinned here as the regression guard
+    // (the field order is not asserted - the discriminator/section placement may vary)
+    Backup backup = new Backup(manager, volumeSource(), destination(), "secret", null, null, "@default", "@full", List.of(), List.of());
+    assertIterableEquals(
+      List.of("backend", "destination", "modified", "operation", "restic", "source", "task"),
+      sortedNames(backup.serialize()));
+
+    Synchronize task = new Synchronize(manager, source(), destination(), null, List.of(), List.of());
+    assertIterableEquals(
+      List.of("backend", "destination", "modified", "operation", "rclone", "source", "task"),
+      sortedNames(task.serialize()));
+
+    // The runtime flags (the conformance state) never travel with the descriptor
+    assertFalse(sortedNames(backup.serialize()).contains("conformed"));
+  }
+
+  private static List<String> keyNames(JsonNode node) {
+    List<String> names = new ArrayList<>();
+    node.properties().forEach(e -> names.add(e.getKey()));
+    return names;
+  }
+
+  private static List<String> sortedNames(JsonNode node) {
+    List<String> names = keyNames(node);
+    java.util.Collections.sort(names);
+    return names;
+  }
+
+  @Test
   void directOptionsWithoutAtArePassedVerbatim() {
     // Both options starting with '-' and options without '-' are treated as raw options
     Copy task = new Copy(manager, source(), destination(), "--transfers,4", List.of(), List.of());

@@ -15,7 +15,7 @@ import java.util.concurrent.TimeUnit;
 /// DBT_DEVICEARRIVAL / DBT_DEVICEREMOVECOMPLETE notifications suffice: the sources
 /// merely say "check now", the snapshot comparison is the real detector, so false
 /// positives are free. Any setup failure degrades to the polling fallback quietly.
-final class WindowsEventSource implements AutoCloseable {
+final class WindowsEventSource implements MediaWatch.EventSource {
 
   private static final int WM_DEVICECHANGE = WinUser.WM_DEVICECHANGE; // 0x0219
   private static final int DBT_DEVNODES_CHANGED = 0x0007;
@@ -32,6 +32,9 @@ final class WindowsEventSource implements AutoCloseable {
   private volatile int pumpThreadId;
   private final CountDownLatch started = new CountDownLatch(1);
   private volatile boolean alive;
+  // The close requested before the pump registered its thread id: the pump
+  // self-quits upon the registration (the close cannot post to an unknown thread)
+  private volatile boolean closeRequested;
 
   /// Create the hidden top-level window and pump its messages until close; runs
   /// on the dedicated pump thread (Win32 windows have thread affinity). Returns
@@ -93,6 +96,11 @@ final class WindowsEventSource implements AutoCloseable {
 
       pumpThreadId = Kernel32.INSTANCE.GetCurrentThreadId();
       alive = true;
+      // The close raced the pump startup: quit right away (the thread id is only
+      // now known, so the earlier close could not have posted the WM_QUIT)
+      if (closeRequested) {
+        User32.INSTANCE.PostThreadMessage(pumpThreadId, WM_QUIT, new WinDef.WPARAM(0), new WinDef.LPARAM(0));
+      }
       started.countDown();
 
       WinUser.MSG msg = new WinUser.MSG();
@@ -105,6 +113,7 @@ final class WindowsEventSource implements AutoCloseable {
       // to the polling fallback
       LOG.log(java.lang.System.Logger.Level.DEBUG, () -> "device message pump finished: " + t);
     } finally {
+      alive = false;
       started.countDown();
       if (window != null) {
         try {
@@ -120,8 +129,16 @@ final class WindowsEventSource implements AutoCloseable {
     }
   }
 
+  /// The mid-flight liveness probe: the exited pump (the WM_QUIT teardown, a
+  /// message-loop failure) flips the watcher to the polling fallback cadence.
+  @Override
+  public boolean isAlive() {
+    return alive;
+  }
+
   @Override
   public void close() {
+    closeRequested = true;
     int threadId = pumpThreadId;
     if (threadId != 0) {
       try {

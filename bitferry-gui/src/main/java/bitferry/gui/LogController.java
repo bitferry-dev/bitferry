@@ -31,8 +31,16 @@ public final class LogController {
     /// ranges in [0.0, 1.0], with 1.0 resting exactly at the tail.
     private static final double TAIL_TOLERANCE = 0.01;
 
-    private final Tab tab;
-    private final TextArea area;
+    private final TabPane tabs;
+    /// The deferred-attachment title: the scene-graph objects (the area, the tab)
+    /// are constructed on the application thread, never on the emitting one.
+    private final String title;
+
+    // FX-thread confined; null until attached (the per-run streams) when the
+    // deferred-attachment constructor was used
+    private Tab tab;
+    private TextArea area;
+
     private final StringBuilder buffer = new StringBuilder();
     private boolean flushPending;
 
@@ -53,10 +61,34 @@ public final class LogController {
     // skin is laid out) and cached once found
     private ScrollBar tailBar;
 
-    private Stream(Tab tab, TextArea area) {
+    // The FXML-backed general stream: the tab and the area already exist
+    private Stream(TabPane tabs, Tab tab, TextArea area) {
+      this.tabs = tabs;
+      this.title = null;
       this.tab = tab;
       this.area = area;
       this.lineCount = countLines(area.getText());
+    }
+
+    // The per-run stream: the scene-graph objects are created upon the attachment
+    // on the application thread (the tab appears through the scheduled attach or
+    // the first flush, whichever lands first)
+    private Stream(TabPane tabs, String title) {
+      this.tabs = tabs;
+      this.title = title;
+    }
+
+    /// Construct the scene-graph objects and present the tab; application thread only.
+    private void attach() {
+      if (area != null) return;
+      TextArea created = new TextArea();
+      created.setEditable(false);
+      created.setWrapText(false);
+      created.setStyle("-fx-font-family: 'Consolas', 'Monospaced'; -fx-font-size: 12px;");
+      this.area = created;
+      this.tab = new Tab(LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss")) + " — " + title, created);
+      tabs.getTabs().add(this.tab);
+      tabs.getSelectionModel().select(this.tab);
     }
 
     // Append on the emitting thread; the flush marshals the buffer to the UI
@@ -73,10 +105,11 @@ public final class LogController {
       String lines;
       synchronized (this) {
         flushPending = false;
-        if (buffer.isEmpty()) return;
+        if (buffer.isEmpty() && area == null) return;
         lines = buffer.toString();
         buffer.setLength(0);
       }
+      if (area == null) attach();
 
       int added = countLines(lines);
       updating = true;
@@ -98,7 +131,10 @@ public final class LogController {
             });
           }
         } else {
-          // Line cap exceeded: drop oldest lines from text and re-set
+          // Line cap exceeded: drop oldest lines from text and re-set. setText()
+          // resets the viewport, so the tail pin rides along synchronously too -
+          // a deferred-only pin lets one frame render scrolled to the top (the
+          // flicker the fast path already avoids).
           String text = area.getText();
           int currentLines = countLines(text);
           int overflow = Math.max(0, currentLines + added - LINE_CAP);
@@ -107,6 +143,7 @@ public final class LogController {
           area.setText(text + lines);
           lineCount = countLines(text) + added;
           if (follow) {
+            area.setScrollTop(Double.MAX_VALUE);
             Platform.runLater(() -> {
               if (follow) area.setScrollTop(Double.MAX_VALUE);
             });
@@ -183,7 +220,7 @@ public final class LogController {
   // The general stream binding happens after the FXML member injection
   @FXML
   private void initialize() {
-    general = new Stream(generalTab, generalArea);
+    general = new Stream(tabs, generalTab, generalArea);
   }
 
   /// Append a message to the general application log tab (thread-safe).
@@ -191,18 +228,14 @@ public final class LogController {
     general.append("[" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss")) + "] " + message);
   }
 
-  /// Open a new run tab returning the per-line sink (thread-safe). The tab is
-  /// named by the wall clock; the caller keeps appending the run's progress.
+  /// Open a new run tab returning the per-line sink (thread-safe). The tab is named
+  /// by the wall clock; the caller keeps appending the run's progress. The scene-graph
+  /// objects are constructed on the application thread (the caller may be the
+  /// operations thread); the lines emitted before the attachment lands buffer in
+  /// the stream and flush once the tab exists.
   public Consumer<String> openRun(String title) {
-    TextArea area = new TextArea();
-    area.setEditable(false);
-    area.setWrapText(false);
-    area.setStyle("-fx-font-family: 'Consolas', 'Monospaced'; -fx-font-size: 12px;");
-    Stream stream = new Stream(new Tab(LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss")) + " — " + title, area), area);
-    Platform.runLater(() -> {
-      tabs.getTabs().add(stream.tab);
-      tabs.getSelectionModel().select(stream.tab);
-    });
+    Stream stream = new Stream(tabs, title);
+    Platform.runLater(stream::attach);
     return stream::append;
   }
 

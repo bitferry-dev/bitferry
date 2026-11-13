@@ -42,12 +42,13 @@ public final class SystemCommandExecutor implements CommandExecutor {
 
     if (output == null) {
       if (pumpStderr) {
-        // Windows CLI mode: stdout inherits the real terminal (the interactive progress
-        // display and the backend colors need the raw handle), while stderr is decoded
-        // as UTF-8 and re-printed through System.err: the raw child bytes would be
-        // rendered by the console through its legacy code page, garbling the unicode
-        // filenames in the log output - the jansi-wrapped System.err writes them
-        // through the wide-char console API instead, code-page independently.
+        // Windows CLI mode: stdin/stdout inherit the real terminal (the interactive
+        // progress display and the backend colors need the raw handle), while stderr
+        // is decoded as UTF-8 and re-printed through System.err: the raw child bytes
+        // would be rendered by the console through its legacy code page, garbling the
+        // unicode filenames in the log output - the jansi-wrapped System.err writes
+        // them through the wide-char console API instead, code-page independently.
+        builder.redirectInput(ProcessBuilder.Redirect.INHERIT);
         builder.redirectOutput(ProcessBuilder.Redirect.INHERIT);
         builder.redirectError(ProcessBuilder.Redirect.PIPE);
         Process process = builder.start();
@@ -99,20 +100,31 @@ public final class SystemCommandExecutor implements CommandExecutor {
       Process process = builder.start();
       BackendProcesses.register(process);
       try {
-        process.getOutputStream().close();
-      } catch (IOException ignored) {}
-      try {
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
-          String line;
-          while ((line = reader.readLine()) != null) {
-            output.accept(line);
+        try {
+          process.getOutputStream().close();
+        } catch (IOException ignored) {}
+        try {
+          try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+              output.accept(line);
+            }
           }
+          return process.waitFor();
+        } catch (InterruptedException e) {
+          process.destroyForcibly();
+          Thread.currentThread().interrupt();
+          throw e;
+        } catch (RuntimeException e) {
+          // A failing output consumer must not orphan the child (it keeps writing
+          // into the unread pipe and may hang forever): tear it down before
+          // propagating, escalating when the graceful signal is ignored
+          process.destroy();
+          if (!process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS)) {
+            process.destroyForcibly();
+          }
+          throw e;
         }
-        return process.waitFor();
-      } catch (InterruptedException e) {
-        process.destroyForcibly();
-        Thread.currentThread().interrupt();
-        throw e;
       } finally {
         BackendProcesses.unregister(process);
       }

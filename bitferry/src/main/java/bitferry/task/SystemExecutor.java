@@ -97,6 +97,21 @@ public class SystemExecutor implements Executor {
   }
 
   @Override
+  public List<List<String>> commands(Task task) {
+    // The dispatch is mandatory here: the callers hold the static Task type (the
+    // overload resolution is static), so without this override the previews would
+    // silently fall into the empty-interface default
+    if (task instanceof Rclone rclone) {
+      return rcloneExecutor.commands(rclone);
+    } else if (task instanceof Backup backup) {
+      return resticExecutor.commands(backup);
+    } else if (task instanceof Restore restore) {
+      return resticExecutor.commands(restore);
+    }
+    return List.of();
+  }
+
+  @Override
   public List<List<String>> serveCommands(Task task) {
     if (task instanceof Rclone rclone) {
       return rcloneExecutor.serveCommands(rclone);

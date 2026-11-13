@@ -73,14 +73,26 @@ public final class CliUtils {
     }
   }
 
-  /// Resolve merged common options from the command spec hierarchy.
+  /// Resolve merged common options from the command spec hierarchy. Every level of the
+  /// hierarchy (the root, the intermediate groups and the leaf) may carry its own common
+  /// options mixin; all of them are merged following the most-verbose-wins rule so that
+  /// an option supplied to any command in the chain is honored by the executed leaf.
   public static CommonOptions resolveOptions(CommandSpec spec, CommonOptions local) {
-    if (spec == null || spec.root() == null) return local;
-    Object userObject = spec.root().userObject();
-    if (userObject instanceof HasCommonOptions root) {
-      return local.merge(root.commonOptions());
+    if (spec == null) return local;
+    // The ancestors collected root-first so that the higher levels take precedence
+    // in the path probing order; the level owning the local instance is skipped
+    // (already merged in as the base).
+    Deque<CommonOptions> ancestors = new ArrayDeque<>();
+    for (CommandSpec level = spec; level != null; level = level.parent()) {
+      if (level.userObject() instanceof HasCommonOptions holder && holder.commonOptions() != local) {
+        ancestors.addFirst(holder.commonOptions());
+      }
     }
-    return local;
+    CommonOptions merged = local;
+    for (CommonOptions ancestor : ancestors) {
+      merged = merged.merge(ancestor);
+    }
+    return merged;
   }
 
   /// Create and configure an unrestored Manager instance.

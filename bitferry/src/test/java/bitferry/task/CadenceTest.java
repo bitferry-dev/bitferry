@@ -3,6 +3,7 @@ package bitferry.task;
 import bitferry.BitferryError;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -74,6 +75,28 @@ class CadenceTest {
     assertEquals("14d", new Cadence(Duration.ofDays(14), Integer.MAX_VALUE).format());
     assertEquals("10", new Cadence(Duration.ofDays(36500), 10).format());
     assertEquals("12h,3", new Cadence(Duration.ofHours(12), 3).format());
+  }
+
+  @Test
+  void formatRoundTripsThroughParse() {
+    // Every parseable specification must round-trip through format→parse: an
+    // unparsable format would silently drop the task upon the storage restoration
+    for (String spec : List.of("7d,5", "14d", "10", "2w,20", "12h,1", "30m", "36500d", "40000d", "36500d,3", "90s")) {
+      Cadence cadence = Cadence.parse(spec);
+      String formatted = cadence.format();
+      Cadence reparsed = Cadence.parse(formatted);
+      assertEquals(cadence, reparsed, () -> "spec '" + spec + "' formatted to '" + formatted + "' and failed to round-trip");
+      // The formatted form is never empty (an empty string is unparsable)
+      assertFalse(formatted.isBlank(), () -> "spec '" + spec + "' formatted to a blank string");
+    }
+  }
+
+  @Test
+  void infiniteDurationFormatsToAParsableForm() {
+    // The effectively-infinite durations format to the exact parseable days form
+    assertEquals("36500d", new Cadence(Duration.ofDays(36500), Integer.MAX_VALUE).format());
+    assertEquals("40000d", new Cadence(Duration.ofDays(40000), Integer.MAX_VALUE).format());
+    assertEquals(Duration.ofDays(40000), Cadence.parse(Cadence.parse("40000d").format()).duration());
   }
 
   @Test

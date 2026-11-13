@@ -29,8 +29,14 @@ public final class AppContext {
   private volatile Manager manager;
 
   // The model change listeners invoked on the operations thread upon the manager swap;
-  // the UI parts re-dispatch to the application thread on their own
-  private final List<Runnable> listeners = new ArrayList<>();
+  // the UI parts re-dispatch to the application thread on their own. Copy-on-write:
+  // the registrations (the application thread) must not race the fan-out iterations
+  // (the operations thread).
+  private final List<Runnable> listeners = new java.util.concurrent.CopyOnWriteArrayList<>();
+
+  /// The owner window the dialogs and alerts parent to (set by the main window upon
+  /// its assembly); null until then - the ownerless dialogs remain the fallback.
+  public volatile javafx.stage.Window ownerWindow;
 
   /// The log sink receiving the GUI-level messages (the task output travels through
   /// the processing runner instead). Configured by the main window upon its assembly.

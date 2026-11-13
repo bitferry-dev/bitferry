@@ -171,10 +171,31 @@ final class ResticExecutor {
 
     for (Task t : manager.tasks().values()) {
       if (t != restic && t.isIntact() && t instanceof Restic otherRestic) {
-        if (repo.equals(repoPath(otherRestic))) {
+        if (sameRepository(repo, repoPath(otherRestic))) {
           otherRestic.updatePassword(newPassword);
         }
       }
+    }
+  }
+
+  /// Whether the two repo path strings denote the same repository: the paths are
+  /// compared in the normalized absolute form, folding the case on the case-insensitive
+  /// file systems (the trailing separators, the relative segments and the letter case
+  /// must not defeat the paired-task password propagation). The non-parseable forms
+  /// (the remote protocol specs) fall back to the exact string equality.
+  private static boolean sameRepository(String a, String b) {
+    String na = normalizeRepoPath(a);
+    String nb = normalizeRepoPath(b);
+    if (na == null || nb == null) return a.equals(b);
+    boolean windows = System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT).contains("windows");
+    return windows ? na.equalsIgnoreCase(nb) : na.equals(nb);
+  }
+
+  private static String normalizeRepoPath(String path) {
+    try {
+      return Path.of(path).toAbsolutePath().normalize().toString();
+    } catch (InvalidPathException e) {
+      return null;
     }
   }
 
@@ -201,10 +222,11 @@ final class ResticExecutor {
     Path tempFile = null;
     try {
       tempFile = Files.createTempFile("bitferry-pw-", ".tmp");
-      try {
-        Files.setPosixFilePermissions(tempFile, Set.of(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE));
-      } catch (UnsupportedOperationException ignored) {}
+      restrictToOwner(tempFile);
       Files.writeString(tempFile, newPassword);
+      // The crash-resistant cleanup fallback: a graceful exit removes the file even
+      // when the rotation aborted before reaching the finally block
+      tempFile.toFile().deleteOnExit();
 
       List<String> cmd = new ArrayList<>();
       cmd.add(resolveExecutable());
@@ -227,10 +249,41 @@ final class ResticExecutor {
       throw new BitferryError("failed to change repository password: " + e.getMessage(), e);
     } finally {
       if (tempFile != null) {
+        final Path leaked = tempFile;
         try {
-          Files.deleteIfExists(tempFile);
-        } catch (IOException ignored) {}
+          Files.deleteIfExists(leaked);
+        } catch (IOException e) {
+          LOG.log(Level.WARNING, () -> "failed to remove the temporary password file '" + leaked + "' - remove it manually");
+        }
       }
+    }
+  }
+
+  /// Restrict the temporary password file to its owner: the POSIX mode bits where
+  /// available, the owner-only ACL on the non-POSIX file systems (Windows). The
+  /// plaintext password must never be readable by the other accounts, whatever
+  /// the platform's default temporary directory permissions are.
+  private static void restrictToOwner(Path file) throws IOException {
+    try {
+      Files.setPosixFilePermissions(file, Set.of(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE));
+      return;
+    } catch (UnsupportedOperationException ignored) {
+      // Not a POSIX file system (e.g. Windows): fall through to the ACL handling
+    }
+    AclFileAttributeView view = Files.getFileAttributeView(file, AclFileAttributeView.class);
+    if (view == null) throw new BitferryError("cannot restrict the temporary password file permissions: no ACL support");
+    try {
+      UserPrincipal owner = view.getOwner();
+      // The single allowed entry: the owner gets the full control; every other
+      // account (and the inherited entries) gets nothing
+      AclEntry ownerEntry = AclEntry.newBuilder()
+        .setType(AclEntryType.ALLOW)
+        .setPrincipal(owner)
+        .setPermissions(EnumSet.allOf(AclEntryPermission.class))
+        .build();
+      view.setAcl(List.of(ownerEntry));
+    } catch (IOException e) {
+      throw new BitferryError("failed to restrict the temporary password file permissions: " + e.getMessage(), e);
     }
   }
 
@@ -240,19 +293,29 @@ final class ResticExecutor {
       : restic.source().processOpts();
   }
 
-  // Remove the repository subdirectories upon the forced re-initialization
+  // Remove the repository subdirectories upon the forced re-initialization. Any wipe
+  // failure aborts the caller: `restic init` over the partially wiped repository would
+  // layer the new repository config over the orphaned data of the old one.
   private void wipeRepository(Path repo) {
+    List<String> failures = new ArrayList<>();
     for (String sub : List.of("config", "data", "index", "keys", "locks", "snapshots")) {
       Path subDir = repo.resolve(sub);
       if (Files.exists(subDir)) {
         try (Stream<Path> stream = Files.walk(subDir)) {
           for (Path entry : stream.sorted(java.util.Comparator.reverseOrder()).toList()) {
-            Files.deleteIfExists(entry);
+            try {
+              Files.deleteIfExists(entry);
+            } catch (IOException e) {
+              failures.add(entry + ": " + e.getMessage());
+            }
           }
         } catch (IOException e) {
-          LOG.log(Level.WARNING, () -> "failed to wipe '" + subDir + "': " + e.getMessage());
+          failures.add(subDir + ": " + e.getMessage());
         }
       }
+    }
+    if (!failures.isEmpty()) {
+      throw new BitferryError("failed to wipe the existing repository '" + repo + "': " + String.join("; ", failures));
     }
   }
 

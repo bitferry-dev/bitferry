@@ -17,7 +17,7 @@ import org.freedesktop.dbus.messages.DBusSignal;
 /// Listening needs no polkit privileges; any failure (no D-Bus, no udisks2, a
 /// dropped bus) degrades to the polling fallback quietly - the signals merely
 /// say "check now", the snapshot comparison is the real detector.
-final class UdisksEventSource implements AutoCloseable {
+final class UdisksEventSource implements MediaWatch.EventSource {
 
   private static final String UDISKS2_ROOT = "/org/freedesktop/UDisks2";
   private static final java.lang.System.Logger LOG = java.lang.System.getLogger(UdisksEventSource.class.getName());
@@ -68,6 +68,13 @@ final class UdisksEventSource implements AutoCloseable {
       close();
       return false;
     }
+  }
+
+  /// The mid-flight liveness probe: the dropped bus flips the watcher to the
+  /// polling fallback cadence.
+  @Override
+  public boolean isAlive() {
+    return connection != null && connection.isConnected();
   }
 
   @Override

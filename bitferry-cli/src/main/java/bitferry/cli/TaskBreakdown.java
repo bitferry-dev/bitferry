@@ -177,18 +177,23 @@ public final class TaskBreakdown {
     Path repoDir = null;
     RepoState state = null;
     boolean stateFileExists = false;
+    String loadFailure = null;
     if (backup.destination().isIntact()) {
       try {
         repoDir = Path.of(backup.destination().processOpts());
         state = RepoState.load(repoDir);
         stateFileExists = Files.isRegularFile(repoDir.resolve(RepoState.FILENAME));
       } catch (Exception e) {
-        // ignore
+        // The load failure is reported verbatim: collapsing it into the
+        // volume-missing status would misdirect the diagnosis
+        loadFailure = e.getMessage();
       }
     }
 
     if (state == null) {
-      appendProperty(sb, "Status:", "unavailable (destination volume missing)");
+      appendProperty(sb, "Status:", loadFailure != null
+        ? Ansi.AUTO.string("@|yellow unavailable (state load failure: " + loadFailure + ")|@")
+        : "unavailable (destination volume missing)");
     } else if (!stateFileExists) {
       appendProperty(sb, "Status:", Ansi.AUTO.string("@|yellow due (initial service pending)|@"));
     } else if (state.isCorruptOrMissing()) {

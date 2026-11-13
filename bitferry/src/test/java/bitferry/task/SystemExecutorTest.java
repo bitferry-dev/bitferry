@@ -811,7 +811,9 @@ class SystemExecutorTest {
     task.encrypt("secret", null, Rclone.Encryption.options("@default"));
 
     BitferryError error = assertThrows(BitferryError.class, () -> executor.conform(task));
-    assertEquals("the existing encrypted content in '" + dst + "' is not compatible with the provided encryption options (wrong password or filename encryption mode)", error.getMessage());
+    assertTrue(error.getMessage().startsWith("the existing encrypted content in '" + dst + "' is not compatible with the provided encryption options (wrong password or filename encryption mode)"), () -> error.getMessage());
+    // The probe diagnostics (the exit code and the captured backend output tail) ride on the refusal
+    assertTrue(error.getMessage().contains("[probe exit code"), () -> error.getMessage());
   }
 
   @Test
@@ -832,7 +834,9 @@ class SystemExecutorTest {
     task.encrypt("secret", null, Rclone.Encryption.options("@default"));
 
     BitferryError error = assertThrows(BitferryError.class, () -> executor.conform(task));
-    assertEquals("the existing encrypted content in '" + dst + "' is not compatible with the provided encryption options (wrong password or filename encryption mode)", error.getMessage());
+    assertTrue(error.getMessage().startsWith("the existing encrypted content in '" + dst + "' is not compatible with the provided encryption options (wrong password or filename encryption mode)"), () -> error.getMessage());
+    // The probe diagnostics (the exit code and the captured backend output tail) ride on the refusal
+    assertTrue(error.getMessage().contains("[probe exit code"), () -> error.getMessage());
   }
 
   @Test
@@ -853,7 +857,9 @@ class SystemExecutorTest {
     task.encrypt("secret", null, Rclone.Encryption.options("@default"));
 
     BitferryError error = assertThrows(BitferryError.class, () -> executor.conform(task));
-    assertEquals("the existing encrypted content in '" + dst + "' is not compatible with the provided encryption options (wrong password or filename encryption mode)", error.getMessage());
+    assertTrue(error.getMessage().startsWith("the existing encrypted content in '" + dst + "' is not compatible with the provided encryption options (wrong password or filename encryption mode)"), () -> error.getMessage());
+    // The probe diagnostics (the exit code and the captured backend output tail) ride on the refusal
+    assertTrue(error.getMessage().contains("[probe exit code"), () -> error.getMessage());
   }
 
   @Test

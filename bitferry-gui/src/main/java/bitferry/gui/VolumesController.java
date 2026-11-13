@@ -115,6 +115,9 @@ public final class VolumesController {
 
   private void updateButtons() {
     boolean none = selected() == null;
+    // The creation gates on the run lock too: the queued runnable would silently
+    // apply after the run ends with no feedback (mirroring the tasks pane)
+    create.setDisable(locked);
     delete.setDisable(locked || none);
     deleteWipe.setDisable(locked || none);
   }

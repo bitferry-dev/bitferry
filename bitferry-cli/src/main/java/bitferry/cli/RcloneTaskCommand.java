@@ -81,7 +81,12 @@ public abstract class RcloneTaskCommand implements Callable<Integer>, HasCommonO
     // are resolved against the crypt filename encoding profiles
     boolean encryptRequested = encryptDefault || encrypt != null;
     boolean decryptRequested = decryptDefault || decrypt != null;
+    // The shorthand and the explicit forms of the same setting are mutually exclusive
+    if (encryptDefault && encrypt != null) throw new BitferryError("destination encryption specified twice: use either -e or --encrypt");
+    if (decryptDefault && decrypt != null) throw new BitferryError("source decryption specified twice: use either -d or --decrypt");
     if (encryptRequested && decryptRequested) throw new BitferryError("invalid encryption options: the encryption and decryption are mutually exclusive");
+    // The explicit profile selection leaves nothing for the unicode modifier to resolve
+    if (extended && (encrypt != null || decrypt != null)) throw new BitferryError("invalid encryption options: the extended profile modifier (-u) conflicts with the explicitly specified encryption profile");
     if (extended && !encryptRequested && !decryptRequested) throw new BitferryError("invalid encryption options: the extended profile modifier requires the encryption to be requested");
     String profile = encrypt != null ? encrypt : decrypt != null ? decrypt : extended ? "@extended" : "@default";
     CommonOptions opts = CliUtils.resolveOptions(spec, options);

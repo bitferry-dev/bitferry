@@ -61,12 +61,21 @@ public final class MediaWatch {
   private volatile boolean sourceAlive;
   /// The event flag set by the event source callbacks (their own threads).
   private volatile boolean dirty;
+  /// The closed flag: the close racing the asynchronous source setup must not leak
+  /// the freshly created source.
+  private volatile boolean closed;
 
   private SortedSet<String> lastReported;
   private SortedSet<String> candidate;
   private int candidateSeen;
 
-  private AutoCloseable eventSource;
+  private volatile EventSource eventSource;
+
+  /// The media event source contract: the liveness probe lets the watcher detect a
+  /// mid-flight source death and accelerate the polling to the fallback cadence.
+  interface EventSource extends AutoCloseable {
+    boolean isAlive();
+  }
 
   private MediaWatch(Runnable onChange, BooleanSupplier gate, Supplier<SortedSet<String>> snapshot,
                      long fastTickMs, long slowTickMs, long coalesceMs) {
@@ -97,12 +106,15 @@ public final class MediaWatch {
   }
 
   /// Stop the watcher and the event source (best effort; the daemon threads die
-  /// with the JVM anyway).
+  /// with the JVM anyway). The closed flag lets the asynchronous source setup
+  /// (still in flight) discard the freshly created source instead of leaking it.
   public void close() {
+    closed = true;
     scheduler.shutdownNow();
-    if (eventSource != null) {
+    EventSource source = eventSource;
+    if (source != null) {
       try {
-        eventSource.close();
+        source.close();
       } catch (Exception ignored) {
         // The shutdown best effort; the daemon threads die with the JVM regardless
       }
@@ -139,6 +151,7 @@ public final class MediaWatch {
     UdisksEventSource source = new UdisksEventSource();
     if (source.start(this::markDirty)) {
       eventSource = source;
+      if (closed) discardSource(source); // The close raced the setup: dispose the fresh source
       return true;
     }
     source.close();
@@ -150,10 +163,19 @@ public final class MediaWatch {
     WindowsEventSource source = new WindowsEventSource();
     if (source.start(this::markDirty)) {
       eventSource = source;
+      if (closed) discardSource(source); // The close raced the setup: dispose the fresh source
       return true;
     }
     source.close();
     return false;
+  }
+
+  private void discardSource(EventSource source) {
+    try {
+      source.close();
+    } catch (Exception ignored) {
+      // The shutdown best effort
+    }
   }
 
   // Marked by the event source callbacks (their own threads); the burst of the
@@ -165,20 +187,37 @@ public final class MediaWatch {
 
   // The coalesced event check (the scheduler thread).
   private void eventCheck() {
-    if (!dirty) return;
-    dirty = false;
-    checkAndReport();
+    try {
+      if (!dirty) return;
+      dirty = false;
+      checkAndReport();
+    } catch (RuntimeException e) {
+      // The snapshot failures must not vanish into the discarded scheduled future
+      System.getLogger(MediaWatch.class.getName())
+        .log(java.lang.System.Logger.Level.WARNING, "media event check failed: " + e);
+    }
   }
 
   // The poll tick (the scheduler thread); the cadence re-reads the source state so
-  // a mid-flight source failure accelerates the polling on the next tick.
+  // a mid-flight source failure (a dropped bus, an exited window pump) accelerates
+  // the polling on the next tick.
   private void tick() {
     try {
       if (sourceAlive) {
-        // The safety net: no stability requirement (the events already rode out
-        // the flurries; the missed ones are caught raw)
-        checkAndReport();
-      } else {
+        // The mid-flight source death flips the source state off: the fallback
+        // cadence (and the stability requirement) engages from this tick on
+        EventSource source = eventSource;
+        if (source == null || !source.isAlive()) {
+          sourceAlive = false;
+          System.getLogger(MediaWatch.class.getName())
+            .log(java.lang.System.Logger.Level.DEBUG, "media event source died; falling back to the polling");
+        } else {
+          // The safety net: no stability requirement (the events already rode out
+          // the flurries; the missed ones are caught raw)
+          checkAndReport();
+        }
+      }
+      if (!sourceAlive) {
         SortedSet<String> sig = snapshot.get();
         if (sig.equals(candidate)) candidateSeen++;
         else {
@@ -190,6 +229,11 @@ public final class MediaWatch {
           checkAndReport(sig);
         }
       }
+    } catch (RuntimeException e) {
+      // The snapshot failures (e.g. a mount enumeration error on an exotic host)
+      // must not kill the watcher silently: log and keep ticking
+      System.getLogger(MediaWatch.class.getName())
+        .log(java.lang.System.Logger.Level.WARNING, "media watch tick failed: " + e);
     } finally {
       scheduler.schedule(this::tick, sourceAlive ? slowTickMs : fastTickMs, TimeUnit.MILLISECONDS);
     }

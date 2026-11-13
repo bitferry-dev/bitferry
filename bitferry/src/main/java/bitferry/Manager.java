@@ -21,35 +21,48 @@ public class Manager {
   private final Map<String, Volume> volumes = new LinkedHashMap<>();
   private final Map<String, Task> tasks = new LinkedHashMap<>();
 
+  /// The registry lock: the mutations and the snapshot iterations are serialized so
+  /// that a concurrent reader (a GUI table rebuild on the FX thread) never observes a
+  /// structurally mutating map (ConcurrentModificationException, hung iteration).
+  private final Object registryLock = new Object();
+
   /// Allow potentially dangerous operations.
-  public boolean force = false;
+  public volatile boolean force = false;
 
   /// Make no on-disk changes (simulation mode).
-  public boolean simulate = false;
+  public volatile boolean simulate = false;
 
   /// Produce the least output.
-  public boolean quiet = false;
+  public volatile boolean quiet = false;
 
   /// Output verbosity level.
-  public Verbosity verbosity = Verbosity.NORMAL;
+  public volatile Verbosity verbosity = Verbosity.NORMAL;
 
-  private Executor backendExecutor = Executor.system();
+  private volatile Executor backendExecutor = Executor.system();
 
   private static final System.Logger LOG = System.getLogger(Manager.class.getName());
 
-  /// Return the registered volumes keyed by their tags.
+  /// Return the registered volumes keyed by their tags. The returned map is an
+  /// immutable snapshot: a subsequent registry mutation does not change it.
   public Map<String, Volume> volumes() {
-    return java.util.Collections.unmodifiableMap(volumes);
+    synchronized (registryLock) {
+      return java.util.Collections.unmodifiableMap(new LinkedHashMap<>(volumes));
+    }
   }
 
-  /// Return the registered tasks keyed by their tags.
+  /// Return the registered tasks keyed by their tags. The returned map is an
+  /// immutable snapshot: a subsequent registry mutation does not change it.
   public Map<String, Task> tasks() {
-    return java.util.Collections.unmodifiableMap(tasks);
+    synchronized (registryLock) {
+      return java.util.Collections.unmodifiableMap(new LinkedHashMap<>(tasks));
+    }
   }
 
   /// Return the volume matched by the exact tag or null.
   public Volume volume(String tag) {
-    return volumes.get(tag);
+    synchronized (registryLock) {
+      return volumes.get(tag);
+    }
   }
 
   /// The comparable snapshot of the current mount set (the sorted mount-point
@@ -61,7 +74,9 @@ public class Manager {
 
   /// Return the task matched by the exact tag or null.
   public Task task(String tag) {
-    return tasks.get(tag);
+    synchronized (registryLock) {
+      return tasks.get(tag);
+    }
   }
 
   /// The verbose flag derived from the verbosity level.
@@ -78,7 +93,7 @@ public class Manager {
   public Endpoint endpoint(Path root) {
     Path canonical = Bitferry.canonicalize(root);
     // Volumes are probed in the longest root first order so that the nested volumes are matched before the enclosing ones
-    List<Volume> sorted = volumes.values().stream()
+    List<Volume> sorted = volumes().values().stream()
       .filter(Volume::isLive)
       .sorted(java.util.Comparator.comparing((Volume v) -> v.root().toString().length()).reversed())
       .toList();
@@ -94,63 +109,83 @@ public class Manager {
 
   /// Register the volume upon its creation or restoration keeping the copy with the newest timestamp.
   public void registerVolume(Volume volume) {
-    Volume existing = volumes.get(volume.tag());
-    if (existing == null) {
-      LOG.log(Level.INFO, () -> "volume #" + volume.tag() + " registered in " + this);
-    } else if (existing.mtime().isBefore(volume.mtime())) {
-      volumes.remove(volume.tag());
-      LOG.log(Level.INFO, () -> "replaced already registered volume #" + volume.tag() + " with the one with newer timestamp");
-    } else {
-      LOG.log(Level.INFO, () -> "kept already registered volume #" + volume.tag() + " with newer timestamp");
-      return;
+    synchronized (registryLock) {
+      Volume existing = volumes.get(volume.tag());
+      if (existing == null) {
+        LOG.log(Level.INFO, () -> "volume #" + volume.tag() + " registered in " + this);
+      } else if (existing.mtime().isBefore(volume.mtime())) {
+        volumes.remove(volume.tag());
+        LOG.log(Level.INFO, () -> "replaced already registered volume #" + volume.tag() + " with the one with newer timestamp");
+      } else {
+        LOG.log(Level.INFO, () -> "kept already registered volume #" + volume.tag() + " with newer timestamp");
+        return;
+      }
+      volumes.put(volume.tag(), volume);
     }
-    volumes.put(volume.tag(), volume);
   }
 
   /// Register the task upon its creation or restoration keeping the copy with the newest timestamp.
   /// Since tasks may come from both endpoints' volumes there may be already a task restored
   /// and registered; in this case the task with the newer timestamp wins.
   public void registerTask(Task task) {
-    Task existing = tasks.get(task.tag());
-    if (existing == null) {
-      LOG.log(Level.INFO, () -> "task #" + task.tag() + " registered in " + this);
-    } else if (existing.mtime().isBefore(task.mtime())) {
-      tasks.remove(task.tag());
-      LOG.log(Level.INFO, () -> "replaced already registered task #" + task.tag() + " with the one with newer timestamp");
-    } else {
-      LOG.log(Level.INFO, () -> "kept already registered task #" + task.tag() + " with newer timestamp");
-      return;
+    synchronized (registryLock) {
+      Task existing = tasks.get(task.tag());
+      if (existing == null) {
+        LOG.log(Level.INFO, () -> "task #" + task.tag() + " registered in " + this);
+      } else if (existing.mtime().isBefore(task.mtime())) {
+        tasks.remove(task.tag());
+        LOG.log(Level.INFO, () -> "replaced already registered task #" + task.tag() + " with the one with newer timestamp");
+      } else {
+        LOG.log(Level.INFO, () -> "kept already registered task #" + task.tag() + " with newer timestamp");
+        return;
+      }
+      tasks.put(task.tag(), task);
     }
-    tasks.put(task.tag(), task);
   }
 
   /// Drop the task from the registry: the abort of a failed creation (the one-time
   /// backend initialization of a pristine task may reject the task - e.g. the
   /// repository initialization over the existing repository).
   public void deregisterTask(Task task) {
-    tasks.remove(task.tag());
+    synchronized (registryLock) {
+      tasks.remove(task.tag());
+    }
+  }
+
+  /// Drop the volume from the registry: the abort of a failed creation (the commit
+  /// of a pristine volume may reject it - e.g. the refusal to overwrite the existing
+  /// foreign storage). Without the rollback the rejected volume would stay registered
+  /// and fail every following commit.
+  public void deregisterVolume(Volume volume) {
+    synchronized (registryLock) {
+      volumes.remove(volume.tag());
+    }
   }
 
   /// Return the registered live volumes.
   public Map<String, Volume> liveVolumes() {
-    return volumes.values().stream()
-      .filter(Volume::isLive)
-      .collect(Collectors.toMap(Volume::tag, v -> v, (a, b) -> a, LinkedHashMap::new));
+    synchronized (registryLock) {
+      return volumes.values().stream()
+        .filter(Volume::isLive)
+        .collect(Collectors.toMap(Volume::tag, v -> v, (a, b) -> a, LinkedHashMap::new));
+    }
   }
 
   /// Return the registered live tasks. The deletion tombstones are excluded: they are
   /// invisible for all the operations until the garbage collection removes them.
   public Map<String, Task> liveTasks() {
-    return tasks.values().stream()
-      .filter(t -> t.isLive() && !t.isDeleted())
-      .collect(Collectors.toMap(Task::tag, t -> t, (a, b) -> a, LinkedHashMap::new));
+    synchronized (registryLock) {
+      return tasks.values().stream()
+        .filter(t -> t.isLive() && !t.isDeleted())
+        .collect(Collectors.toMap(Task::tag, t -> t, (a, b) -> a, LinkedHashMap::new));
+    }
   }
 
   /// Return the intact tasks matched by the specified (partial) tags or all intact tasks if no tags given.
   /// Every tag part must match exactly one task.
   public Map<String, Task> selectTasks(List<String> tags) {
     Map<String, Task> intact = new LinkedHashMap<>();
-    for (Volume volume : volumes.values()) intact.putAll(volume.intactTasks());
+    for (Volume volume : volumes().values()) intact.putAll(volume.intactTasks());
     if (tags == null || tags.isEmpty()) return intact;
     Map<String, Task> selected = new LinkedHashMap<>();
     for (Task t : pick(intact, tags, 1)) selected.put(t.tag(), t);
@@ -178,7 +213,7 @@ public class Manager {
   public Task findTask(Endpoint source, Endpoint destination) {
     JsonNode sourceDescriptor = source.serialize();
     JsonNode destinationDescriptor = destination.serialize();
-    for (Task task : tasks.values()) {
+    for (Task task : tasks().values()) {
       if (!task.isLive() || task.isDeleted()) continue;
       if (task.source().serialize().equals(sourceDescriptor) && task.destination().serialize().equals(destinationDescriptor)) return task;
     }
@@ -189,7 +224,7 @@ public class Manager {
   /// the flagged tasks are dropped from the storages upon the following commit. The
   /// tombstones referring the unregistered volumes are retained for the conflict propagation.
   private void collectGarbage() {
-    for (Task task : tasks.values()) {
+    for (Task task : tasks().values()) {
       if (!task.isDeleted() || !task.isLive()) continue;
       boolean allPresent = task.referredVolumes().stream().allMatch(vtag -> volume(vtag) != null);
       if (allPresent) {
@@ -302,7 +337,7 @@ public class Manager {
   /// physical tombstone removal happens at the following restore.
   public Manager commit() {
     List<String> problems = new ArrayList<>();
-    for (Volume volume : volumes.values()) {
+    for (Volume volume : volumes().values()) {
       if (!volume.isLive()) continue;
       try {
         volume.commit();
@@ -316,11 +351,18 @@ public class Manager {
   }
 
   /// Process the intact tasks matched by the specified (partial) tags or all intact tasks
-  /// forwarding output to the consumer (null for CLI pass-through).
+  /// forwarding output to the consumer (null for CLI pass-through). The task-level
+  /// failures (BitferryError - e.g. a vanished volume, a dropped vault token) isolate to
+  /// the failing task and fail the outcome: the remaining tasks still run.
   public boolean process(List<String> tags, java.util.function.Consumer<String> output) {
     boolean outcome = true;
     for (Task t : selectTasks(tags).values()) {
-      outcome = t.process(output) && outcome;
+      try {
+        outcome = t.process(output) && outcome;
+      } catch (BitferryError e) {
+        LOG.log(Level.ERROR, () -> "task #" + t.tag() + " processing failure: " + e.getMessage());
+        outcome = false;
+      }
     }
     return outcome;
   }
@@ -346,11 +388,18 @@ public class Manager {
   }
 
   /// Service the intact tasks matched by the specified (partial) tags or all intact tasks
-  /// forwarding output to the consumer (null for CLI pass-through).
+  /// forwarding output to the consumer (null for CLI pass-through). The task-level
+  /// failures (BitferryError) isolate to the failing task and fail the outcome: the
+  /// remaining tasks still run.
   public boolean serve(List<String> tags, java.util.function.Consumer<String> output) {
     boolean outcome = true;
     for (Task t : selectTasks(tags).values()) {
-      outcome = t.serve(output) && outcome;
+      try {
+        outcome = t.serve(output) && outcome;
+      } catch (BitferryError e) {
+        LOG.log(Level.ERROR, () -> "task #" + t.tag() + " servicing failure: " + e.getMessage());
+        outcome = false;
+      }
     }
     return outcome;
   }

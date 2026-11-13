@@ -83,14 +83,29 @@ final class RcloneExecutor {
     }
 
     if (exitCode != 0 || outputLines.stream().anyMatch(RcloneExecutor::isDecryptionError)) {
-      throw new BitferryError(refusalMessage(encryptedSide));
+      throw new BitferryError(refusalMessage(encryptedSide) + probeDetail(outputLines, exitCode));
     }
 
     Set<String> cryptPaths = extractCryptPaths(outputLines);
     boolean filenameEncEnabled = isFilenameEncryptionEnabled(rclone.encryption().options());
     if (cryptPaths.isEmpty() || (filenameEncEnabled && cryptPaths.equals(rawPaths))) {
-      throw new BitferryError(refusalMessage(encryptedSide));
+      throw new BitferryError(refusalMessage(encryptedSide) + probeDetail(outputLines, exitCode));
     }
+  }
+
+  /// The probe failure detail: the captured backend output tail appended to the error
+  /// message. Any probe failure (a vanished directory, a backend crash) surfaces as the
+  /// wrong-password refusal, so the actual backend report must stay visible for the
+  /// misdiagnosis not to be dead-ended.
+  private static String probeDetail(List<String> outputLines, int exitCode) {
+    List<String> tail = outputLines.size() > 5
+      ? outputLines.subList(outputLines.size() - 5, outputLines.size())
+      : outputLines;
+    StringBuilder detail = new StringBuilder(" [probe exit code ").append(exitCode);
+    if (!tail.isEmpty()) {
+      detail.append(", rclone reported: ").append(String.join(" | ", tail));
+    }
+    return detail.append(']').toString();
   }
 
   private static String refusalMessage(String encryptedSide) {

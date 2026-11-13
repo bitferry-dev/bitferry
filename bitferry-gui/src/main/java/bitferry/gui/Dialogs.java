@@ -48,7 +48,7 @@ final class Dialogs {
     chooser.setTitle("Select the volume root directory");
     File initial = new File(System.getProperty("user.home"));
     if (initial.isDirectory()) chooser.setInitialDirectory(initial);
-    File root = chooser.showDialog(null);
+    File root = chooser.showDialog(context.ownerWindow);
     if (root == null) return;
     Path path = root.toPath();
     confirmAndRun(context, "Create volume", "Create a volume with the root\n  " + path + " ?", () -> {
@@ -64,7 +64,7 @@ final class Dialogs {
   /// itself is asynchronous.
   static void newTask(AppContext context, LogController logs, BooleanSupplier busy) {
     if (busy.getAsBoolean()) {
-      alert(Alert.AlertType.WARNING, "Busy", "A run is in progress — wait for it to finish.");
+      alert(context, Alert.AlertType.WARNING, "Busy", "A run is in progress — wait for it to finish.");
       return;
     }
     TaskForm form = new TaskForm(context, null);
@@ -85,22 +85,26 @@ final class Dialogs {
         }
       });
     });
-    dialog.showAndWait().filter(ButtonType.OK::equals).ifPresent(x -> {
+    // The validation rides on the OK button's action filter: a failing form keeps
+    // the dialog open with the typed input intact (the post-close validation would
+    // discard everything the user typed)
+    Button ok = (Button) dialog.getDialogPane().lookupButton(ButtonType.OK);
+    ok.addEventFilter(javafx.event.ActionEvent.ACTION, event -> {
       try {
         form.validate();
       } catch (BitferryError e) {
-        alert(Alert.AlertType.ERROR, "Invalid form", e.getMessage());
-        return;
+        alert(context, Alert.AlertType.ERROR, "Invalid form", e.getMessage());
+        event.consume();
       }
-      createTask(context, logs, form);
     });
+    dialog.showAndWait().filter(ButtonType.OK::equals).ifPresent(x -> createTask(context, logs, form));
   }
 
   /// Show the modify task dialog returning once the form is dismissed; the modification
   /// itself is executed asynchronously on the operations thread.
   static void modifyTask(AppContext context, LogController logs, Task task, BooleanSupplier busy) {
     if (busy.getAsBoolean()) {
-      alert(Alert.AlertType.WARNING, "Busy", "A run is in progress — wait for it to finish.");
+      alert(context, Alert.AlertType.WARNING, "Busy", "A run is in progress — wait for it to finish.");
       return;
     }
     TaskForm form = new TaskForm(context, task);
@@ -121,15 +125,17 @@ final class Dialogs {
         }
       });
     });
-    dialog.showAndWait().filter(ButtonType.OK::equals).ifPresent(x -> {
+    // The validation rides on the OK button's action filter (see the creation dialog)
+    Button ok = (Button) dialog.getDialogPane().lookupButton(ButtonType.OK);
+    ok.addEventFilter(javafx.event.ActionEvent.ACTION, event -> {
       try {
         form.validate();
       } catch (BitferryError e) {
-        alert(Alert.AlertType.ERROR, "Invalid form", e.getMessage());
-        return;
+        alert(context, Alert.AlertType.ERROR, "Invalid form", e.getMessage());
+        event.consume();
       }
-      applyTaskModification(context, logs, task, form);
     });
+    dialog.showAndWait().filter(ButtonType.OK::equals).ifPresent(x -> applyTaskModification(context, logs, task, form));
   }
 
   // Run the task creation on the operations thread; the failures deregister the
@@ -189,7 +195,7 @@ final class Dialogs {
         // manager may have been swapped by a concurrent reload meanwhile
         if (task != null) manager.deregisterTask(task);
         logs.log("task creation failed: " + e.getMessage());
-        Platform.runLater(() -> alert(Alert.AlertType.ERROR, "Task creation failed", e.getMessage()));
+        Platform.runLater(() -> errorAlert(context, "Task creation failed", e.getMessage()));
       }
     });
   }
@@ -244,7 +250,7 @@ final class Dialogs {
         context.fireModelChanged();
       } catch (RuntimeException e) {
         logs.log("task modification failed: " + e.getMessage());
-        Platform.runLater(() -> alert(Alert.AlertType.ERROR, "Task modification failed", e.getMessage()));
+        Platform.runLater(() -> errorAlert(context, "Task modification failed", e.getMessage()));
       }
     });
   }
@@ -268,29 +274,32 @@ final class Dialogs {
     Alert confirm = new Alert(Alert.AlertType.CONFIRMATION, text, ButtonType.OK, ButtonType.CANCEL);
     confirm.setTitle(title);
     confirm.setHeaderText(null);
+    if (context.ownerWindow != null) confirm.initOwner(context.ownerWindow);
     confirm.showAndWait().filter(ButtonType.OK::equals).ifPresent(x ->
       context.operations().execute(() -> {
         try {
           action.run();
         } catch (BitferryError e) {
           logs.log(title + " failed: " + e.getMessage());
-          Platform.runLater(() -> errorAlert(title + " failed", e.getMessage()));
+          Platform.runLater(() -> errorAlert(context, title + " failed", e.getMessage()));
         }
       }));
   }
 
   /// The error alert dialog (the failures also travel into the general log).
-  static void errorAlert(String title, String text) {
+  static void errorAlert(AppContext context, String title, String text) {
     Alert alert = new Alert(Alert.AlertType.ERROR, text, ButtonType.OK);
     alert.setTitle(title);
     alert.setHeaderText(null);
+    if (context.ownerWindow != null) alert.initOwner(context.ownerWindow);
     alert.show();
   }
 
-  private static void alert(Alert.AlertType type, String title, String text) {
+  private static void alert(AppContext context, Alert.AlertType type, String title, String text) {
     Alert alert = new Alert(type, text, ButtonType.OK);
     alert.setTitle(title);
     alert.setHeaderText(null);
+    if (context.ownerWindow != null) alert.initOwner(context.ownerWindow);
     alert.show();
   }
 
@@ -540,7 +549,7 @@ final class Dialogs {
       browseVolume.setOnAction(x -> {
         List<Volume> volumes = new ArrayList<>(context.manager().liveVolumes().values());
         if (volumes.isEmpty()) {
-          alert(Alert.AlertType.WARNING, "No volumes", "No volumes are registered — reload the manager or create one first.");
+          alert(context, Alert.AlertType.WARNING, "No volumes", "No volumes are registered — reload the manager or create one first.");
           return;
         }
         Volume volume = chooseVolume(volumes);

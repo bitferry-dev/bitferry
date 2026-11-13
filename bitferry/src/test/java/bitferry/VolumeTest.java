@@ -54,9 +54,16 @@ class VolumeTest {
     Manager manager = new Manager();
     Volume volume = new Volume(manager, root);
     assertThrows(BitferryError.class, manager::commit);
+    // The refused volume deregisters: it must not stay registered re-failing every
+    // following commit (nor poisoning the manager for the other operations)
+    assertFalse(manager.volumes().containsKey(volume.tag()));
+    assertDoesNotThrow(manager::commit);
+    // The explicit force overcomes the refusal on the re-created volume
     manager.force = true;
+    Volume forced = new Volume(manager, root);
     manager.commit();
     assertTrue(Files.isRegularFile(root.resolve(Bitferry.STORAGE)));
+    assertNotEquals("{}", Files.readString(root.resolve(Bitferry.STORAGE)));
   }
 
   @Test
@@ -67,6 +74,43 @@ class VolumeTest {
     manager.commit();
     assertFalse(Files.exists(dir.resolve("volume").resolve(Bitferry.STORAGE)));
     assertTrue(manager.liveVolumes().containsKey(volume.tag()));
+  }
+
+  @Test
+  void simulationConsumesNoDurableBookkeeping() throws IOException {
+    Manager manager = new Manager();
+    manager.simulate = true;
+    Volume volume = new Volume(manager, dir.resolve("volume"));
+    manager.commit();
+    assertFalse(Files.exists(dir.resolve("volume").resolve(Bitferry.STORAGE)));
+    // The simulation leaves the write pending: a following real commit materializes it
+    assertTrue(volume.isModified());
+    java.time.OffsetDateTime simulated = volume.mtime();
+    manager.simulate = false;
+    manager.commit();
+    assertTrue(Files.isRegularFile(dir.resolve("volume").resolve(Bitferry.STORAGE)));
+    assertFalse(volume.isModified());
+    assertNotEquals(simulated, volume.mtime());
+  }
+
+  @Test
+  void simulatedDeletionStaysPendingUntilTheRealCommit() throws IOException {
+    Manager manager = new Manager();
+    Volume volume = new Volume(manager, dir.resolve("volume"));
+    manager.commit();
+    assertTrue(Files.exists(dir.resolve("volume").resolve(Bitferry.STORAGE)));
+
+    manager.simulate = true;
+    volume.delete(false);
+    manager.commit();
+    // The simulated deletion removes nothing and stays pending
+    assertTrue(Files.exists(dir.resolve("volume").resolve(Bitferry.STORAGE)));
+    assertTrue(volume.isLive());
+
+    manager.simulate = false;
+    manager.commit();
+    assertFalse(Files.exists(dir.resolve("volume").resolve(Bitferry.STORAGE)));
+    assertFalse(volume.isLive());
   }
 
   @Test

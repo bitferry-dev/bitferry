@@ -59,8 +59,9 @@ public abstract class Task {
   // The transient in-memory marker of the processing in progress: guards the re-entrancy
   // (a task dispatched while its previous run is still going). Deliberately not persisted -
   // the generation/intact mechanism already encodes the processing needs and the backend
-  // runs are idempotent upon the interruption.
-  private boolean processing;
+  // runs are idempotent upon the interruption. Volatile: the dispatches may come from
+  // different threads (the guard must be visible across them).
+  private volatile boolean processing;
 
   /// The deletion marker: a tombstoned task stays persisted within the storages of the
   /// currently visible volumes but is invisible for all the operations until it is
@@ -300,7 +301,12 @@ public abstract class Task {
           manager.deregisterTask(this);
           throw e;
         }
-        commitState = CommitState.LIVE;
+        if (!manager.simulate) {
+          // The format is the one-time backend-side action: the simulation runs it
+          // through the simulated executors without consuming the pristine state,
+          // leaving the transition pending for a following real commit
+          commitState = CommitState.LIVE;
+        }
       }
       case LIVE -> {
         break loop;

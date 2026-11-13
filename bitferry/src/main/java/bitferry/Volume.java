@@ -249,7 +249,13 @@ public final class Volume {
     loop:
     while (true) switch (commitState) {
       case PRISTINE -> { // Format the volume
-        if (Files.exists(storage) && !manager.force) throw new BitferryError("refuse to overwrite existing file '" + storage + "'; use --force to overcome this error");
+        if (Files.exists(storage) && !manager.force) {
+          // Abort the registration: the refused volume must not stay registered
+          // (else it would re-fail every following commit) - mirroring the task's
+          // rollback upon the failed pristine commit
+          manager.deregisterVolume(this);
+          throw new BitferryError("refuse to overwrite existing file '" + storage + "'; use --force to overcome this error");
+        }
         commitState = CommitState.LIVE;
       }
       case LIVE -> { // Dump the volume storage
@@ -260,12 +266,15 @@ public final class Volume {
             checkPresence();
           }
           try {
-            // The actual storage writing time is stored, not the in-memory modification time
-            mtime = OffsetDateTime.now().truncatedTo(java.time.temporal.ChronoUnit.MICROS);
             String contents = Storage.toJson(this);
             if (manager.simulate) {
+              // The simulation writes nothing and consumes no durable bookkeeping:
+              // the pending mtime/generation/modified state is left for a following
+              // real commit to materialize
               LOG.log(Level.INFO, () -> "simulated #" + tag + " save to file '" + storage + "'");
             } else {
+              // The actual storage writing time is stored, not the in-memory modification time
+              mtime = OffsetDateTime.now().truncatedTo(java.time.temporal.ChronoUnit.MICROS);
               Storage.writeText(storage, contents);
               LOG.log(Level.INFO, () -> "volume #" + tag + " written to file '" + storage + "'");
             }
@@ -275,12 +284,21 @@ public final class Volume {
         } else {
           LOG.log(Level.DEBUG, () -> "volume #" + tag + " is up-to-date and no forced save requested; skipped");
         }
+        if (!manager.simulate) {
+          // On successful commit advance the volume's generation so that the referring tasks won't be flagged out-of-date anymore
+          var surviving = tasks();
+          generation = surviving.isEmpty() ? 0 : surviving.values().stream().mapToInt(Task::generation).max().orElseThrow() + 1;
+          modified = false;
+        }
         break loop;
       }
       case DELETED -> {
         if (fileStore != null) checkPresence();
         if (manager.simulate) {
+          // The simulation removes nothing and consumes no durable bookkeeping:
+          // the deletion stays pending for a following real commit
           LOG.log(Level.INFO, () -> "simulated volume #" + tag + " storage removal");
+          break loop;
         } else if (wipe) {
           wipeDirectory();
           LOG.log(Level.INFO, () -> "wiped volume #" + tag + " directory '" + root + "'");
@@ -302,10 +320,12 @@ public final class Volume {
         break loop;
       }
     }
-    // On successful commit advance the volume's generation so that the referring tasks won't be flagged out-of-date anymore
-    var surviving = tasks();
-    generation = surviving.isEmpty() ? 0 : surviving.values().stream().mapToInt(Task::generation).max().orElseThrow() + 1;
-    modified = false;
+    if (!manager.simulate) {
+      // On successful commit advance the volume's generation so that the referring tasks won't be flagged out-of-date anymore
+      var surviving = tasks();
+      generation = surviving.isEmpty() ? 0 : surviving.values().stream().mapToInt(Task::generation).max().orElseThrow() + 1;
+      modified = false;
+    }
     if (!problems.isEmpty()) throw new BitferryError("task commit failure(s) in volume #" + tag + ": " + String.join("; ", problems));
   }
 

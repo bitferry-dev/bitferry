@@ -104,9 +104,11 @@ public record Cadence(Duration duration, int count) {
     return durStr + "," + count;
   }
 
-  /// Format a duration into a concise string (e.g. 7d, 24h).
+  /// Format a duration into a concise string (e.g. 7d, 24h). Every parseable duration
+  /// round-trips through format→parse: returning an empty string (as the earlier
+  /// effectively-infinite case did) would persist as an unparsable cadence and
+  /// silently drop the task upon the restoration.
   public static String formatDuration(Duration d) {
-    if (d.toDays() >= 36500) return "";
     long days = d.toDays();
     if (days > 0 && d.toHoursPart() == 0 && d.toMinutesPart() == 0 && d.toSecondsPart() == 0) {
       return days + "d";
