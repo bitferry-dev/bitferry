@@ -29,12 +29,20 @@ public final class Runner {
 
     /// The whole run finished with the outcome summary.
     void runFinished(boolean outcome, int ok, int failed);
+
+    /// The run was aborted by the user: the running backend has been terminated and
+    /// the remaining tasks skipped.
+    void runAborted(int ok, int failed);
   }
 
   private final AppContext context;
   private final LogController logs;
 
   private volatile boolean busy;
+
+  // The abort request flag: set on the application thread (or anywhere), polled by
+  // the run loop before every task; the running backend process is torn down eagerly
+  private volatile boolean aborted;
 
   public Runner(AppContext context, LogController logs) {
     this.context = context;
@@ -58,10 +66,23 @@ public final class Runner {
     return dispatch(tags, listener, true);
   }
 
+  /// Abort the run in progress: terminate the currently executing backend process
+  /// and stop before the next task. No-op when no run is in progress. Safe to call
+  /// from any thread.
+  public void abort() {
+    if (!busy) return;
+    aborted = true;
+    int terminated = BackendProcesses.abort();
+    logs.log(terminated > 0
+      ? "abort requested: terminating the backend process(es)"
+      : "abort requested: stopping before the next task");
+  }
+
   // The shared sequential run loop over the selected tasks (execute or serve)
   private boolean dispatch(List<String> tags, Listener listener, boolean serve) {
     if (busy) return false;
     busy = true;
+    aborted = false;
     context.operations().execute(() -> {
       int ok = 0;
       int failed = 0;
@@ -78,6 +99,9 @@ public final class Runner {
         Consumer<String> output = logs.openRun((serve ? "service" : "run") + ": " + tasks.size() + " task(s)");
         int index = 0;
         for (Task task : tasks) {
+          // The abort request skips the remaining tasks (the running backend has
+          // already been terminated eagerly by the abort())
+          if (aborted) break;
           index++;
           int at = index;
           Platform.runLater(() -> listener.taskStarted(at, total, task.tag()));
@@ -98,10 +122,15 @@ public final class Runner {
           int failedCount = failed;
           Platform.runLater(() -> listener.taskFinished(at, total, okCount, failedCount));
         }
-        done(listener, failed == 0, ok, failed);
+        if (aborted) {
+          output.accept("    ✗ run aborted");
+          doneAborted(listener, ok, failed);
+        } else {
+          done(listener, failed == 0, ok, failed);
+        }
       } catch (RuntimeException e) {
         // The runner must never wedge the toolbar: report and finish the run
-        logs.log("run aborted: " + e);
+        logs.log("run failed: " + e);
         done(listener, false, ok, failed);
       }
     });
@@ -110,6 +139,13 @@ public final class Runner {
 
   private void done(Listener listener, boolean outcome, int ok, int failed) {
     busy = false;
+    aborted = false;
     Platform.runLater(() -> listener.runFinished(outcome, ok, failed));
+  }
+
+  private void doneAborted(Listener listener, int ok, int failed) {
+    busy = false;
+    aborted = false;
+    Platform.runLater(() -> listener.runAborted(ok, failed));
   }
 }

@@ -51,6 +51,7 @@ public final class SystemCommandExecutor implements CommandExecutor {
         builder.redirectOutput(ProcessBuilder.Redirect.INHERIT);
         builder.redirectError(ProcessBuilder.Redirect.PIPE);
         Process process = builder.start();
+        BackendProcesses.register(process);
         Thread pump = new Thread(() -> {
           try {
             InputStreamReader reader = new InputStreamReader(process.getErrorStream(), StandardCharsets.UTF_8);
@@ -74,23 +75,29 @@ public final class SystemCommandExecutor implements CommandExecutor {
           pump.interrupt();
           Thread.currentThread().interrupt();
           throw e;
+        } finally {
+          BackendProcesses.unregister(process);
         }
       }
       // Unix CLI mode: full inheritance - the terminal decodes UTF-8 natively and
       // preserves the backends' live progress displays
       builder.inheritIO();
       Process process = builder.start();
+      BackendProcesses.register(process);
       try {
         return process.waitFor();
       } catch (InterruptedException e) {
         process.destroyForcibly();
         Thread.currentThread().interrupt();
         throw e;
+      } finally {
+        BackendProcesses.unregister(process);
       }
     } else {
       // GUI / captured mode: merge stdout and stderr, stream line-by-line in real time
       builder.redirectErrorStream(true);
       Process process = builder.start();
+      BackendProcesses.register(process);
       try {
         process.getOutputStream().close();
       } catch (IOException ignored) {}
@@ -106,6 +113,8 @@ public final class SystemCommandExecutor implements CommandExecutor {
         process.destroyForcibly();
         Thread.currentThread().interrupt();
         throw e;
+      } finally {
+        BackendProcesses.unregister(process);
       }
     }
   }

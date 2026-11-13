@@ -4,7 +4,6 @@ import bitferry.*;
 import javafx.application.Platform;
 import javafx.fxml.FXML;
 import javafx.scene.control.*;
-import javafx.scene.layout.VBox;
 
 import java.util.List;
 
@@ -16,7 +15,16 @@ public final class MainController {
   private Button executeAll;
 
   @FXML
+  private Button abort;
+
+  @FXML
   private Button reload;
+
+  @FXML
+  private CheckBox verbose;
+
+  @FXML
+  private Button exit;
 
   @FXML
   private ProgressBar progress;
@@ -53,15 +61,33 @@ public final class MainController {
     this.context = context;
     this.runner = new Runner(context, logPaneController);
     context.logger = logPaneController::log;
-    VBox.setVgrow(logPaneController.root(), javafx.scene.layout.Priority.ALWAYS);
     volumesPaneController.init(context, logPaneController);
     tasksPaneController.init(context, logPaneController, this::startRun);
     context.onModelChanged(() -> Platform.runLater(this::refreshPanes));
+    // The Execute All carries the default button role: park the focus on it so the
+    // immediate execution goes through the Enter/Space keystroke right upon the launch
+    Platform.runLater(() -> executeAll.requestFocus());
   }
 
   @FXML
   private void onExecuteAll() {
     startRun(List.of(), false);
+  }
+
+  @FXML
+  private void onAbort() {
+    runner.abort();
+  }
+
+  @FXML
+  private void onVerbose() {
+    context.verbose(verbose.isSelected());
+    logPaneController.log("backend verbosity: " + (verbose.isSelected() ? "verbose" : "normal"));
+  }
+
+  @FXML
+  private void onExit() {
+    Platform.exit();
   }
 
   @FXML
@@ -127,12 +153,22 @@ public final class MainController {
             : what + " finished: " + ok + " ok, " + failed + " failed");
         refreshPanes();
       }
+
+      @Override
+      public void runAborted(int ok, int failed) {
+        setActionsDisabled(false);
+        progress.setProgress(ok + failed == 0 ? 0 : (double) ok / (ok + failed));
+        status.setText("Run aborted — " + ok + " ok, " + failed + " failed, the rest skipped");
+        refreshPanes();
+      }
     };
   }
 
   private void setActionsDisabled(boolean disabled) {
     executeAll.setDisable(disabled);
     reload.setDisable(disabled);
+    // The abort is only meaningful while a run is in progress: the inverse gating
+    abort.setDisable(!disabled);
     volumesPaneController.setActionsDisabled(disabled);
     tasksPaneController.setActionsDisabled(disabled);
   }

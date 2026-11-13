@@ -36,12 +36,29 @@ public final class AppContext {
   /// the processing runner instead). Configured by the main window upon its assembly.
   public volatile Consumer<String> logger = message -> {};
 
+  /// The backend verbosity switch (the toolbar toggle); re-applied to every manager
+  /// instance since the manager swap upon the reload resets it to the default.
+  private volatile boolean verbose;
+
   public AppContext() {
     manager = new Manager();
+    manager.verbose(verbose);
   }
 
   public Manager manager() {
     return manager;
+  }
+
+  /// The current backend verbosity flag.
+  public boolean verbose() {
+    return verbose;
+  }
+
+  /// Set the backend verbosity applying it to the live manager immediately (the
+  /// application thread; the flag is also carried over the manager swaps).
+  public void verbose(boolean value) {
+    verbose = value;
+    manager.verbose(value);
   }
 
   /// Return the operations executor the core operations must be submitted to.
@@ -67,6 +84,7 @@ public final class AppContext {
       roots.add(Path.of(System.getProperty("user.home")));
       roots.addAll(Manager.mountPoints());
       Manager restored = new Manager().restore(roots);
+      restored.verbose(verbose);
       manager = restored;
       logger.accept("manager restored: " + restored.liveVolumes().size() + " volume(s), "
         + restored.liveTasks().size() + " task(s)");
