@@ -146,10 +146,14 @@ public final class VolumesController {
       : "Delete volume #" + volume.tag() + " at\n  " + volume.root() + "\n(the directory contents are kept)?")
       + "\n\nThe referring task deletion tombstones propagate to the other storages.";
     Dialogs.confirmAndRun(context, title, text, () -> {
+      // Re-resolve the volume on the current manager: the captured row's volume may
+      // belong to a manager swapped out by a concurrent reload
       Manager manager = context.manager();
-      volume.delete(wipe);
+      Volume current = manager.volume(volume.tag());
+      if (current == null) throw new BitferryError("volume #" + volume.tag() + " is no longer registered");
+      current.delete(wipe);
       manager.commit();
-      logs.log("volume #" + volume.tag() + " deleted" + (wipe ? " (wiped)" : ""));
+      logs.log("volume #" + current.tag() + " deleted" + (wipe ? " (wiped)" : ""));
       context.fireModelChanged();
     }, logs);
   }

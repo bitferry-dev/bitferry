@@ -80,8 +80,8 @@ final class Dialogs {
   private static void createTask(AppContext context, LogController logs, TaskForm form) {
     context.operations().execute(() -> {
       Task task = null;
+      Manager manager = context.manager();
       try {
-        Manager manager = context.manager();
         Endpoint source = Endpoints.parse(manager, form.source());
         Endpoint destination = Endpoints.parse(manager, form.destination());
         Task existing = manager.findTask(source, destination);
@@ -113,8 +113,10 @@ final class Dialogs {
         manager.commit();
         logs.log("task #" + candidate.tag() + " created: " + candidate.describe());
         context.fireModelChanged();
-      } catch (BitferryError e) {
-        if (task != null) context.manager().deregisterTask(task);
+      } catch (RuntimeException e) {
+        // Deregister on the same manager instance the task was built on: the context's
+        // manager may have been swapped by a concurrent reload meanwhile
+        if (task != null) manager.deregisterTask(task);
         logs.log("task creation failed: " + e.getMessage());
         Platform.runLater(() -> alert(Alert.AlertType.ERROR, "Task creation failed", e.getMessage()));
       }

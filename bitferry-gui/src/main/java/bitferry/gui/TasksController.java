@@ -192,10 +192,14 @@ public final class TasksController {
       "Delete task #" + task.tag() + ":\n  " + task.describe() + "?\n\n"
         + "The deletion tombstone propagates to all the referring storages; the task repository is not removed.",
       () -> {
+        // Re-resolve the task on the current manager: the captured row's task may
+        // belong to a manager swapped out by a concurrent reload
         Manager manager = context.manager();
-        task.delete();
+        Task current = manager.task(task.tag());
+        if (current == null) throw new BitferryError("task #" + task.tag() + " is no longer registered");
+        current.delete();
         manager.commit();
-        logs.log("task #" + task.tag() + " deleted");
+        logs.log("task #" + current.tag() + " deleted");
         context.fireModelChanged();
       }, logs);
   }
