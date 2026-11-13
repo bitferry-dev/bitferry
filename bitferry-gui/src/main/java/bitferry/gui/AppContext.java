@@ -40,6 +40,13 @@ public final class AppContext {
   /// instance since the manager swap upon the reload resets it to the default.
   private volatile boolean verbose;
 
+  /// The run-in-progress gate consulted by the media watcher (wired by the main
+  /// window once the runner exists; the default keeps the watcher ungated).
+  public volatile java.util.function.BooleanSupplier busy = () -> false;
+
+  /// The media change watcher handle (null until [startMediaWatcher]).
+  private MediaWatch mediaWatch;
+
   public AppContext() {
     manager = new Manager();
     manager.verbose(verbose);
@@ -76,20 +83,57 @@ public final class AppContext {
   /// probing policy). Runs on the operations thread (or directly before the UI starts).
   public void reload() {
     operations.execute(() -> {
-      List<Path> roots = new ArrayList<>();
-      String env = System.getenv("BITFERRY_PATH");
-      if (env != null && !env.isBlank()) {
-        for (String entry : env.split(Pattern.quote(File.pathSeparator))) roots.add(Path.of(entry));
-      }
-      roots.add(Path.of(System.getProperty("user.home")));
-      roots.addAll(Manager.mountPoints());
-      Manager restored = new Manager().restore(roots);
-      restored.verbose(verbose);
+      Manager restored = restoreNow();
       manager = restored;
       logger.accept("manager restored: " + restored.liveVolumes().size() + " volume(s), "
         + restored.liveTasks().size() + " task(s)");
       fireModelChanged();
     });
+  }
+
+  /// Start the media change watcher: the mount-set changes (the media arrival and
+  /// removal) automatically re-probe the manager without the manual Reload. The
+  /// re-probe is deferred while a run is in progress (the [busy] gate) and skipped
+  /// entirely when the change does not touch any bitferry volume or task (the
+  /// unrelated mounts must not spam the log nor flicker the tables).
+  public void startMediaWatcher() {
+    mediaWatch = MediaWatch.start(this::reloadOnMediaChange, busy, Manager::mountSetSignature);
+  }
+
+  /// The media watcher consumer (the watcher thread): route the re-probe through
+  /// the operations executor. The changes observed while the gate is closed are
+  /// kept outstanding by the watcher and re-fired later.
+  private void reloadOnMediaChange() {
+    operations.execute(() -> {
+      Manager current = manager;
+      Manager restored = restoreNow();
+      manager = restored;
+      // The no-op suppression: the unrelated mount churn produces the identical
+      // live model - swap silently (the fresh file store identities still matter
+      // for the presence checks) without the log noise nor the table flicker
+      if (current != null
+        && current.liveVolumes().keySet().equals(restored.liveVolumes().keySet())
+        && current.liveTasks().keySet().equals(restored.liveTasks().keySet())) {
+        return;
+      }
+      logger.accept("media change detected - manager restored: " + restored.liveVolumes().size()
+        + " volume(s), " + restored.liveTasks().size() + " task(s)");
+      fireModelChanged();
+    });
+  }
+
+  // The shared restore: the probing policy roots + the verbosity carry-over.
+  private Manager restoreNow() {
+    List<Path> roots = new ArrayList<>();
+    String env = System.getenv("BITFERRY_PATH");
+    if (env != null && !env.isBlank()) {
+      for (String entry : env.split(Pattern.quote(File.pathSeparator))) roots.add(Path.of(entry));
+    }
+    roots.add(Path.of(System.getProperty("user.home")));
+    roots.addAll(Manager.mountPoints());
+    Manager restored = new Manager().restore(roots);
+    restored.verbose(verbose);
+    return restored;
   }
 
   /// Notify the UI parts about a model mutation (a committed creation or deletion)

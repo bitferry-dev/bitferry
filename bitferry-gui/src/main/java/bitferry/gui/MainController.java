@@ -68,6 +68,8 @@ public final class MainController {
     this.context = context;
     this.runner = new Runner(context, logPaneController);
     context.logger = logPaneController::log;
+    // The media watcher defers the re-probe while the runner carries the run
+    context.busy = runner::isBusy;
     volumesPaneController.init(context, logPaneController);
     tasksPaneController.init(context, logPaneController, this::startRun);
     context.onModelChanged(() -> Platform.runLater(this::refreshPanes));

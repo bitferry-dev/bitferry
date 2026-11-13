@@ -52,6 +52,13 @@ public class Manager {
     return volumes.get(tag);
   }
 
+  /// The comparable snapshot of the current mount set (the sorted mount-point
+  /// strings): the media change watcher diff is the equality of two consecutive
+  /// snapshots. Every call re-reads the live OS mount table ([mountPoints]).
+  public static java.util.SortedSet<String> mountSetSignature() {
+    return new java.util.TreeSet<>(mountPoints().stream().map(java.lang.String::valueOf).toList());
+  }
+
   /// Return the task matched by the exact tag or null.
   public Task task(String tag) {
     return tasks.get(tag);

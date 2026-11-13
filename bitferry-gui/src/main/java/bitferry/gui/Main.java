@@ -52,6 +52,7 @@ public final class Main extends Application {
     // The initial manager restoration travels through the operations thread;
     // the panes fill in upon the model change notification
     context.reload();
+    if (!train) context.startMediaWatcher();
 
     if (train) {
       // Exit after the first frame pulse: enough to exercise the toolkit startup

@@ -16,6 +16,11 @@ dependencies {
     implementation libs.credential.storage
     runtimeOnly libs.slf4j.nop
 
+    // The D-Bus machinery of the Linux media-change watcher (the udisks2 ObjectManager
+    // signals); implementation scope - the watcher surface carries only runnable types
+    implementation libs.dbus.java.core
+    implementation libs.dbus.java.unixsocket
+
     testImplementation libs.junit.jupiter
     testRuntimeOnly libs.junit.platform.launcher
 }

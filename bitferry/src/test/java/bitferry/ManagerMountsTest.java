@@ -53,4 +53,19 @@ class ManagerMountsTest {
     // All the mount points are absolute
     for (Path mount : mounts) assertTrue(mount.isAbsolute());
   }
+
+  @Test
+  void mountSignatureIsStableAndComplete() {
+    SortedSet<String> first = Manager.mountSetSignature();
+    SortedSet<String> second = Manager.mountSetSignature();
+    // The consecutive reads of the same mount state produce equal signatures
+    assertEquals(first, second);
+    assertFalse(first.isEmpty());
+    // The root file system is always part of the signature
+    assertTrue(first.stream().anyMatch(p -> p.equals("/") || p.matches("[A-Z]:\\\\?")),
+      () -> "Expected a filesystem root in the signature: " + first);
+    // The sorted order is deterministic (the diff is the equality of two snapshots)
+    List<String> asList = new ArrayList<>(first);
+    assertEquals(asList.stream().sorted().toList(), asList);
+  }
 }
