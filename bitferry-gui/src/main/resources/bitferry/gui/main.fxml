@@ -59,7 +59,7 @@
   </top>
   <center>
     <SplitPane fx:id="split" orientation="VERTICAL" dividerPositions="0.62">
-      <TabPane>
+      <TabPane fx:id="contentTabs">
         <Tab text="Volumes" closable="false">
           <fx:include fx:id="volumesPane" source="volumes.fxml"/>
         </Tab>

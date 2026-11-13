@@ -2,6 +2,9 @@ package bitferry.gui;
 
 import javafx.application.Platform;
 import javafx.fxml.FXML;
+import javafx.geometry.Orientation;
+import javafx.scene.Node;
+import javafx.scene.control.ScrollBar;
 import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
 import javafx.scene.control.TextArea;
@@ -24,10 +27,25 @@ public final class LogController {
 
   /// A single log stream: the buffered lines plus the tab they belong to.
   private static final class Stream {
+    /// The scroll-position fudge for the tail test (px); the sub-pixel drift of the
+    /// skin's layout must not flip the tracking off spuriously.
+    private static final double TAIL_FUDGE = 2.0;
+
     private final Tab tab;
     private final TextArea area;
     private final StringBuilder buffer = new StringBuilder();
     private boolean flushPending;
+
+    /// The tail-tracking switch: on while the view rests at the tail (the default),
+    /// off while the user is reading the history mid-run. Purely position-based -
+    /// our own tail pin sets the scroll value to the tail (re-arming the tracking),
+    /// any user scroll away from the tail disarms it, scrolling back to the bottom
+    /// re-arms it - so no pin/user distinction is needed anywhere.
+    private boolean follow = true;
+
+    // The vertical scroll bar of the area's skin; resolved lazily (null until the
+    // skin is laid out) and cached once found
+    private ScrollBar tailBar;
 
     private Stream(Tab tab, TextArea area) {
       this.tab = tab;
@@ -56,8 +74,40 @@ public final class LogController {
       int overflow = Math.max(0, countLines(text) + countLines(lines) - LINE_CAP);
       if (overflow > 0) text = dropLines(text, overflow);
       area.setText(text + lines);
-      // The log follows the stream: keep the viewport pinned to the tail
-      area.setScrollTop(Double.MAX_VALUE);
+      // The log follows the stream while the view rests at the tail; a user reading
+      // the history mid-run stops the tracking (any scroll away from the tail disarms
+      // it, scrolling back re-arms it - see [follow]). The pin travels through the
+      // next pulse: the immediate set is overridden by the content layout pass (the
+      // skin recomputes the scroll extent after the text change and clamps the stale
+      // value). The flag is re-tested at the pin time, so a scroll happening within
+      // the pulse window disarms the pending pin as well.
+      if (follow) Platform.runLater(() -> {
+        if (follow) area.setScrollTop(Double.MAX_VALUE);
+      });
+    }
+
+    /// Whether the view rests at the tail of the text; the not-yet-laid-out (and the
+    /// non-scrollable) area counts as the tail.
+    private boolean atTail() {
+      ScrollBar bar = verticalBar();
+      return bar == null || bar.getValue() >= bar.getMax() - TAIL_FUDGE;
+    }
+
+    // Resolve and cache the vertical scroll bar of the area's skin, wiring the
+    // tracking re-evaluation into its value changes
+    private ScrollBar verticalBar() {
+      if (tailBar == null) {
+        for (Node node : area.lookupAll(".scroll-bar")) {
+          if (node instanceof ScrollBar bar && bar.getOrientation() == Orientation.VERTICAL) {
+            tailBar = bar;
+            // Every scroll change (ours or the user's) re-arms the tracking only
+            // when the position rests at the tail
+            bar.valueProperty().addListener((x, was, now) -> follow = atTail());
+            break;
+          }
+        }
+      }
+      return tailBar;
     }
 
     private static int countLines(String text) {

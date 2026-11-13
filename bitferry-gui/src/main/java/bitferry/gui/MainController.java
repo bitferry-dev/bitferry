@@ -30,6 +30,9 @@ public final class MainController {
   private SplitPane split;
 
   @FXML
+  private TabPane contentTabs;
+
+  @FXML
   private ProgressBar progress;
 
   @FXML
@@ -71,6 +74,11 @@ public final class MainController {
     split.setDividerPositions(settings.divider());
     verbose.setSelected(settings.verbose());
     context.verbose(settings.verbose());
+    // The tasks pane is the working surface: open on it rather than the volumes tab
+    contentTabs.getTabs().stream()
+      .filter(tab -> "Tasks".equals(tab.getText()))
+      .findFirst()
+      .ifPresent(tab -> contentTabs.getSelectionModel().select(tab));
     // The Execute All carries the default button role: park the focus on it so the
     // immediate execution goes through the Enter/Space keystroke right upon the launch
     Platform.runLater(() -> executeAll.requestFocus());
