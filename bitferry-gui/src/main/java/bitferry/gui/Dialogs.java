@@ -3,6 +3,7 @@ package bitferry.gui;
 import bitferry.*;
 import bitferry.endpoint.*;
 import bitferry.task.*;
+import bitferry.vault.KeyringVault;
 import javafx.application.Platform;
 import javafx.geometry.*;
 import javafx.scene.Node;
@@ -89,21 +90,22 @@ final class Dialogs {
         List<String> include = patterns(form.include());
         List<String> exclude = patterns(form.exclude());
         String execute = form.execute();
+        boolean keyring = form.keyring();
         task = switch (form.type()) {
           case "copy" -> new Copy(manager, source, destination, execute, include, exclude);
           case "update" -> new Update(manager, source, destination, execute, include, exclude);
           case "synchronize" -> new Synchronize(manager, source, destination, execute, include, exclude);
           case "equalize" -> new Equalize(manager, source, destination, execute, include, exclude);
           case "backup" -> new Backup(manager, source, destination, form.password(), form.format(),
-            execute, null, null, form.serve(), include, exclude);
-          case "restore" -> new Restore(manager, source, destination, form.password(), execute, include, exclude);
+            execute, null, null, form.serve(), include, exclude, keyring);
+          case "restore" -> new Restore(manager, source, destination, form.password(), execute, include, exclude, keyring);
           default -> throw new BitferryError("unknown task type '" + form.type() + "'");
         };
         if (form.encryption() != null && task instanceof Rclone rclone) {
           if (form.encryption().equals("encrypt")) {
-            rclone.encrypt(form.password(), null, Rclone.Encryption.options(form.profile()));
+            rclone.encrypt(form.password(), null, Rclone.Encryption.options(form.profile()), keyring);
           } else {
-            rclone.decrypt(form.password(), null, Rclone.Encryption.options(form.profile()));
+            rclone.decrypt(form.password(), null, Rclone.Encryption.options(form.profile()), keyring);
           }
         }
         Task candidate = task;
@@ -112,6 +114,19 @@ final class Dialogs {
         }
         manager.commit();
         logs.log("task #" + candidate.tag() + " created: " + candidate.describe());
+        if (keyring && (candidate instanceof Restic || candidate instanceof Rclone rclone && rclone.encryption() != null && rclone.encryption().operation() != null)) {
+          if (!KeyringVault.INSTANCE.available()) {
+            logs.log("password kept in the volume vault (no usable OS keyring on the host)");
+          } else {
+            try {
+              if (!candidate.vaultVolume().isFixed()) {
+                logs.log("password stored in the OS keyring (the vault volume resides on removable media - the token will not travel with it)");
+              }
+            } catch (BitferryError ignored) {
+              // No volume-resident end: the persistence check reports it separately
+            }
+          }
+        }
         context.fireModelChanged();
       } catch (RuntimeException e) {
         // Deregister on the same manager instance the task was built on: the context's
@@ -196,6 +211,7 @@ final class Dialogs {
     private final PasswordField cryptPasswordConfirm = new PasswordField();
     private final PasswordField password = new PasswordField();
     private final PasswordField passwordConfirm = new PasswordField();
+    private final CheckBox keyring = new CheckBox("store the password in the system keyring");
     private final CheckBox format = new CheckBox("initialize the repository over the existing data");
     private final TextField serve = new TextField();
 
@@ -218,6 +234,13 @@ final class Dialogs {
       execute.setPromptText("extra backend options, comma-separated (optional)");
       serve.setPromptText("'<duration>,<count>' (optional)");
       profile.setPrefColumnCount(14);
+      // The keyring storage is an explicit choice honored for any volume (the fixedness
+      // hints the sensible default); disabled outright when the host provides no usable
+      // OS keyring (the volume vault keeps serving)
+      keyring.setDisable(!KeyringVault.INSTANCE.available());
+      Tooltip.install(keyring, new Tooltip(KeyringVault.INSTANCE.available()
+        ? "Store the password token in the OS keyring instead of the volume storage (recommended for the fixed volumes; the keyring-stored tokens do not travel with removable media)"
+        : "No usable OS keyring on this host — the volume storage keeps serving"));
 
       // The row visibility predicates re-evaluated upon the type/encryption changes;
       // the encryption applies to the rclone-backed tasks only
@@ -238,6 +261,7 @@ final class Dialogs {
       rows.add(new FormRow("Confirm:", cryptPasswordConfirm, encrypted));
       rows.add(new FormRow("Password:", password, restic));
       rows.add(new FormRow("Confirm:", passwordConfirm, restic));
+      rows.add(new FormRow("Keyring:", keyring, () -> restic.getAsBoolean() || encrypted.getAsBoolean()));
       rows.add(new FormRow("Format:", format, backup));
       rows.add(new FormRow("Serve:", serve, backup));
 
@@ -379,6 +403,12 @@ final class Dialogs {
     String serve() {
       String value = serve.getText().trim();
       return value.isEmpty() ? null : value;
+    }
+
+    /// The keyring storage request (the checkbox is inert for the tasks without
+    /// passwords; the selection falls back to the volume vault then).
+    boolean keyring() {
+      return keyring.isSelected() && !keyring.isDisable();
     }
 
     // Validate the form raising [BitferryError] on the missing required fields

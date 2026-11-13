@@ -44,6 +44,9 @@ public class CreateRestoreCommand implements Callable<Integer>, HasCommonOptions
   @Option(names = "-x", split = ",", description = "Exclude file extensions (comma-separated list).")
   List<String> excludeExts;
 
+  @Option(names = {"-k", "--keyring"}, description = "Store the repository password in the OS keyring (fixed volumes only).")
+  boolean keyring;
+
   @Override
   public CommonOptions commonOptions() {
     return options;
@@ -61,7 +64,8 @@ public class CreateRestoreCommand implements Callable<Integer>, HasCommonOptions
     String password = CliUtils.obtainPassword();
     List<String> inc = CliUtils.parsePatterns(include, includeExts);
     List<String> exc = CliUtils.parsePatterns(exclude, excludeExts);
-    Restore task = new Restore(m, repo, dst, password, execute, inc, exc);
+    Restore task = new Restore(m, repo, dst, password, execute, inc, exc, keyring);
+    CliUtils.noteKeyringStorage(spec, task, keyring);
     if (m.volumes().values().stream().noneMatch(v -> task.refersVolume(v.tag()))) {
       throw new BitferryError("task #" + task.tag() + " does not belong to any registered volume; it cannot be persisted");
     }

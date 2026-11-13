@@ -85,14 +85,28 @@ public abstract class Rclone extends Task {
   /// vault provider right upon the call. The password pair is optional (e.g. the
   /// filename-only encryption).
   public Rclone encrypt(String password, String password2, List<String> options) {
+    return encrypt(password, password2, options, false);
+  }
+
+  /// The encrypt mode with the explicit keyring storage request: the password pair
+  /// travels to the OS keyring when the keyring is usable.
+  public Rclone encrypt(String password, String password2, List<String> options, boolean keyring) {
     this.encryption = new Encrypt(this, options);
+    this.encryption.selectVault(keyring);
     this.encryption.storePasswords(password, password2);
     return this;
   }
 
   /// Configure the decrypt mode mirroring [encrypt].
   public Rclone decrypt(String password, String password2, List<String> options) {
+    return decrypt(password, password2, options, false);
+  }
+
+  /// The decrypt mode with the explicit keyring storage request mirroring [encrypt]
+  /// (the keyring honored when usable; the fixedness only hints the default).
+  public Rclone decrypt(String password, String password2, List<String> options, boolean keyring) {
     this.encryption = new Decrypt(this, options);
+    this.encryption.selectVault(keyring);
     this.encryption.storePasswords(password, password2);
     return this;
   }
@@ -145,6 +159,9 @@ public abstract class Rclone extends Task {
   public abstract static class Encryption {
 
     protected final List<String> options;
+    // The selected (creation-time) and holding (retrieval-resolved) vault providers
+    private Vault vault = Vault.volume();
+    private Vault holding;
     private String cachedPassword;
     private String cachedPassword2;
     private boolean cached;
@@ -185,10 +202,16 @@ public abstract class Rclone extends Task {
     /// Raises [BitferryError] for the endpoints residing outside Bitferry volumes.
     public abstract Volume vaultVolume(Rclone task);
 
-    /// Obscure and store the password pair with the vault provider caching the plain values.
+    /// Obscure and store the password pair with the vault provider caching the plain
+    /// values. The target provider is the one currently holding the token (the updates
+    /// keep the storage kind), falling back to the creation-time selection; the stale
+    /// entries in the other provider are dropped.
     void storePasswords(String password, String password2) {
       if (password == null || password.isEmpty()) throw new BitferryError("password must be specified for task #" + task().tag());
-      vault().storeToken(task(), Passwords.encodePasswords(password, password2));
+      Vault target = holding != null ? holding : vault;
+      target.storeToken(task(), Passwords.encodePasswords(password, password2));
+      if (target != Vault.volume()) Vault.volume().deleteToken(task());
+      if (target != Vault.keyring()) Vault.keyring().deleteToken(task());
       cachedPassword = password;
       cachedPassword2 = password2;
       cached = true;
@@ -210,13 +233,33 @@ public abstract class Rclone extends Task {
     // Retrieve and cache the password pair from the vault upon the first request
     private void cache() {
       if (!cached) {
-        String token = vault().retrieveToken(task());
+        String token = retrieveToken();
         if (token == null) throw new BitferryError("no stored password token for task #" + task().tag());
         String[] passwords = Passwords.decodeToken(token);
         cachedPassword = passwords[0];
         cachedPassword2 = passwords[1];
         cached = true;
       }
+    }
+
+    /// Retrieve the obscured token trying the providers in turn: the creation-time
+    /// selection first, then the other one — the classification drift and the
+    /// pre-keyring tasks keep resolving.
+    private String retrieveToken() {
+      String token = vault.retrieveToken(task());
+      if (token != null) {
+        holding = vault;
+        return token;
+      }
+      for (Vault other : new Vault[]{Vault.volume(), Vault.keyring()}) {
+        if (other == vault) continue;
+        token = other.retrieveToken(task());
+        if (token != null) {
+          holding = other;
+          return token;
+        }
+      }
+      return null;
     }
 
     /// Return the environment variables to be set for the task processing.
@@ -240,8 +283,14 @@ public abstract class Rclone extends Task {
       return this;
     }
 
+    /// Select the storage provider: the keyring when requested and usable (the
+    /// vault volume fixed), the per-volume vault otherwise. Creation-time only.
+    void selectVault(boolean keyringRequested) {
+      this.vault = Vault.select(task(), keyringRequested);
+    }
+
     Vault vault() {
-      return Vault.volume();
+      return vault;
     }
   }
 

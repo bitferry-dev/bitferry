@@ -3,6 +3,7 @@ package bitferry.cli;
 import bitferry.*;
 import bitferry.endpoint.*;
 import bitferry.task.*;
+import bitferry.vault.KeyringVault;
 import java.io.*;
 import java.nio.charset.*;
 import java.nio.file.*;
@@ -36,6 +37,25 @@ public final class CliUtils {
     String password = passwordSource.get();
     if (password == null || password.isEmpty()) throw new BitferryError("password must be specified");
     return password;
+  }
+
+  /// Surface the keyring storage outcome as a faint advisory note: the explicit
+  /// request demoted by the missing keyring, or the removable-media portability
+  /// tradeoff of the honored request.
+  public static void noteKeyringStorage(picocli.CommandLine.Model.CommandSpec spec, Task task, boolean keyring) {
+    if (!keyring) return;
+    PrintWriter err = spec != null ? spec.commandLine().getErr() : new PrintWriter(System.err, true);
+    if (!KeyringVault.INSTANCE.available()) {
+      err.println(Ansi.AUTO.string("@|faint the OS keyring is not usable on this host - the password token is kept in the volume vault|@"));
+      return;
+    }
+    try {
+      if (!task.vaultVolume().isFixed()) {
+        err.println(Ansi.AUTO.string("@|faint the vault volume resides on removable media - the keyring-stored password token will not travel with it|@"));
+      }
+    } catch (BitferryError ignored) {
+      // No volume-resident end: the task persistence check reports it separately
+    }
   }
 
   // The terminal prompting: hidden input with confirmation

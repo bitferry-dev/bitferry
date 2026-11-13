@@ -65,6 +65,9 @@ public abstract class RcloneTaskCommand implements Callable<Integer>, HasCommonO
   @Option(names = "-u", description = "Apply extended (unicode) encryption profile options.")
   boolean extended;
 
+  @Option(names = {"-k", "--keyring"}, description = "Store the encryption password in the OS keyring (fixed volumes only).")
+  boolean keyring;
+
   @Override
   public CommonOptions commonOptions() {
     return options;
@@ -95,10 +98,11 @@ public abstract class RcloneTaskCommand implements Callable<Integer>, HasCommonO
       // The password is obtained after the endpoints are validated
       String password = CliUtils.obtainPassword();
       if (encryptRequested) {
-        rclone.encrypt(password, null, Rclone.Encryption.options(profile));
+        rclone.encrypt(password, null, Rclone.Encryption.options(profile), keyring);
       } else {
-        rclone.decrypt(password, null, Rclone.Encryption.options(profile));
+        rclone.decrypt(password, null, Rclone.Encryption.options(profile), keyring);
       }
+      CliUtils.noteKeyringStorage(spec, task, keyring);
     }
     if (m.volumes().values().stream().noneMatch(v -> task.refersVolume(v.tag()))) {
       throw new BitferryError("task #" + task.tag() + " does not belong to any registered volume; it cannot be persisted");

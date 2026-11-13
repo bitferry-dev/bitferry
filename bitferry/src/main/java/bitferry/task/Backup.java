@@ -39,7 +39,13 @@ public class Backup extends Restic {
 
   /// Constructor for a new task instance with an explicit service cadence.
   public Backup(Manager manager, Endpoint source, Endpoint destination, String password, Boolean format, String process, String forget, String check, String serve, Collection<String> include, Collection<String> exclude) {
-    super(manager, source, destination, password, process, PROCESS, include, exclude);
+    this(manager, source, destination, password, format, process, forget, check, serve, include, exclude, false);
+  }
+
+  /// Constructor for a new task instance with the explicit keyring storage request:
+  /// the repository password travels to the OS keyring when the keyring is usable.
+  public Backup(Manager manager, Endpoint source, Endpoint destination, String password, Boolean format, String process, String forget, String check, String serve, Collection<String> include, Collection<String> exclude, boolean keyring) {
+    super(manager, source, destination, password, process, PROCESS, include, exclude, keyring);
     this.format = format;
     this.forget = optional(forget, FORGET);
     this.check = optional(check, CHECK);

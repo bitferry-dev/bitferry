@@ -21,4 +21,9 @@ public final class VolumeVault implements Vault {
     Volume volume = task.vaultVolume();
     return volume.readVault(task.tag());
   }
+
+  @Override
+  public void deleteToken(Task task) {
+    task.vaultVolume().removeVault(task.tag());
+  }
 }

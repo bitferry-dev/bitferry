@@ -17,7 +17,13 @@ public class Restore extends Restic {
 
   /// Constructor for a new task instance.
   public Restore(Manager manager, Endpoint source, Endpoint destination, String password, String process, Collection<String> include, Collection<String> exclude) {
-    super(manager, source, destination, password, process, PROCESS, include, exclude);
+    this(manager, source, destination, password, process, include, exclude, false);
+  }
+
+  /// Constructor for a new task instance with the explicit keyring storage request:
+  /// the repository password travels to the OS keyring when the keyring is usable.
+  public Restore(Manager manager, Endpoint source, Endpoint destination, String password, String process, Collection<String> include, Collection<String> exclude, boolean keyring) {
+    super(manager, source, destination, password, process, PROCESS, include, exclude, keyring);
   }
 
   /// Jackson creator restoring an existing task from the storage descriptor;

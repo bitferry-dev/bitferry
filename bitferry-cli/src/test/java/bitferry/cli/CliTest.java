@@ -3,6 +3,7 @@ package bitferry.cli;
 import bitferry.*;
 import bitferry.endpoint.VolumeEndpoint;
 import bitferry.task.*;
+import bitferry.vault.KeyringVault;
 import bitferry.vault.Passwords;
 import java.io.*;
 import java.nio.charset.*;
@@ -360,6 +361,45 @@ class CliTest {
       .findFirst().orElseThrow();
     assertEquals("restore", task.operation());
     assertEquals("restore-pass", task.password());
+  }
+
+  @Test
+  void createBackupTaskWithKeyringRequestFallsBackGracefully() throws IOException {
+    // The keyring-less hosts (the CI ones) exercise the fallback: the requested
+    // keyring storage is unavailable, so the volume vault keeps serving. On the
+    // hosts providing a real keyring the test is skipped (the fallback path is
+    // not reachable and the keyring must not be polluted with the test entries).
+    Assumptions.assumeTrue(!KeyringVault.INSTANCE.available(), "a usable OS keyring is present");
+
+    Path volDir = tempDir.resolve("keyring_vol");
+    Path repoDir = tempDir.resolve("keyring_repo");
+    Files.createDirectories(volDir);
+    Files.createDirectories(repoDir);
+
+    assertEquals(0, cmd.execute("create", "volume", volDir.toString()));
+    String vtag = volumeTag(managerFor(volDir), volDir);
+
+    cmd = Main.createCommandLine();
+    out = new StringWriter();
+    err = new StringWriter();
+    cmd.setOut(new PrintWriter(out));
+    cmd.setErr(new PrintWriter(err));
+    int code = executeWithPassword("Our secret password", "--path", volDir.toString(), "create", "task", "backup", ":" + vtag + ":", "local:" + repoDir, "--keyring");
+    assertEquals(0, code, () -> "stderr: " + err.toString());
+
+    // The fallback keeps the obscured token in the volume storage
+    JsonNode storage = Storage.readJson(volDir.resolve(Bitferry.STORAGE));
+    JsonNode vault = storage.get("vault");
+    assertNotNull(vault, "the volume vault must serve when the keyring is unavailable");
+    String token = vault.properties().iterator().next().getValue().asString();
+    assertNotEquals("Our secret password", token);
+
+    // The restored task retrieves the password across the retrieval chain
+    Manager reloaded = managerFor(volDir);
+    Backup task = (Backup) reloaded.tasks().values().stream()
+      .filter(t -> t.refersVolume(vtag))
+      .findFirst().orElseThrow();
+    assertEquals("Our secret password", task.password());
   }
 
   @Test

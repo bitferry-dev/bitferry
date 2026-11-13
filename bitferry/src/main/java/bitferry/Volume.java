@@ -46,6 +46,9 @@ public final class Volume {
   // writes would silently materialize on the parent file system.
   private String fileStore;
 
+  // The lazily computed fixed-media classification (null until probed)
+  private Boolean fixed;
+
   // Password tokens of the encrypted tasks keyed by the task tags (see vault providers)
   private final Map<String, String> vault = new LinkedHashMap<>();
 
@@ -333,6 +336,70 @@ public final class Volume {
     }
   }
 
+  /// Whether the volume resides on a fixed (internal, non-removable) medium: a hint
+  /// for the sensible default password storage location — the keyring secrets are
+  /// machine-bound while the volume vault tokens travel with the storage media, so
+  /// the removable volumes are better served by the per-volume vault. The explicit
+  /// keyring requests are honored regardless (see [bitferry.vault.Vault.select]);
+  /// the fixedness only steers the defaults and the advisory notes.
+  ///
+  /// <p>The classification is conservative: anything unresolvable (the removed
+  /// media, the network or virtual file systems, the unknown devices) is reported
+  /// as not fixed.
+  // The machine-dependent classification is not a part of the storage descriptor
+  // (the Jackson getter detection would otherwise serialize it)
+  @JsonIgnore
+  public boolean isFixed() {
+    if (fixed == null) fixed = isFixedStore(root);
+    return fixed;
+  }
+
+  // Classify the directory's hosting file system per the platform conventions
+  static boolean isFixedStore(Path directory) {
+    String os = System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT);
+    try {
+      if (os.contains("windows")) return isFixedWindows(directory);
+      if (os.contains("mac os") || os.contains("darwin")) return !directory.startsWith("/Volumes");
+      return isFixedLinux(directory);
+    } catch (IOException | RuntimeException e) {
+      LOG.log(Level.DEBUG, () -> "fixedness classification failed for '" + directory + "': " + e);
+      return false;
+    }
+  }
+
+  // Linux: a block device source is fixed when the kernel's removable flag is unset;
+  // the network/virtual sources (nfs, cifs, fuse, tmpfs...) and the devices without
+  // the sysfs counterpart (device mapper, loops) are not fixed
+  private static boolean isFixedLinux(Path directory) throws IOException {
+    FileStore store = Files.getFileStore(directory);
+    String source = store.name();
+    if (!source.startsWith("/dev/")) return false;
+    String device = source.substring("/dev/".length());
+    Path sysdev = Path.of("/sys/class/block", device);
+    // The removable flag rides on the whole disk only: resolve the partition to its
+    // holding disk (the partitions carry the 'partition' attribute and the kernel
+    // names them <disk> or <disk>p<N> for the multiplexed names)
+    try {
+      if (Files.exists(sysdev.resolve("partition"))) {
+        String disk = device.replaceAll("[0-9]+$", "");
+        if (disk.endsWith("p")) disk = disk.substring(0, disk.length() - 1);
+        sysdev = Path.of("/sys/class/block", disk);
+      }
+      return Files.readString(sysdev.resolve("removable")).trim().equals("0");
+    } catch (IOException e) {
+      LOG.log(Level.DEBUG, () -> "no sysfs removable flag for the source '" + source + "'");
+      return false;
+    }
+  }
+
+  // Windows: the fixed drive type of the root's drive letter (the removable, network,
+  // optical and ram drives are not fixed)
+  private static boolean isFixedWindows(Path directory) {
+    String root = directory.getRoot() != null ? directory.getRoot().toString() : directory.toString();
+    return com.sun.jna.platform.win32.Kernel32.INSTANCE.GetDriveType(root)
+      == com.sun.jna.platform.win32.Kernel32.DRIVE_FIXED;
+  }
+
   /// Detect the disappeared volume: the root resolving to a different (or no) file
   /// system than at the discovery time. The stale mount point directories left by the
   /// unclean removals would otherwise silently materialize the volume files on the
@@ -362,6 +429,12 @@ public final class Volume {
   public void writeVault(String tag, String token) {
     vault.put(tag, token);
     touch();
+  }
+
+  /// Drop the obscured password token of the task from the volume vault marking
+  /// the volume out-of-date when something was dropped (used by the vault providers).
+  public void removeVault(String tag) {
+    if (vault.remove(tag) != null) touch();
   }
 
   @Override

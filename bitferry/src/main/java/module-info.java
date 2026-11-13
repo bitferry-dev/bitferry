@@ -6,6 +6,10 @@ module bitferry {
   requires transitive tools.jackson.databind;
   // The Jackson annotations the model classes are decorated with
   requires com.fasterxml.jackson.annotation;
+  // The OS keyring adapter backing the keyring password vault
+  requires com.microsoft.credentialstorage;
+  // The drive type probing of the Windows fixed-media classification
+  requires com.sun.jna.platform;
 
   exports bitferry;
   exports bitferry.endpoint;

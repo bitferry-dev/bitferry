@@ -10,6 +10,12 @@ dependencies {
     // descriptor requires them, so consumers resolving the module need them too
     api libs.jackson.annotations
 
+    // The OS keyring adapter backing the keyring password vault; kept out of the
+    // exported API (the vault surface carries only task/string types), hence
+    // implementation scope
+    implementation libs.credential.storage
+    runtimeOnly libs.slf4j.nop
+
     testImplementation libs.junit.jupiter
     testRuntimeOnly libs.junit.platform.launcher
 }

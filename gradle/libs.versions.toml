@@ -7,6 +7,8 @@ picocli = "4.7.7"
 jansi = "2.4.3"
 javafx = "27.0.1"
 jlink-plugin = "4.2.0"
+credential-storage = "1.0.4"
+slf4j-nop = "2.0.19"
 
 [libraries]
 jackson-databind = { module = "tools.jackson.core:jackson-databind", version.ref = "jackson-databind" }
@@ -15,6 +17,12 @@ junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "jun
 junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher", version.ref = "junit-launcher" }
 picocli = { module = "info.picocli:picocli", version.ref = "picocli" }
 jansi = { module = "org.fusesource.jansi:jansi", version.ref = "jansi" }
+# The OS keyring adapter (Windows Credential Manager, macOS Keychain, Linux
+# libsecret): the maintained fork of the archived Microsoft library keeping the
+# com.microsoft.* packages and the JPMS module name
+credential-storage = { module = "io.alapierre:credential-secure-storage", version.ref = "credential-storage" }
+# Quiets the one-time "no SLF4J provider" stderr notice from the keyring adapter
+slf4j-nop = { module = "org.slf4j:slf4j-nop", version.ref = "slf4j-nop" }
 
 [plugins]
 jlink = { id = "org.beryx.jlink", version.ref = "jlink-plugin" }

@@ -23,6 +23,9 @@ public abstract class Restic extends Task {
   protected final Map<String, List<String>> processRoute;
 
   private final Vault vault;
+  // The provider currently holding the token (resolved upon the retrieval); guides
+  // the password updates back into the store the token lives in
+  private Vault holding;
   private String cachedPassword;
   private boolean cached;
   private boolean conformed;
@@ -42,8 +45,17 @@ public abstract class Restic extends Task {
   // merely receives the task reference for the token storage keyed by the task tag
   @SuppressWarnings("this-escape")
   protected Restic(Manager manager, Endpoint source, Endpoint destination, String password, String process, Map<String, List<String>> processRoute, Collection<String> include, Collection<String> exclude) {
+    this(manager, source, destination, password, process, processRoute, include, exclude, false);
+  }
+
+  /// The creation constructor with the explicit keyring storage request: the token
+  /// travels to the OS keyring when the keyring is usable on the host; the per-volume
+  /// vault keeps serving otherwise (the fixedness of the vault volume only hints the
+  /// sensible default — see [Vault.select]).
+  @SuppressWarnings("this-escape")
+  protected Restic(Manager manager, Endpoint source, Endpoint destination, String password, String process, Map<String, List<String>> processRoute, Collection<String> include, Collection<String> exclude, boolean keyring) {
     super(manager, source, destination, include, exclude);
-    this.vault = Vault.volume();
+    this.vault = Vault.select(this, keyring);
     this.processRoute = processRoute;
     this.processOptions = optional(process, processRoute);
     setPassword(password);
@@ -54,6 +66,7 @@ public abstract class Restic extends Task {
   /// of the descriptor and is retrieved from the vault lazily upon the processing.
   protected Restic(Manager manager, Endpoint source, Endpoint destination, String tag, OffsetDateTime modified, List<String> include, List<String> exclude, Backend backend, Map<String, List<String>> processRoute) {
     super(manager, source, destination, tag, modified, include, exclude);
+    // The retrieval chain resolves the token regardless of the provider holding it
     this.vault = Vault.volume();
     this.processRoute = processRoute;
     this.processOptions = optional(backend == null ? null : backend.execute(), processRoute);
@@ -87,9 +100,15 @@ public abstract class Restic extends Task {
   }
 
   /// Obscure and store the password with the vault provider caching the plain value.
+  /// The target provider is the one currently holding the token (the password updates
+  /// and the key rotations keep the storage kind), falling back to the creation-time
+  /// selection; the stale entries in the other provider are dropped.
   private void setPassword(String password) {
     if (password == null || password.isEmpty()) throw new BitferryError("password must be specified for task #" + tag);
-    vault.storeToken(this, Passwords.encodePasswords(password, null));
+    Vault target = holding != null ? holding : vault;
+    target.storeToken(this, Passwords.encodePasswords(password, null));
+    if (target != Vault.volume()) Vault.volume().deleteToken(this);
+    if (target != Vault.keyring()) Vault.keyring().deleteToken(this);
     cachedPassword = password;
     cached = true;
   }
@@ -98,12 +117,32 @@ public abstract class Restic extends Task {
   /// upon the first request (e.g. after the task has been restored from the storage).
   public String password() {
     if (!cached) {
-      String token = vault.retrieveToken(this);
+      String token = retrieveToken();
       if (token == null) throw new BitferryError("no stored password token for task #" + tag);
       cachedPassword = Passwords.decodeToken(token)[0];
       cached = true;
     }
     return cachedPassword;
+  }
+
+  /// Retrieve the obscured token trying the providers in turn: the creation-time
+  /// selection first, then the other one — the classification drift (the volume
+  /// moving between the media kinds) and the pre-keyring tasks keep resolving.
+  private String retrieveToken() {
+    String token = vault.retrieveToken(this);
+    if (token != null) {
+      holding = vault;
+      return token;
+    }
+    for (Vault other : new Vault[]{Vault.volume(), Vault.keyring()}) {
+      if (other == vault) continue;
+      token = other.retrieveToken(this);
+      if (token != null) {
+        holding = other;
+        return token;
+      }
+    }
+    return null;
   }
 
   /// Return the environment variables to be set for the task processing.
