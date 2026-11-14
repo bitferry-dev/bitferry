@@ -188,11 +188,11 @@ public final class CliUtils {
     return endpoint.describe();
   }
 
-  /// Format the task director arrow with ANSI color markup.
+  /// Format the task director arrow with ANSI color markup: the bidirectional arrow
+  /// renders yellow (the color keyed on the arrow the task carries).
   public static String formatDirector(Task task) {
-    return "equalize".equals(task.operation())
-      ? Ansi.AUTO.string("@|yellow <->|@")
-      : Ansi.AUTO.string("@|green -->|@");
+    String arrow = task.director();
+    return Ansi.AUTO.string("@|" + ("<->".equals(arrow) ? "yellow" : "green") + " " + arrow + "|@");
   }
 
   /// Format a task with ANSI color markup.

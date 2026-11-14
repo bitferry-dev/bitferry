@@ -100,19 +100,19 @@ public class ModifyTaskCommand implements Callable<Integer>, HasCommonOptions {
     Task task = selected.get(0);
 
     if (hasForget || hasCheck || hasServe) {
-      if (!(task instanceof Backup)) {
+      if (!task.supportsRetentionPolicy()) {
         throw new BitferryError("forget, check, and serve options are only applicable to backup tasks");
       }
     }
 
     // The include filters are rejected upfront (before any mutation): restic backup
     // has no include patterns (the exclusion only), so they would be silently ignored
-    if ((include != null || includeExts != null) && task instanceof Backup) {
+    if ((include != null || includeExts != null) && !task.acceptsIncludeFilters()) {
       throw new BitferryError("include filters are not applicable to backup tasks (restic backup filters by exclusion only)");
     }
 
     if (password) {
-      if (task instanceof Rclone) {
+      if (!task.supportsPasswordRotation()) {
         throw new BitferryError("rclone crypt parameters and passwords cannot be modified on an existing task; recreation is required");
       }
       String newPassword = CliUtils.obtainPassword();
@@ -120,32 +120,14 @@ public class ModifyTaskCommand implements Callable<Integer>, HasCommonOptions {
     }
 
     if (hasExecute) {
-      if (task instanceof Rclone rclone) {
-        rclone.setProcessOptions(execute);
-      } else if (task instanceof Restic restic) {
-        restic.setProcessOptions(execute);
-      }
+      task.setProcessOptions(execute);
     }
 
-    if (task instanceof Backup backup) {
-      if (defaultForget) {
-        backup.setForget("@default");
-      } else if (forget != null) {
-        backup.setForget(forget);
-      }
-
-      if (defaultCheck) {
-        backup.setCheck("@default");
-      } else if (check != null) {
-        backup.setCheck(check);
-      }
-
-      if (defaultServe) {
-        backup.setCadence("@default");
-      } else if (serve != null) {
-        backup.setCadence(serve);
-      }
-    }
+    // The resolved policies (the -f/-c/-s shorthands expand to the @default profiles)
+    task.applyPolicyOptions(
+      defaultForget ? "@default" : forget,
+      defaultCheck ? "@default" : check,
+      defaultServe ? "@default" : serve);
 
     if (clearInclude) {
       task.clearInclude();

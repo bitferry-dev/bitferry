@@ -99,7 +99,8 @@ public abstract class RcloneTaskCommand implements Callable<Integer>, HasCommonO
     List<String> exc = CliUtils.parsePatterns(exclude, excludeExts);
     Task task = taskFactory().create(m, src, dst, execute, inc, exc);
     if (encryptRequested || decryptRequested) {
-      if (!(task instanceof Rclone rclone)) throw new BitferryError("encryption is supported for the rclone tasks only");
+      if (!task.supportsEncryption()) throw new BitferryError("encryption is supported for the rclone tasks only");
+      Rclone rclone = (Rclone) task;
       // The password is obtained after the endpoints are validated
       String password = CliUtils.obtainPassword();
       if (encryptRequested) {

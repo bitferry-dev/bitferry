@@ -26,15 +26,10 @@ final class RcloneExecutor {
   /// directory names too, so the top level suffices for the password and the filename
   /// encoding validation) keeping the large existing trees cheap to inspect.
   void conform(Rclone rclone) {
-    if (rclone.encryption() instanceof Rclone.NoCrypt || rclone.encryption() == null) {
-      return;
-    }
-    String encryptedSide;
-    if (rclone.encryption() instanceof Rclone.Encrypt) {
-      encryptedSide = rclone.destination().processOpts();
-    } else if (rclone.encryption() instanceof Rclone.Decrypt) {
-      encryptedSide = rclone.source().processOpts();
-    } else {
+    // The encrypted side rides the encryption mode itself (null for the no encryption
+    // mode: the probing is not applicable)
+    String encryptedSide = rclone.encryption().encryptedSide(rclone);
+    if (encryptedSide == null) {
       return;
     }
 

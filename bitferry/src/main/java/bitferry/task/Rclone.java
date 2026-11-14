@@ -5,6 +5,7 @@ import bitferry.endpoint.*;
 import bitferry.vault.*;
 import com.fasterxml.jackson.annotation.*;
 import java.time.*;
+import java.util.function.Consumer;
 import java.util.*;
 
 /// Rclone-backend task base. The task processing is optionally protected with the
@@ -21,13 +22,13 @@ public abstract class Rclone extends Task {
   public static final Map<String, List<String>> PROCESS =
     route(Map.of("default", List.of("--metadata")), List.of("--metadata"));
 
-  protected List<String> processOptions;
   protected Encryption encryption = NoCrypt.INSTANCE;
 
   /// Constructor for a new task instance.
   protected Rclone(Manager manager, Endpoint source, Endpoint destination, String process, Collection<String> include, Collection<String> exclude) {
     super(manager, source, destination, include, exclude);
-    this.processOptions = optional(process, PROCESS);
+    this.processRoute = PROCESS;
+    this.processOptions = optional(process, processRoute);
   }
 
   /// Constructor for restoring an existing task from the descriptor's fields;
@@ -39,7 +40,8 @@ public abstract class Rclone extends Task {
   @SuppressWarnings("this-escape")
   protected Rclone(Manager manager, Endpoint source, Endpoint destination, String tag, OffsetDateTime modified, List<String> include, List<String> exclude, Backend backend) {
     super(manager, source, destination, tag, modified, include, exclude);
-    this.processOptions = optional(backend == null ? null : backend.execute(), PROCESS);
+    this.processRoute = PROCESS;
+    this.processOptions = optional(backend == null ? null : backend.execute(), processRoute);
     this.encryption = Encryption.restore(this, backend);
   }
 
@@ -52,15 +54,6 @@ public abstract class Rclone extends Task {
     "default", List.of("--crypt-filename-encoding", "base32", "--crypt-filename-encryption", "standard"),
     "extended", List.of("--crypt-filename-encoding", "base32768", "--crypt-filename-encryption", "standard")
   ), null);
-
-  public List<String> processOptions() {
-    return processOptions == null ? List.of() : java.util.Collections.unmodifiableList(processOptions);
-  }
-
-  public void setProcessOptions(String process) {
-    this.processOptions = optional(process, PROCESS);
-    touch();
-  }
 
   /// The backend operation arguments prepended to the rclone command line.
   /// The base implementation maps the operation discriminator verbatim;
@@ -79,6 +72,26 @@ public abstract class Rclone extends Task {
   /// Return the task's encryption mode.
   public Encryption encryption() {
     return encryption;
+  }
+
+  /// The encrypted rclone tasks keep the crypt password pair within the vault.
+  @Override
+  public boolean usesVault() {
+    return encryption != null && encryption.operation() != null;
+  }
+
+  @Override
+  public boolean supportsEncryption() {
+    return true;
+  }
+
+  /// Configure the encryption mode on the task: the mode picks between the encrypt
+  /// and the decrypt wiring.
+  @Override
+  public Task setEncryption(String mode, String password, String password2, List<String> options, boolean keyring) {
+    if ("encrypt".equals(mode)) encrypt(password, password2, options, keyring);
+    else decrypt(password, password2, options, keyring);
+    return this;
   }
 
   /// Configure the encrypt mode obscuring and storing the password pair with the
@@ -149,6 +162,27 @@ public abstract class Rclone extends Task {
     manager.backendExecutor().conform(this);
   }
 
+  /// The tool dispatch (the double dispatch landing on the executor's rclone slot).
+  @Override
+  public boolean runWith(Executor executor, Consumer<String> output) {
+    return executor.run(this, output);
+  }
+
+  @Override
+  public boolean serveWith(Executor executor, Consumer<String> output) {
+    return executor.serve(this, output);
+  }
+
+  @Override
+  public List<List<String>> commandsWith(Executor executor) {
+    return executor.commands(this);
+  }
+
+  @Override
+  public List<List<String>> serveCommandsWith(Executor executor) {
+    return executor.serveCommands(this);
+  }
+
   @Override
   public List<List<String>> commands() {
     return manager.backendExecutor().commands(this);
@@ -196,6 +230,11 @@ public abstract class Rclone extends Task {
 
     /// The command line tail placing the ':crypt:' remote against the endpoints.
     public abstract List<String> processOpts(Rclone task);
+
+    /// The backend-side path carrying the encrypted content (the destination of the
+    /// encrypt mode, the source of the decrypt one); null for the no encryption mode
+    /// (the conformance probing is then not applicable).
+    public abstract String encryptedSide(Rclone task);
 
     /// Return the volume hosting the task's password vault: the volume of the
     /// unencrypted end of the task.
@@ -318,12 +357,13 @@ public abstract class Rclone extends Task {
       return opts;
     }
 
+    public String encryptedSide(Rclone task) {
+      return task.destination().processOpts();
+    }
+
     @Override
     public Volume vaultVolume(Rclone task) {
-      if (!(task.source() instanceof VolumeEndpoint sourceEndpoint)) throw new BitferryError("encryption requires the unencrypted endpoint to reside within a Bitferry volume");
-      Volume volume = task.manager().volume(sourceEndpoint.vtag());
-      if (volume == null) throw new BitferryError("no volume #" + sourceEndpoint.vtag() + " is registered");
-      return volume;
+      return task.source().requireVolume(task.manager(), "encryption requires the unencrypted endpoint to reside within a Bitferry volume");
     }
   }
 
@@ -350,12 +390,13 @@ public abstract class Rclone extends Task {
       return opts;
     }
 
+    public String encryptedSide(Rclone task) {
+      return task.source().processOpts();
+    }
+
     @Override
     public Volume vaultVolume(Rclone task) {
-      if (!(task.destination() instanceof VolumeEndpoint destinationEndpoint)) throw new BitferryError("encryption requires the unencrypted endpoint to reside within a Bitferry volume");
-      Volume volume = task.manager().volume(destinationEndpoint.vtag());
-      if (volume == null) throw new BitferryError("no volume #" + destinationEndpoint.vtag() + " is registered");
-      return volume;
+      return task.destination().requireVolume(task.manager(), "encryption requires the unencrypted endpoint to reside within a Bitferry volume");
     }
   }
 
@@ -376,6 +417,10 @@ public abstract class Rclone extends Task {
     @Override
     public List<String> processOpts(Rclone task) {
       return List.of(task.source().processOpts(), task.destination().processOpts());
+    }
+
+    public String encryptedSide(Rclone task) {
+      return null;
     }
 
     @Override

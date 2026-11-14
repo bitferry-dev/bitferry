@@ -18,6 +18,27 @@ public interface Executor {
     return run(task, null);
   }
 
+  /// Execute the rclone-backed task (the double-dispatch slot the task's runWith
+  /// lands on).
+  default boolean run(Rclone task, Consumer<String> output) {
+    return run((Task) task, output);
+  }
+
+  /// Execute the restic-backed task.
+  default boolean run(Restic task, Consumer<String> output) {
+    return run((Task) task, output);
+  }
+
+  /// Execute the backup task (the retention/service semantics are backup specific).
+  default boolean run(Backup task, Consumer<String> output) {
+    return run((Restic) task, output);
+  }
+
+  /// Execute the restore task.
+  default boolean run(Restore task, Consumer<String> output) {
+    return run((Restic) task, output);
+  }
+
   /// Perform one-time backend formatting upon task creation (e.g. restic init).
   default void format(Task task) {}
 
@@ -37,6 +58,18 @@ public interface Executor {
   /// Perform encryption and backend target conformance validation for rclone tasks upon creation.
   default void conform(Rclone task) {
     conform((Task) task);
+  }
+
+  /// Perform the backup-specific conformance validation (the forced re-initialization
+  /// skips it, the fresh repositories defer to the formatting, the existing ones probe).
+  default void conform(Backup task) {
+    conform((Restic) task);
+  }
+
+  /// Perform the restore-specific conformance validation (the restore tasks refuse the
+  /// repositories the provided password does not open).
+  default void conform(Restore task) {
+    conform((Restic) task);
   }
 
   /// Change or update the repository password for a restic task.
@@ -71,6 +104,27 @@ public interface Executor {
   /// on the task or its target repository. Return true on success.
   default boolean serve(Task task, Consumer<String> output) {
     return true;
+  }
+
+  /// Service the rclone-backed task (the double-dispatch slot the task's serveWith
+  /// lands on).
+  default boolean serve(Rclone task, Consumer<String> output) {
+    return serve((Task) task, output);
+  }
+
+  /// Service the restic-backed task.
+  default boolean serve(Restic task, Consumer<String> output) {
+    return serve((Task) task, output);
+  }
+
+  /// Service the backup task (the check, the retention and the prune sequence).
+  default boolean serve(Backup task, Consumer<String> output) {
+    return serve((Restic) task, output);
+  }
+
+  /// Service the restore task (the repository integrity check).
+  default boolean serve(Restore task, Consumer<String> output) {
+    return serve((Restic) task, output);
   }
 
   /// Perform service with inherited stdio (CLI pass-through).

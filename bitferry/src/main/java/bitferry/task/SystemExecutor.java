@@ -36,39 +36,59 @@ public class SystemExecutor implements Executor {
   @Override
   public boolean run(Task task, Consumer<String> output) {
     LOG.log(Level.INFO, () -> "processing task #" + task.tag());
-    if (task instanceof Rclone rclone) {
-      return rcloneExecutor.run(rclone, output);
-    } else if (task instanceof Restic restic) {
-      return resticExecutor.run(restic, output);
-    }
-    String message = "unsupported task backend for task #" + task.tag() + ": " + task.getClass().getName();
-    LOG.log(Level.ERROR, () -> message);
-    if (output != null) output.accept(message);
-    return false;
+    // The double dispatch: the task lands on its per-tool slot
+    return task.runWith(this, output);
   }
 
   @Override
   public boolean serve(Task task, Consumer<String> output) {
     LOG.log(Level.INFO, () -> "servicing task #" + task.tag());
-    if (task instanceof Rclone rclone) {
-      return rcloneExecutor.serve(rclone, output);
-    } else if (task instanceof Restic restic) {
-      return resticExecutor.serve(restic, output);
-    }
-    String message = "unsupported task backend for service of task #" + task.tag() + ": " + task.getClass().getName();
-    LOG.log(Level.ERROR, () -> message);
-    if (output != null) output.accept(message);
-    return false;
+    return task.serveWith(this, output);
+  }
+
+  @Override
+  public boolean run(Rclone task, Consumer<String> output) {
+    return rcloneExecutor.run(task, output);
+  }
+
+  @Override
+  public boolean serve(Rclone task, Consumer<String> output) {
+    return rcloneExecutor.serve(task, output);
+  }
+
+  @Override
+  public boolean run(Backup task, Consumer<String> output) {
+    return resticExecutor.runBackup(task, output);
+  }
+
+  @Override
+  public boolean run(Restore task, Consumer<String> output) {
+    return resticExecutor.runRestore(task, output);
+  }
+
+  @Override
+  public boolean serve(Backup task, Consumer<String> output) {
+    return resticExecutor.serveBackup(task, output);
+  }
+
+  @Override
+  public boolean serve(Restore task, Consumer<String> output) {
+    return resticExecutor.serveRestore(task, output);
+  }
+
+  @Override
+  public void conform(Backup task) {
+    resticExecutor.conformBackup(task);
+  }
+
+  @Override
+  public void conform(Restore task) {
+    resticExecutor.conformRestore(task);
   }
 
   @Override
   public void format(Backup backup) {
     resticExecutor.format(backup);
-  }
-
-  @Override
-  public void conform(Restic restic) {
-    resticExecutor.conform(restic);
   }
 
   @Override
@@ -94,31 +114,6 @@ public class SystemExecutor implements Executor {
   @Override
   public List<List<String>> commands(Restore restore) {
     return resticExecutor.commands(restore);
-  }
-
-  @Override
-  public List<List<String>> commands(Task task) {
-    // The dispatch is mandatory here: the callers hold the static Task type (the
-    // overload resolution is static), so without this override the previews would
-    // silently fall into the empty-interface default
-    if (task instanceof Rclone rclone) {
-      return rcloneExecutor.commands(rclone);
-    } else if (task instanceof Backup backup) {
-      return resticExecutor.commands(backup);
-    } else if (task instanceof Restore restore) {
-      return resticExecutor.commands(restore);
-    }
-    return List.of();
-  }
-
-  @Override
-  public List<List<String>> serveCommands(Task task) {
-    if (task instanceof Rclone rclone) {
-      return rcloneExecutor.serveCommands(rclone);
-    } else if (task instanceof Restic restic) {
-      return resticExecutor.serveCommands(restic);
-    }
-    return List.of();
   }
 
   @Override

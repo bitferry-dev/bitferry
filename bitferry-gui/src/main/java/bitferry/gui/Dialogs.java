@@ -74,8 +74,10 @@ final class Dialogs {
     dialog.getDialogPane().getButtonTypes().setAll(ButtonType.OK, ButtonType.CANCEL);
     ((Button) dialog.getDialogPane().lookupButton(ButtonType.OK)).setText("Create");
     dialog.getDialogPane().setContent(form.pane());
+    // No fixed pane width: the form sizes the scroller to its content (scaled with
+    // the font size) and the dialog tracks it through the relayout's sizeToScene;
+    // the dialog stays resizable for the manual widening
     dialog.setResizable(true);
-    dialog.getDialogPane().setPrefWidth(620);
     dialog.getDialogPane().setStyle("-fx-text-fill: #222222;");
     Platform.runLater(() -> {
       dialog.getDialogPane().lookupAll(".label").forEach(node -> {
@@ -114,8 +116,10 @@ final class Dialogs {
     dialog.getDialogPane().getButtonTypes().setAll(ButtonType.OK, ButtonType.CANCEL);
     ((Button) dialog.getDialogPane().lookupButton(ButtonType.OK)).setText("Save");
     dialog.getDialogPane().setContent(form.pane());
+    // No fixed pane width: the form sizes the scroller to its content (scaled with
+    // the font size) and the dialog tracks it through the relayout's sizeToScene;
+    // the dialog stays resizable for the manual widening
     dialog.setResizable(true);
-    dialog.getDialogPane().setPrefWidth(620);
     dialog.getDialogPane().setStyle("-fx-text-fill: #222222;");
     Platform.runLater(() -> {
       dialog.getDialogPane().lookupAll(".label").forEach(node -> {
@@ -163,12 +167,8 @@ final class Dialogs {
           case "restore" -> new Restore(manager, source, destination, form.password(), execute, include, exclude, keyring);
           default -> throw new BitferryError("unknown task type '" + form.type() + "'");
         };
-        if (form.encryption() != null && task instanceof Rclone rclone) {
-          if (form.encryption().equals("encrypt")) {
-            rclone.encrypt(form.password(), null, Rclone.Encryption.options(form.profile()), keyring);
-          } else {
-            rclone.decrypt(form.password(), null, Rclone.Encryption.options(form.profile()), keyring);
-          }
+        if (form.encryption() != null && task.supportsEncryption()) {
+          task.setEncryption(form.encryption(), form.password(), null, Rclone.Encryption.options(form.profile()), keyring);
         }
         Task candidate = task;
         if (manager.volumes().values().stream().noneMatch(v -> candidate.refersVolume(v.tag()))) {
@@ -176,7 +176,7 @@ final class Dialogs {
         }
         manager.commit();
         logs.log("task #" + candidate.tag() + " created: " + candidate.describe());
-        if (keyring && (candidate instanceof Restic || candidate instanceof Rclone rclone && rclone.encryption() != null && rclone.encryption().operation() != null)) {
+        if (keyring && candidate.usesVault()) {
           if (!KeyringVault.INSTANCE.available()) {
             logs.log("password kept in the volume vault (no usable OS keyring on the host)");
           } else {
@@ -214,27 +214,18 @@ final class Dialogs {
           logs.log("password updated for task #" + current.tag());
         }
 
-        // Backend execution options
-        String execute = form.execute();
-        if (current instanceof Rclone rclone) {
-          rclone.setProcessOptions(execute);
-        } else if (current instanceof Restic restic) {
-          restic.setProcessOptions(execute);
-        }
+        // Backend execution options (the resolution rides the task's profile route)
+        current.setProcessOptions(form.execute());
 
         // Backup retention, check, and cadence options
-        if (current instanceof Backup backup) {
-          backup.setForget(form.forget());
-          backup.setCheck(form.check());
-          backup.setCadence(form.serve());
-        }
+        current.applyPolicyOptions(form.forget(), form.check(), form.serve());
 
         // Include filters. The backup tasks filter by exclusion only (restic backup
         // carries no include patterns): the handling is skipped and the form field is
         // disabled — the stored legacy filters, if any, are managed via the CLI
         // --clear-include
         // FIXME get rid of the selector by defining include on the restore task only
-        if (!(current instanceof Backup)) {
+        if (current.acceptsIncludeFilters()) {
           List<String> include = patterns(form.include());
           if (include.isEmpty()) {
             current.clearInclude();
@@ -351,12 +342,17 @@ final class Dialogs {
     private final TextField exclude = new TextField();
     private final TextField execute = new TextField();
     private final ComboBox<String> encryption = new ComboBox<>();
-    private final TextField profile = new TextField("@default");
+    private final TextField profile = new TextField();
     private final PasswordField cryptPassword = new PasswordField();
     private final PasswordField cryptPasswordConfirm = new PasswordField();
     private final PasswordField password = new PasswordField();
     private final PasswordField passwordConfirm = new PasswordField();
-    private final CheckBox keyring = new CheckBox("store the password in the system keyring");
+    // The password storage location selector: the two exclusive destinations stated
+    // explicitly — the machine-bound OS keyring vs the per-volume vault traveling with
+    // the volume storage (laid out horizontally under the "Password storage:" label)
+    private final RadioButton keyringChoice = new RadioButton("OS keyring — stays on this host");
+    private final RadioButton vaultChoice = new RadioButton("volume vault — travels with the volume");
+    private final Node keyring = new HBox(12, keyringChoice, vaultChoice);
     private final CheckBox format = new CheckBox("initialize the repository over the existing data");
     private final TextField forget = new TextField();
     private final TextField check = new TextField();
@@ -364,6 +360,14 @@ final class Dialogs {
 
     private final List<FormRow> rows = new ArrayList<>();
     private final GridPane grid = new GridPane();
+    // The scroll pane wrapping the grid, created up front: the relayout sizes it to
+    // the grid's natural (content-derived) width before the dialog shows
+    private final ScrollPane scroller = new ScrollPane(grid);
+
+    // The auto-loaded (never user-edited) pre-filled defaults keyed by the field:
+    // switching the operation replaces them with the new operation's defaults while
+    // the user-edited content stays intact
+    private final Map<TextField, String> autoLoaded = new HashMap<>();
 
     TaskForm(AppContext context, Task existing) {
       this.context = context;
@@ -384,16 +388,28 @@ final class Dialogs {
       forget.setPromptText("retention policy (e.g. @default) (optional)");
       check.setPromptText("integrity check options (e.g. @default, @full) (optional)");
       serve.setPromptText("e.g. @default or '<duration>,<count>' (optional)");
+      profile.setPromptText("extra crypt options, comma-separated (optional)");
       profile.setPrefColumnCount(14);
+      Tooltip.install(profile, new Tooltip("The extra crypt options passed to rclone (comma-separated); the filename encoding presets (@default, @extended) load via Edit…"));
 
-      keyring.setDisable(!KeyringVault.INSTANCE.available());
-      keyring.setTextFill(DARK_TEXT);
-      keyring.setStyle("-fx-text-fill: #222222;");
+      // The volume vault is the default destination; the keyring choice is offered (and
+      // honored) only when the OS keyring is usable on this host — otherwise it is grayed
+      // out and the vault stays the only selectable option
+      ToggleGroup passwordStorage = new ToggleGroup();
+      keyringChoice.setToggleGroup(passwordStorage);
+      vaultChoice.setToggleGroup(passwordStorage);
+      vaultChoice.setSelected(true);
+      keyringChoice.setDisable(!KeyringVault.INSTANCE.available());
+      keyringChoice.setTextFill(DARK_TEXT);
+      keyringChoice.setStyle("-fx-text-fill: #222222;");
+      vaultChoice.setTextFill(DARK_TEXT);
+      vaultChoice.setStyle("-fx-text-fill: #222222;");
+      Tooltip.install(keyringChoice, new Tooltip(KeyringVault.INSTANCE.available()
+        ? "The OS keyring (Windows Credential Manager, macOS Keychain, GNOME Keyring): machine- and user-bound, recommended for the fixed volumes — the tokens do not travel with the removable media"
+        : "No usable OS keyring on this host — the volume vault keeps serving"));
+      Tooltip.install(vaultChoice, new Tooltip("The vault section of the storage of the volume hosting the unencrypted end: the token travels with the volume (recommended for the removable media)"));
       format.setTextFill(DARK_TEXT);
       format.setStyle("-fx-text-fill: #222222;");
-      Tooltip.install(keyring, new Tooltip(KeyringVault.INSTANCE.available()
-        ? "Store the password token in the OS keyring instead of the volume storage (recommended for the fixed volumes; the keyring-stored tokens do not travel with removable media)"
-        : "No usable OS keyring on this host — the volume storage keeps serving"));
 
       // Populate existing task values and disable immutable fields
       if (existing != null) {
@@ -421,8 +437,7 @@ final class Dialogs {
           exclude.setText(String.join(", ", existing.exclude()));
         }
 
-        List<String> curOpts = existing instanceof Rclone rclone ? rclone.processOptions()
-          : existing instanceof Restic restic ? restic.processOptions() : List.of();
+        List<String> curOpts = existing.processOptions();
         if (!curOpts.isEmpty()) {
           execute.setText(String.join(", ", curOpts));
         }
@@ -487,12 +502,13 @@ final class Dialogs {
       rows.add(new FormRow("Exclude:", withEditList(exclude, "Exclude Patterns", "Edit exclude patterns", () -> EXCLUDE_PROFILES), () -> true));
       rows.add(new FormRow("Options:", withEditList(execute, "Execution Options", "Edit backend execution options", this::executeProfiles), () -> true));
       rows.add(new FormRow("Encryption:", encryption, rclone));
-      rows.add(new FormRow("Profile:", profile, encrypted));
+      rows.add(new FormRow("Encryption options:", withEditList(profile, "Encryption Options",
+        "Edit encryption options (the crypt filename encoding profiles or the raw comma-separated options)", () -> Rclone.PROFILE), encrypted));
       rows.add(new FormRow("Password:", cryptPassword, cryptPasswordVisible));
       rows.add(new FormRow("Confirm:", cryptPasswordConfirm, cryptPasswordVisible));
       rows.add(new FormRow("Password:", password, restic));
       rows.add(new FormRow("Confirm:", passwordConfirm, restic));
-      rows.add(new FormRow("Keyring:", keyring, keyringVisible));
+      rows.add(new FormRow("Password storage:", keyring, keyringVisible));
       rows.add(new FormRow("Retention:", withEditList(forget, "Retention Policy", "Edit snapshot retention policy options", () -> Backup.FORGET), backup));
       rows.add(new FormRow("Check:", withEditList(check, "Integrity Check", "Edit repository integrity check options", () -> Backup.CHECK), backup));
       rows.add(new FormRow("Format:", format, formatVisible));
@@ -501,28 +517,32 @@ final class Dialogs {
       grid.setHgap(8);
       grid.setVgap(8);
       grid.setPadding(new Insets(10));
+      // The label column sizes itself to the widest visible label (content-driven,
+      // so it scales with the font size) keeping every label on a single line
       ColumnConstraints col0 = new ColumnConstraints();
-      col0.setMinWidth(95);
-      col0.setPrefWidth(95);
       col0.setHalignment(HPos.RIGHT);
       ColumnConstraints col1 = new ColumnConstraints();
       col1.setHgrow(Priority.ALWAYS);
       grid.getColumnConstraints().setAll(col0, col1);
 
+      // The new-task option entries start from the operation's default profiles
+      loadDefaultProfiles();
+
       relayout();
 
-      type.valueProperty().addListener((x, was, now) -> relayout());
-      encryption.valueProperty().addListener((x, was, now) -> relayout());
+      // The operation/encryption changes refresh the empty (never user-edited) option
+      // entries with the new operation's defaults and lay the rows out
+      type.valueProperty().addListener((x, was, now) -> { loadDefaultProfiles(); relayout(); });
+      encryption.valueProperty().addListener((x, was, now) -> { loadDefaultProfiles(); relayout(); });
     }
 
     private Node pane() {
-      ScrollPane scroll = new ScrollPane(grid);
-      scroll.setFitToWidth(true);
-      scroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
-      scroll.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
-      scroll.setStyle("-fx-background-color: transparent; -fx-padding: 0;");
-      scroll.setMaxHeight(480);
-      return scroll;
+      scroller.setFitToWidth(true);
+      scroller.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+      scroller.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
+      scroller.setStyle("-fx-background-color: transparent; -fx-padding: 0;");
+      scroller.setMaxHeight(480);
+      return scroller;
     }
 
     // Lay visible rows out consecutively and request scene sizing
@@ -542,6 +562,12 @@ final class Dialogs {
           row++;
         }
       }
+      // The scroll pane carries a content-derived width so the dialog tracks its
+      // contents: the width follows the widest visible row and the font size instead
+      // of a fixed pixel value (a floor keeps the sparse layouts comfortable). The
+      // row toggles re-measure it, and the sizeToScene below carries it to the window.
+      scroller.setPrefWidth(Math.max(grid.prefWidth(-1), 440));
+
       Platform.runLater(() -> {
         if (grid.getScene() != null && grid.getScene().getWindow() != null) {
           grid.getScene().getWindow().sizeToScene();
@@ -622,6 +648,33 @@ final class Dialogs {
       } else {
         return Rclone.PROCESS;
       }
+    }
+
+    /// Pre-load the @default profile's concrete options into an empty (or untouched
+    /// auto-loaded) entry field: the new-task entries start from the operation's
+    /// defaults stated explicitly (the real entries, not the @-tags). The fields
+    /// without a non-empty @default profile (the restic backup execution options,
+    /// the empty check defaults, the exclude patterns) stay empty. The auto-loaded
+    /// content follows the operation: switching the type replaces it with the new
+    /// operation's defaults (clearing it when the new default is empty), while the
+    /// user-edited content stays intact.
+    private void loadDefaultProfile(TextField field, Map<String, List<String>> profiles) {
+      if (existing != null) return;
+      String current = field.getText().trim();
+      if (!current.isBlank() && !current.equals(autoLoaded.get(field))) return;
+      List<String> defaults = profiles != null ? profiles.get("default") : null;
+      String text = defaults == null || defaults.isEmpty() ? "" : String.join(", ", defaults);
+      if (text.equals(current)) return;
+      field.setText(text);
+      autoLoaded.put(field, text);
+    }
+
+    /// Refresh the profile-backed entries with the current operation's defaults
+    private void loadDefaultProfiles() {
+      loadDefaultProfile(execute, executeProfiles());
+      loadDefaultProfile(profile, encryption() != null ? Rclone.PROFILE : null);
+      loadDefaultProfile(forget, Backup.FORGET);
+      loadDefaultProfile(check, Backup.CHECK);
     }
 
     private File browseDirectory(TextField field, File start, String title) {
@@ -706,7 +759,9 @@ final class Dialogs {
     }
 
     boolean keyring() {
-      return keyring.isSelected() && !keyring.isDisable();
+      // The keyring destination only when its radio is selected and selectable: the
+      // grayed-out choice (no usable OS keyring on the host) keeps serving the vault
+      return keyringChoice.isSelected() && !keyringChoice.isDisable();
     }
 
     void validate() {

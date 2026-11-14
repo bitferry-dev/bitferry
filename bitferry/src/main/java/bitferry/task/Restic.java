@@ -19,8 +19,7 @@ public abstract class Restic extends Task {
   public static final Map<String, List<String>> PROCESS =
     route(Map.of("default", List.of()), List.of());
 
-  protected List<String> processOptions;
-  protected final Map<String, List<String>> processRoute;
+  // The process options and the route ride the TaskBase (the hoisted plumbing)
 
   private final Vault vault;
   // The provider currently holding the token (resolved upon the retrieval); guides
@@ -76,6 +75,25 @@ public abstract class Restic extends Task {
     this.cached = false;
   }
 
+  /// The restic tasks keep the repository password within the vault.
+  @Override
+  public boolean usesVault() {
+    return true;
+  }
+
+  /// The repository password rotates on the existing restic tasks.
+  @Override
+  public boolean supportsPasswordRotation() {
+    return true;
+  }
+
+  /// Whether the task may change the repository key itself when the offered password
+  /// does not match: the backup tasks own the rotation, the restore tasks merely share
+  /// the repository and refuse.
+  public boolean mayRotateRepositoryKey() {
+    return true;
+  }
+
   /// The restic backend descriptor section.
   public record Backend(
     @JsonProperty("execute") List<String> execute,
@@ -86,15 +104,6 @@ public abstract class Restic extends Task {
     public Backend(List<String> execute, List<String> forget, List<String> check) {
       this(execute, forget, check, null);
     }
-  }
-
-  public List<String> processOptions() {
-    return processOptions == null ? List.of() : java.util.Collections.unmodifiableList(processOptions);
-  }
-
-  public void setProcessOptions(String process) {
-    this.processOptions = optional(process, processRoute);
-    touch();
   }
 
   public void updatePassword(String newPassword) {
@@ -175,4 +184,8 @@ public abstract class Restic extends Task {
   protected void conform() {
     manager.backendExecutor().conform(this);
   }
+
+  /// The endpoint holding the restic repository (the destination of the backup tasks,
+  /// the source of the restore ones).
+  public abstract Endpoint repoEndpoint();
 }

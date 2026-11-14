@@ -23,58 +23,39 @@ final class ResticExecutor {
     this.commandExecutor = commandExecutor;
   }
 
-  /// Process the restic-backed task. Return true on success.
-  boolean run(Restic restic, Consumer<String> output) {
-    if (restic instanceof Backup backup) {
-      return runBackup(backup, output);
-    } else if (restic instanceof Restore restore) {
-      return runRestore(restore, output);
-    }
-    String message = "unsupported restic operation: " + restic.operation();
-    LOG.log(Level.ERROR, () -> message);
-    if (output != null) output.accept(message);
-    return false;
-  }
 
-  /// Service the restic-backed task repository. Return true on success.
-  boolean serve(Restic restic, Consumer<String> output) {
-    if (restic instanceof Backup backup) {
-      return serveBackup(backup, output);
-    } else if (restic instanceof Restore restore) {
-      return serveRestore(restore, output);
-    }
-    String message = "unsupported restic operation for service: " + restic.operation();
-    LOG.log(Level.ERROR, () -> message);
-    if (output != null) output.accept(message);
-    return false;
-  }
 
-  List<List<String>> serveCommands(Restic restic) {
-    if (restic instanceof Backup backup) {
-      return serveCommands(backup);
-    } else if (restic instanceof Restore restore) {
-      return serveCommands(restore);
-    }
-    return List.of();
-  }
 
-  /// Perform conformance check of the candidate repository password against the existing repository.
-  void conform(Restic restic) {
-    if (restic instanceof Backup backup && Boolean.TRUE.equals(backup.formatMode())) {
+
+
+
+  /// Perform the backup conformance check: the forced re-initialization skips it, the
+  /// fresh repositories defer to the formatting, the existing ones probe the password.
+  void conformBackup(Backup backup) {
+    if (Boolean.TRUE.equals(backup.formatMode())) {
       return; // --force (wipe and recreate): skip conformance
     }
-    String repo = repoPath(restic);
-    Path repoDir = Path.of(repo);
-    if (!Files.isDirectory(repoDir)) {
+    String repo = backup.repoEndpoint().processOpts();
+    if (!Files.isDirectory(Path.of(repo))) {
       return; // Repo directory absent: skip conformance
     }
     if (!hasRepository(repo)) {
-      if (restic instanceof Restore) {
-        throw new BitferryError("the repository at '" + repo + "' is not a valid restic repository");
-      }
-      return; // For backup, new repository will be initialized by format()
+      return; // New repository will be initialized by format()
     }
-    probeRepository(restic, repo);
+    probeRepository(backup, repo);
+  }
+
+  /// Perform the restore conformance check: the restore tasks refuse the repositories
+  /// the provided password does not open.
+  void conformRestore(Restore restore) {
+    String repo = restore.repoEndpoint().processOpts();
+    if (!Files.isDirectory(Path.of(repo))) {
+      return; // Repo directory absent: skip conformance
+    }
+    if (!hasRepository(repo)) {
+      throw new BitferryError("the repository at '" + repo + "' is not a valid restic repository");
+    }
+    probeRepository(restore, repo);
   }
 
   /// Initialize (or wipe and recreate, or attach to) the repository of the backup task.
@@ -158,7 +139,7 @@ final class ResticExecutor {
     }
     boolean alreadyMatches = testPassword(manager, repo, newPassword);
     if (!alreadyMatches) {
-      if (restic instanceof Restore) {
+      if (!restic.mayRotateRepositoryKey()) {
         throw new BitferryError("the repository at '" + repo + "' does not accept the provided password");
       }
       boolean currentValid = testPassword(manager, repo, restic.password());
@@ -288,9 +269,7 @@ final class ResticExecutor {
   }
 
   private static String repoPath(Restic restic) {
-    return restic instanceof Backup backup
-      ? backup.destination().processOpts()
-      : restic.source().processOpts();
+    return restic.repoEndpoint().processOpts();
   }
 
   // Remove the repository subdirectories upon the forced re-initialization. Any wipe
@@ -467,7 +446,7 @@ final class ResticExecutor {
     return List.of(ExecutorSupport.displayCommand(restoreCommand(restore)));
   }
 
-  private boolean runBackup(Backup backup, Consumer<String> output) {
+  boolean runBackup(Backup backup, Consumer<String> output) {
     Manager manager = backup.manager();
     String repo = backup.destination().processOpts();
     Path repoDir = Path.of(repo);
@@ -577,7 +556,7 @@ final class ResticExecutor {
     return ExecutorSupport.execute(commandExecutor, manager, checkCmd, null, environment, restore.tag(), output);
   }
 
-  private boolean runRestore(Restore restore, Consumer<String> output) {
+  boolean runRestore(Restore restore, Consumer<String> output) {
     Manager manager = restore.manager();
     String repo = restore.source().processOpts();
     String target = restore.destination().processOpts();

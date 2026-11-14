@@ -106,6 +106,13 @@ public class Equalize extends Rclone {
     resynced = null;
   }
 
+  /// The bidirectional arrow: the equalize tasks render (and describe) differently
+  /// from the one-way operations.
+  @Override
+  public String director() {
+    return "<->";
+  }
+
   @Override
   public String operation() {
     return OPERATION;

@@ -4,6 +4,7 @@ import bitferry.*;
 import bitferry.endpoint.*;
 import com.fasterxml.jackson.annotation.*;
 import java.time.*;
+import java.util.function.Consumer;
 import java.util.*;
 
 /// Incremental encrypted backup with snapshotting (Restic). The repository is initialized
@@ -98,10 +99,13 @@ public class Backup extends Restic {
   /// Raises [BitferryError] if the source endpoint resides outside Bitferry volumes.
   @Override
   public Volume vaultVolume() {
-    if (!(source instanceof VolumeEndpoint sourceEndpoint)) throw new BitferryError("backup directory endpoint must reside within a Bitferry volume");
-    Volume volume = manager.volume(sourceEndpoint.vtag());
-    if (volume == null) throw new BitferryError("no volume #" + sourceEndpoint.vtag() + " is registered");
-    return volume;
+    return source.requireVolume(manager, "backup directory endpoint must reside within a Bitferry volume");
+  }
+
+  /// The repository travels with the destination endpoint.
+  @Override
+  public Endpoint repoEndpoint() {
+    return destination;
   }
 
   public List<String> forget() {
@@ -140,6 +144,24 @@ public class Backup extends Restic {
   }
 
   @Override
+  public boolean acceptsIncludeFilters() {
+    return false;
+  }
+
+  @Override
+  public boolean supportsRetentionPolicy() {
+    return true;
+  }
+
+  /// Apply the resolved retention/check/cadence specifications (null entries skipped).
+  @Override
+  public void applyPolicyOptions(String forget, String check, String serve) {
+    if (forget != null) setForget(forget);
+    if (check != null) setCheck(check);
+    if (serve != null) setCadence(serve);
+  }
+
+  @Override
   @JsonProperty("restic")
   Backend storeBackend() {
     String s = cadence == null ? "-" : cadence.format();
@@ -154,6 +176,34 @@ public class Backup extends Restic {
   @Override
   protected void format() {
     manager.backendExecutor().format(this);
+  }
+
+  /// The conformance dispatch: the override makes the call land on the executor's
+  /// backup slot (the static type of `this` decides the overload).
+  @Override
+  protected void conform() {
+    manager.backendExecutor().conform(this);
+  }
+
+  /// The tool dispatch (the double dispatch landing on the executor's backup slot).
+  @Override
+  public boolean runWith(Executor executor, Consumer<String> output) {
+    return executor.run(this, output);
+  }
+
+  @Override
+  public boolean serveWith(Executor executor, Consumer<String> output) {
+    return executor.serve(this, output);
+  }
+
+  @Override
+  public List<List<String>> commandsWith(Executor executor) {
+    return executor.commands(this);
+  }
+
+  @Override
+  public List<List<String>> serveCommandsWith(Executor executor) {
+    return executor.serveCommands(this);
   }
 
   @Override

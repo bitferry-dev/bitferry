@@ -56,6 +56,12 @@ public abstract class Task {
   // dropped from the storages), and `commitState` is the commit-phase machine mirroring
   // the volume's one.
 
+  // The resolved backend processing options and the profile route they were resolved
+  // against: the routes are the subclass constants (the rclone and restic processing
+  // profiles differ), while the resolution and the modification plumbing is shared
+  protected List<String> processOptions;
+  protected Map<String, List<String>> processRoute;
+
   // The transient in-memory marker of the processing in progress: guards the re-entrancy
   // (a task dispatched while its previous run is still going). Deliberately not persisted -
   // the generation/intact mechanism already encodes the processing needs and the backend
@@ -220,6 +226,48 @@ public abstract class Task {
     return source.isIntact() && destination.isIntact();
   }
 
+  /// Whether the task keeps a secret within the vault providers (the keyring advisory
+  /// gating). The restic tasks keep the repository password; the encrypted rclone tasks
+  /// keep the crypt password pair.
+  public boolean usesVault() {
+    return false;
+  }
+
+  /// Whether the task supports the crypt encryption configuration (and the password
+  /// acquisition at the creation time).
+  public boolean supportsEncryption() {
+    return false;
+  }
+
+  /// Configure the encryption mode on the task (the polymorphic slot the frontends
+  /// reach through the static Task type): the mode picks between the encrypt and the
+  /// decrypt wiring. Raises [BitferryError] on the tasks not supporting the encryption.
+  public Task setEncryption(String mode, String password, String password2, List<String> options, boolean keyring) {
+    throw new BitferryError("encryption is supported for the rclone tasks only");
+  }
+
+  /// Whether the task accepts the include filters (the backup tasks filter by
+  /// exclusion only — the include filters would be silently ignored by restic).
+  public boolean acceptsIncludeFilters() {
+    return true;
+  }
+
+  /// Whether the task carries the retention/check/cadence policy options.
+  public boolean supportsRetentionPolicy() {
+    return false;
+  }
+
+  /// Whether the repository password can be rotated on the existing task.
+  public boolean supportsPasswordRotation() {
+    return false;
+  }
+
+  /// Apply the resolved policy options (the retention, the checking and the cadence
+  /// specifications; null entries are skipped). The no-op default: only the tasks
+  /// carrying the policy options (the backup tasks) consume them.
+  public void applyPolicyOptions(String forget, String check, String serve) {
+  }
+
   public boolean refersVolume(String vtag) {
     return source.refersVolume(vtag) || destination.refersVolume(vtag);
   }
@@ -260,11 +308,22 @@ public abstract class Task {
     touch();
   }
 
+  /// Return the resolved backend processing options.
+  public List<String> processOptions() {
+    return processOptions == null ? List.of() : java.util.Collections.unmodifiableList(processOptions);
+  }
+
+  /// Re-resolve the backend processing options against the task's profile route.
+  public void setProcessOptions(String process) {
+    this.processOptions = optional(process, processRoute);
+    touch();
+  }
+
   /// Return the tags of the volumes the task refers to through its endpoints.
   public List<String> referredVolumes() {
     Set<String> vtags = new LinkedHashSet<>();
-    if (source instanceof VolumeEndpoint ve) vtags.add(ve.vtag());
-    if (destination instanceof VolumeEndpoint ve) vtags.add(ve.vtag());
+    source.volumeTag().ifPresent(vtags::add);
+    destination.volumeTag().ifPresent(vtags::add);
     return List.copyOf(vtags);
   }
 
@@ -373,20 +432,48 @@ public abstract class Task {
         Volume v = manager.volume(vtag);
         if (v != null) v.checkPresence();
       }
-      return manager.backendExecutor().serve(this, output);
+      return serveWith(manager.backendExecutor(), output);
     } finally {
       processing = false;
     }
   }
 
+  /// The tool dispatch: the concrete task hands itself to the executor's per-tool
+  /// slot (the double dispatch making the per-type executor overloads reachable
+  /// through the static Task type). The base reports the unsupported backend.
+  public boolean runWith(Executor executor, Consumer<String> output) {
+    String message = "unsupported task backend for task #" + tag + ": " + getClass().getName();
+    LOG.log(Level.ERROR, message);
+    if (output != null) output.accept(message);
+    return false;
+  }
+
+  /// The service dispatch mirroring [runWith].
+  public boolean serveWith(Executor executor, Consumer<String> output) {
+    String message = "unsupported backend for service of task #" + tag + ": " + getClass().getName();
+    LOG.log(Level.ERROR, message);
+    if (output != null) output.accept(message);
+    return false;
+  }
+
+  /// The command preview dispatch mirroring [runWith].
+  public List<List<String>> commandsWith(Executor executor) {
+    return List.of();
+  }
+
+  /// The service command preview dispatch mirroring [runWith].
+  public List<List<String>> serveCommandsWith(Executor executor) {
+    return List.of();
+  }
+
   /// Return the backend command lines about to execute for this task.
   public List<List<String>> commands() {
-    return manager.backendExecutor().commands(this);
+    return commandsWith(manager.backendExecutor());
   }
 
   /// Return the backend command lines about to execute for servicing this task.
   public List<List<String>> serveCommands() {
-    return manager.backendExecutor().serveCommands(this);
+    return serveCommandsWith(manager.backendExecutor());
   }
 
   /// Return the human-readable operation label used for descriptions and listings.

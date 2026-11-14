@@ -4,6 +4,7 @@ import bitferry.*;
 import bitferry.endpoint.*;
 import com.fasterxml.jackson.annotation.*;
 import java.time.*;
+import java.util.function.Consumer;
 import java.util.*;
 
 /// Latest snapshot restore (Restic).
@@ -51,19 +52,50 @@ public class Restore extends Restic {
     return OPERATION;
   }
 
+  /// The repository travels with the source endpoint.
+  @Override
+  public Endpoint repoEndpoint() {
+    return source;
+  }
+
+  /// The conformance dispatch: the override makes the call land on the executor's
+  /// restore slot (the static type of `this` decides the overload).
+  @Override
+  protected void conform() {
+    manager.backendExecutor().conform(this);
+  }
+
+  /// The restore tasks share the repository without owning the key.
+  @Override
+  public boolean mayRotateRepositoryKey() {
+    return false;
+  }
+
   /// Return the volume hosting the task's password vault: the volume of the destination
   /// directory (the unencrypted end of the restore task).
   /// Raises [BitferryError] if the destination endpoint resides outside Bitferry volumes.
   @Override
   public Volume vaultVolume() {
-    if (!(destination instanceof VolumeEndpoint destinationEndpoint)) throw new BitferryError("restore destination endpoint must reside within a Bitferry volume");
-    Volume volume = manager.volume(destinationEndpoint.vtag());
-    if (volume == null) throw new BitferryError("no volume #" + destinationEndpoint.vtag() + " is registered");
-    return volume;
+    return destination.requireVolume(manager, "restore destination endpoint must reside within a Bitferry volume");
   }
 
   @Override
-  public List<List<String>> commands() {
-    return manager.backendExecutor().commands(this);
+  public boolean runWith(Executor executor, Consumer<String> output) {
+    return executor.run(this, output);
+  }
+
+  @Override
+  public boolean serveWith(Executor executor, Consumer<String> output) {
+    return executor.serve(this, output);
+  }
+
+  @Override
+  public List<List<String>> commandsWith(Executor executor) {
+    return executor.commands(this);
+  }
+
+  @Override
+  public List<List<String>> serveCommandsWith(Executor executor) {
+    return executor.serveCommands(this);
   }
 }

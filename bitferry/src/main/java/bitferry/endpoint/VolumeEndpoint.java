@@ -4,6 +4,7 @@ import bitferry.*;
 import com.fasterxml.jackson.annotation.*;
 import java.io.File;
 import java.nio.file.*;
+import java.util.Optional;
 
 /// Path endpoint relative to a Bitferry volume matched by the volume's tag. The
 /// volume-relative path is kept in the universal '/'-separated form (regardless of
@@ -69,6 +70,18 @@ public final class VolumeEndpoint implements Endpoint {
   @Override
   public boolean refersVolume(String tag) {
     return vtag.equals(tag);
+  }
+
+  @Override
+  public Optional<String> volumeTag() {
+    return Optional.of(vtag);
+  }
+
+  @Override
+  public Volume requireVolume(Manager manager, String message) {
+    Volume volume = manager.volumes().get(vtag);
+    if (volume == null) throw new BitferryError("no volume #" + vtag + " is registered");
+    return volume;
   }
 
   @JsonIgnore

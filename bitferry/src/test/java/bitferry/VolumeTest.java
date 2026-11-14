@@ -77,7 +77,7 @@ class VolumeTest {
   }
 
   @Test
-  void simulationConsumesNoDurableBookkeeping() throws IOException {
+  void simulationConsumesNoDurableBookkeeping() throws IOException, InterruptedException {
     Manager manager = new Manager();
     manager.simulate = true;
     Volume volume = new Volume(manager, dir.resolve("volume"));
@@ -86,6 +86,9 @@ class VolumeTest {
     // The simulation leaves the write pending: a following real commit materializes it
     assertTrue(volume.isModified());
     java.time.OffsetDateTime simulated = volume.mtime();
+    // The microsecond-truncated mtimes: a clock step guarantees the real commit
+    // lands on a distinguishable timestamp on the fast machines
+    Thread.sleep(2);
     manager.simulate = false;
     manager.commit();
     assertTrue(Files.isRegularFile(dir.resolve("volume").resolve(Bitferry.STORAGE)));
