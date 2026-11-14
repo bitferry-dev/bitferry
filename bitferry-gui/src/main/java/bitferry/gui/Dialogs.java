@@ -55,7 +55,7 @@ final class Dialogs {
       Manager manager = context.manager();
       Volume volume = new Volume(manager, path);
       manager.commit();
-      logs.log("volume #" + volume.tag() + " created at " + volume.root());
+      logs.log("volume " + volume.tag() + " created at " + volume.root());
       context.fireModelChanged();
     }, logs);
   }
@@ -111,8 +111,8 @@ final class Dialogs {
     }
     TaskForm form = new TaskForm(context, task);
     Dialog<ButtonType> dialog = new Dialog<>();
-    dialog.setTitle("Modify task #" + task.tag());
-    dialog.setHeaderText("Modify task #" + task.tag() + " parameters");
+    dialog.setTitle("Modify task " + task.tag());
+    dialog.setHeaderText("Modify task " + task.tag() + " parameters");
     dialog.getDialogPane().getButtonTypes().setAll(ButtonType.OK, ButtonType.CANCEL);
     ((Button) dialog.getDialogPane().lookupButton(ButtonType.OK)).setText("Save");
     dialog.getDialogPane().setContent(form.pane());
@@ -152,7 +152,7 @@ final class Dialogs {
         Endpoint source = Endpoints.parse(manager, form.source());
         Endpoint destination = Endpoints.parse(manager, form.destination());
         Task existing = manager.findTask(source, destination);
-        if (existing != null) throw new BitferryError("task #" + existing.tag() + " already covers " + existing.describe());
+        if (existing != null) throw new BitferryError("task " + existing.tag() + " already covers " + existing.describe());
         List<String> include = patterns(form.include());
         List<String> exclude = patterns(form.exclude());
         String execute = form.execute();
@@ -175,7 +175,7 @@ final class Dialogs {
           throw new BitferryError("task does not belong to any registered volume; it cannot be persisted");
         }
         manager.commit();
-        logs.log("task #" + candidate.tag() + " created: " + candidate.describe());
+        logs.log("task " + candidate.tag() + " created: " + candidate.describe());
         if (keyring && candidate.usesVault()) {
           if (!KeyringVault.INSTANCE.available()) {
             logs.log("password kept in the volume vault (no usable OS keyring on the host)");
@@ -206,12 +206,12 @@ final class Dialogs {
       Manager manager = context.manager();
       try {
         Task current = manager.task(task.tag());
-        if (current == null) throw new BitferryError("task #" + task.tag() + " is no longer registered");
+        if (current == null) throw new BitferryError("task " + task.tag() + " is no longer registered");
 
         // Rotate repository password if entered (restic only)
         if (form.resticMode() && !form.password().isEmpty()) {
           manager.passwd((Restic) current, form.password());
-          logs.log("password updated for task #" + current.tag());
+          logs.log("password updated for task " + current.tag());
         }
 
         // Backend execution options (the resolution rides the task's profile route)
@@ -243,7 +243,7 @@ final class Dialogs {
         }
 
         manager.commit();
-        logs.log("task #" + current.tag() + " modified: " + current.describe());
+        logs.log("task " + current.tag() + " modified: " + current.describe());
         context.fireModelChanged();
       } catch (RuntimeException e) {
         logs.log("task modification failed: " + e.getMessage());
@@ -312,7 +312,7 @@ final class Dialogs {
     private record VolumeChoice(Volume volume) {
       @Override
       public String toString() {
-        return "#" + volume.tag() + "  —  " + volume.root();
+        return volume.tag() + "  —  " + volume.root();
       }
     }
 
@@ -633,7 +633,7 @@ final class Dialogs {
         if (volume == null) return;
         File start = java.nio.file.Files.isDirectory(volume.root())
           ? volume.root().toFile() : new File(System.getProperty("user.home"));
-        File chosen = browseDirectory(field, start, "Select the directory within volume #" + volume.tag());
+        File chosen = browseDirectory(field, start, "Select the directory within volume " + volume.tag());
         if (chosen == null) return;
         Path root = volume.root();
         Path path = chosen.toPath();

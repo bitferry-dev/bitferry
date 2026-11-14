@@ -394,7 +394,7 @@ public abstract class Task {
         return; // Task is RIP, do nothing
       }
     }
-    LOG.log(Level.INFO, () -> "task #" + tag + " committed");
+    LOG.log(Level.INFO, () -> "task " + tag + " committed");
   }
 
   /// Process the task by delegating the backend utility execution to the manager's
@@ -403,10 +403,10 @@ public abstract class Task {
   /// paths), and the processing-in-progress guard rejects the re-entrancy (the task
   /// dispatched while its previous run is still going). Return true on success.
   public boolean process(Consumer<String> output) {
-    if (processing) throw new BitferryError("task #" + tag + " is already being processed");
+    if (processing) throw new BitferryError("task " + tag + " is already being processed");
     processing = true;
     try {
-      LOG.log(Level.INFO, () -> "processing task #" + tag);
+      LOG.log(Level.INFO, () -> "processing task " + tag);
       for (String vtag : referredVolumes()) {
         Volume v = manager.volume(vtag);
         if (v != null) v.checkPresence();
@@ -424,10 +424,10 @@ public abstract class Task {
   /// The referred volumes are checked for presence, and the processing-in-progress guard
   /// rejects re-entrancy. Return true on success.
   public boolean serve(Consumer<String> output) {
-    if (processing) throw new BitferryError("task #" + tag + " is already being processed");
+    if (processing) throw new BitferryError("task " + tag + " is already being processed");
     processing = true;
     try {
-      LOG.log(Level.INFO, () -> "servicing task #" + tag);
+      LOG.log(Level.INFO, () -> "servicing task " + tag);
       for (String vtag : referredVolumes()) {
         Volume v = manager.volume(vtag);
         if (v != null) v.checkPresence();
@@ -442,7 +442,7 @@ public abstract class Task {
   /// slot (the double dispatch making the per-type executor overloads reachable
   /// through the static Task type). The base reports the unsupported backend.
   public boolean runWith(Executor executor, Consumer<String> output) {
-    String message = "unsupported task backend for task #" + tag + ": " + getClass().getName();
+    String message = "unsupported task backend for task " + tag + ": " + getClass().getName();
     LOG.log(Level.ERROR, message);
     if (output != null) output.accept(message);
     return false;
@@ -450,7 +450,7 @@ public abstract class Task {
 
   /// The service dispatch mirroring [runWith].
   public boolean serveWith(Executor executor, Consumer<String> output) {
-    String message = "unsupported backend for service of task #" + tag + ": " + getClass().getName();
+    String message = "unsupported backend for service of task " + tag + ": " + getClass().getName();
     LOG.log(Level.ERROR, message);
     if (output != null) output.accept(message);
     return false;

@@ -51,7 +51,7 @@ public final class Endpoints {
       List<Volume> es = new ArrayList<>();
       for (Volume v : manager.volumes().values()) if (v.isLive() && Tags.matches(part, v.tag())) es.add(v);
       if (es.isEmpty()) throw new BitferryError("no intact volume matching (partial) tag '" + part + "'");
-      if (es.size() > 1) throw new BitferryError("multiple volumes matching (partial) tag '" + part + "': " + String.join(", ", es.stream().map(v -> "#" + v.tag()).toList()));
+      if (es.size() > 1) throw new BitferryError("multiple volumes matching (partial) tag '" + part + "': " + String.join(", ", es.stream().map(v -> v.tag()).toList()));
       return new VolumeEndpoint(manager, es.getFirst().tag(), x.group("path"));
     }
     throw new BitferryError("invalid endpoint specifier '" + specifier + "'");

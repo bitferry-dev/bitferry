@@ -558,7 +558,7 @@ class CliTest {
     cmd.setOut(new PrintWriter(out));
     cmd.setErr(new PrintWriter(err));
     assertNotEquals(0, cmd.execute(creation));
-    assertTrue(err.toString().contains("task #" + tag + " already covers"), () -> "stderr: " + err.toString());
+    assertTrue(err.toString().contains("task " + tag + " already covers"), () -> "stderr: " + err.toString());
 
     // The re-creation succeeds once the covering task is deleted
     cmd = Main.createCommandLine();
@@ -844,7 +844,7 @@ class CliTest {
     assertTrue(output.contains("rclone sync"), () -> "expected rclone sync in: " + output);
     assertTrue(output.contains("+ *.txt"), () -> "expected + *.txt in: " + output);
     assertTrue(output.contains("- " + Bitferry.STORAGE), () -> "expected storage exclude in: " + output);
-    assertTrue(output.contains("# Task #" + ttag + ": synchronize"));
+    assertTrue(output.contains("# Task " + ttag + ": synchronize"));
     assertTrue(output.contains("Status:        ✓ intact"));
     assertTrue(output.contains("Backend:       rclone"));
     assertTrue(output.contains("Operation:     synchronize"));
@@ -1241,12 +1241,12 @@ class CliTest {
     assertEquals(0, cmd.execute("--path", volDir.toString(), "info", "task", ttag));
     String breakdown = out.toString();
 
-    assertTrue(breakdown.contains("# Task #" + ttag + ": encrypt+synchronize"));
+    assertTrue(breakdown.contains("# Task " + ttag + ": encrypt+synchronize"));
     assertTrue(breakdown.contains("Status:        ✓ intact"));
     assertTrue(breakdown.contains("Backend:       rclone"));
     assertTrue(breakdown.contains("Operation:     synchronize"));
     assertTrue(breakdown.contains("Encryption:    encrypt"));
-    assertTrue(breakdown.contains("Vault Volume:  #" + vtag));
+    assertTrue(breakdown.contains("Vault Volume:  " + vtag));
     assertTrue(breakdown.contains("# Commands"));
     assertTrue(breakdown.contains("Execute:"));
     assertTrue(breakdown.contains("Serve:"));
@@ -1290,12 +1290,12 @@ class CliTest {
     assertEquals(0, cmd.execute("--path", volDir.toString(), "info", "task", backupTag));
     String bBreakdown = out.toString();
 
-    assertTrue(bBreakdown.contains("# Task #" + backupTag + ": backup"));
+    assertTrue(bBreakdown.contains("# Task " + backupTag + ": backup"));
     assertTrue(bBreakdown.contains("Status:        ✓ intact"));
     assertTrue(bBreakdown.contains("Backend:       restic"));
     assertTrue(bBreakdown.contains("Operation:     backup"));
     assertTrue(bBreakdown.contains("Repository:"));
-    assertTrue(bBreakdown.contains("Vault Volume:  #" + vtag));
+    assertTrue(bBreakdown.contains("Vault Volume:  " + vtag));
     assertTrue(bBreakdown.contains("# Service & Retention"));
     assertTrue(bBreakdown.contains("Cadence:       7d,5 (profile: @default)"));
     assertTrue(bBreakdown.contains("Status:        due"));
@@ -1336,12 +1336,12 @@ class CliTest {
     assertEquals(0, cmd.execute("--path", volDir.toString(), "info", "task", restoreTag));
     String rBreakdown = out.toString();
 
-    assertTrue(rBreakdown.contains("# Task #" + restoreTag + ": restore"));
+    assertTrue(rBreakdown.contains("# Task " + restoreTag + ": restore"));
     assertTrue(rBreakdown.contains("Backend:       restic"));
     assertTrue(rBreakdown.contains("Operation:     restore"));
     assertTrue(rBreakdown.contains("Repository:"));
     assertTrue(rBreakdown.contains("Target:"));
-    assertTrue(rBreakdown.contains("Vault Volume:  #" + vtag));
+    assertTrue(rBreakdown.contains("Vault Volume:  " + vtag));
     assertTrue(rBreakdown.contains("# Commands"));
     assertTrue(rBreakdown.contains("Execute:"));
     assertTrue(rBreakdown.contains("restic restore"));
@@ -1615,7 +1615,7 @@ class CliTest {
     cmd.setErr(new PrintWriter(err));
     code = cmd.execute("--path", volDir.toString(), "m", "t", task.tag());
     assertNotEquals(0, code);
-    assertTrue(err.toString().contains("no modifications specified for task #" + task.tag()));
+    assertTrue(err.toString().contains("no modifications specified for task " + task.tag()));
 
     // 2. Conflicting flags
     cmd = Main.createCommandLine();

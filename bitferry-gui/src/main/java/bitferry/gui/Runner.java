@@ -105,7 +105,7 @@ public final class Runner {
           index++;
           int at = index;
           Platform.runLater(() -> listener.taskStarted(at, total, task.tag()));
-          output.accept(String.format("[%d/%d] #%s  %s", at, total, task.tag(), task.describe()));
+          output.accept(String.format("[%d/%d] %s  %s", at, total, task.tag(), task.describe()));
           boolean okTask;
           try {
             okTask = serve ? task.serve(output) : task.process(output);

@@ -61,7 +61,7 @@ public final class KeyringVault implements Vault {
     String key = KEY_PREFIX + task.tag();
     store.delete(key);
     if (!store.add(key, new StoredCredential(USER, token.toCharArray()))) {
-      throw new BitferryError("keyring storage refused the token of task #" + task.tag());
+      throw new BitferryError("keyring storage refused the token of task " + task.tag());
     }
   }
 

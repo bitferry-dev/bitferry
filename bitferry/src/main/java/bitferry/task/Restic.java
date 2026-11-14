@@ -116,7 +116,7 @@ public abstract class Restic extends Task {
   /// and the key rotations keep the storage kind), falling back to the creation-time
   /// selection; the stale entries in the other provider are dropped.
   private void setPassword(String password) {
-    if (password == null || password.isEmpty()) throw new BitferryError("password must be specified for task #" + tag);
+    if (password == null || password.isEmpty()) throw new BitferryError("password must be specified for task " + tag);
     Vault target = holding != null ? holding : vault;
     target.storeToken(this, Passwords.encodePasswords(password, null));
     if (target != Vault.volume()) Vault.volume().deleteToken(this);
@@ -130,7 +130,7 @@ public abstract class Restic extends Task {
   public String password() {
     if (!cached) {
       String token = retrieveToken();
-      if (token == null) throw new BitferryError("no stored password token for task #" + tag);
+      if (token == null) throw new BitferryError("no stored password token for task " + tag);
       cachedPassword = Passwords.decodeToken(token)[0];
       cached = true;
     }

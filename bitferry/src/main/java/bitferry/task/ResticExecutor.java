@@ -62,19 +62,19 @@ final class ResticExecutor {
   void format(Backup backup) {
     Manager manager = backup.manager();
     if (manager.simulate) {
-      LOG.log(Level.INFO, () -> "simulated repository initialization for task #" + backup.tag());
+      LOG.log(Level.INFO, () -> "simulated repository initialization for task " + backup.tag());
       return;
     }
     String repo = backup.destination().processOpts();
     if (Boolean.TRUE.equals(backup.formatMode())) {
-      LOG.log(Level.INFO, () -> "wiping existing repository '" + repo + "' for task #" + backup.tag());
+      LOG.log(Level.INFO, () -> "wiping existing repository '" + repo + "' for task " + backup.tag());
       wipeRepository(Path.of(repo));
     } else if (hasRepository(repo)) {
       probeRepository(backup, repo);
       LOG.log(Level.INFO, () -> "existing repository opened; attaching implicitly");
       return;
     }
-    LOG.log(Level.INFO, () -> "initializing repository '" + repo + "' for task #" + backup.tag());
+    LOG.log(Level.INFO, () -> "initializing repository '" + repo + "' for task " + backup.tag());
     List<String> cmd = new ArrayList<>();
     cmd.add(resolveExecutable());
     cmd.add("init");
@@ -86,11 +86,11 @@ final class ResticExecutor {
       ExecutorSupport.echoCommandLine(manager, cmd, null);
       int exitCode = commandExecutor.execute(cmd, null, backup.processEnvironment(), null);
       if (exitCode != 0) {
-        throw new BitferryError("repository initialization failure for task #" + backup.tag() + " (exit code " + exitCode + ")");
+        throw new BitferryError("repository initialization failure for task " + backup.tag() + " (exit code " + exitCode + ")");
       }
     } catch (IOException | InterruptedException e) {
       if (e instanceof InterruptedException) Thread.currentThread().interrupt();
-      throw new BitferryError("repository initialization failure for task #" + backup.tag() + ": " + e.getMessage(), e);
+      throw new BitferryError("repository initialization failure for task " + backup.tag() + ": " + e.getMessage(), e);
     }
   }
 
@@ -115,7 +115,7 @@ final class ResticExecutor {
       restic.markConformed();
     } catch (IOException | InterruptedException e) {
       if (e instanceof InterruptedException) Thread.currentThread().interrupt();
-      throw new BitferryError("repository probe failure for task #" + restic.tag() + ": " + e.getMessage(), e);
+      throw new BitferryError("repository probe failure for task " + restic.tag() + ": " + e.getMessage(), e);
     }
   }
 
@@ -134,7 +134,7 @@ final class ResticExecutor {
     }
     Manager manager = restic.manager();
     if (manager.simulate) {
-      LOG.log(Level.INFO, () -> "simulated password change for task #" + restic.tag());
+      LOG.log(Level.INFO, () -> "simulated password change for task " + restic.tag());
       return;
     }
     boolean alreadyMatches = testPassword(manager, repo, newPassword);
@@ -144,7 +144,7 @@ final class ResticExecutor {
       }
       boolean currentValid = testPassword(manager, repo, restic.password());
       if (!currentValid) {
-        throw new BitferryError("current stored password for task #" + restic.tag() + " is not accepted by the repository at '" + repo + "'");
+        throw new BitferryError("current stored password for task " + restic.tag() + " is not accepted by the repository at '" + repo + "'");
       }
       rotateKey(manager, repo, restic.password(), newPassword);
     }
@@ -456,13 +456,13 @@ final class ResticExecutor {
     if (backup.cadence() != null) {
       RepoState state = RepoState.load(repoDir);
       if (state.isDue(backup.cadence())) {
-        LOG.log(Level.INFO, () -> "serve cadence triggered for task #" + backup.tag() + "; running service before backup");
+        LOG.log(Level.INFO, () -> "serve cadence triggered for task " + backup.tag() + "; running service before backup");
         if (output != null) {
-          output.accept("serve cadence triggered for task #" + backup.tag() + "; running service before backup");
+          output.accept("serve cadence triggered for task " + backup.tag() + "; running service before backup");
         }
         boolean served = serveBackup(backup, output);
         if (!served) {
-          String msg = "service failed before backup for task #" + backup.tag() + "; aborting backup";
+          String msg = "service failed before backup for task " + backup.tag() + "; aborting backup";
           LOG.log(Level.ERROR, () -> msg);
           if (output != null) output.accept(msg);
           return false;
@@ -505,7 +505,7 @@ final class ResticExecutor {
     }
     boolean checkOk = ExecutorSupport.execute(commandExecutor, manager, checkCmd, null, environment, backup.tag(), output);
     if (!checkOk) {
-      String msg = "service aborted for task #" + backup.tag() + ": repository check failed";
+      String msg = "service aborted for task " + backup.tag() + ": repository check failed";
       LOG.log(Level.ERROR, () -> msg);
       if (output != null) output.accept(msg);
       return false;

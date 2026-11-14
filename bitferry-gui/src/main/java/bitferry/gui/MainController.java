@@ -158,7 +158,7 @@ public final class MainController {
 
       @Override
       public void taskStarted(int index, int total, String tag) {
-        status.setText(doing + " task " + index + "/" + total + " (#" + tag + ")...");
+        status.setText(doing + " task " + index + "/" + total + " (" + tag + ")...");
         progress.setProgress(-1);
       }
 

@@ -23,7 +23,7 @@ public final class CliUtils {
   public static void ensureUniqueTask(Manager manager, Endpoint source, Endpoint destination) {
     Task existing = manager.findTask(source, destination);
     if (existing != null) {
-      throw new BitferryError("task #" + existing.tag() + " already covers " + existing.describe() + "; delete it first or specify different endpoints");
+      throw new BitferryError("task " + existing.tag() + " already covers " + existing.describe() + "; delete it first or specify different endpoints");
     }
   }
 

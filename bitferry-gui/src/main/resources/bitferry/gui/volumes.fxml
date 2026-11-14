@@ -32,8 +32,7 @@
       <columns>
         <TableColumn fx:id="tagCol" text="Tag" prefWidth="90"/>
         <TableColumn fx:id="rootCol" text="Root" prefWidth="380"/>
-        <TableColumn fx:id="stateCol" text="State" prefWidth="90"/>
-        <TableColumn fx:id="tasksCol" text="Tasks (intact/stale)" prefWidth="160"/>
+        <TableColumn fx:id="tasksCol" text="Tasks" prefWidth="160"/>
         <TableColumn fx:id="modifiedCol" text="Storage" prefWidth="110"/>
       </columns>
       <columnResizePolicy>

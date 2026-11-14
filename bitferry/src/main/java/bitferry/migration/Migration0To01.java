@@ -134,7 +134,7 @@ public final class Migration0To01 implements StorageMigration {
         task.set("destination", migrateEndpoint(taskData.get("directory")));
       }
     } else {
-      throw new BitferryError("invalid task descriptor for task #" + tag + ": missing operation");
+      throw new BitferryError("invalid task descriptor for task " + tag + ": missing operation");
     }
 
     if (!task.has("backend")) {

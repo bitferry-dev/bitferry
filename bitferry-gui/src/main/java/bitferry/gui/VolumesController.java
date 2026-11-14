@@ -19,15 +19,13 @@ public final class VolumesController {
     final Volume volume;
     final StringProperty tag = new SimpleStringProperty();
     final StringProperty root = new SimpleStringProperty();
-    final StringProperty state = new SimpleStringProperty();
     final StringProperty tasks = new SimpleStringProperty();
     final StringProperty modified = new SimpleStringProperty();
 
     Row(Volume volume) {
       this.volume = volume;
-      tag.set("#" + volume.tag());
+      tag.set(volume.tag());
       root.set(volume.root().toString());
-      state.set(volume.isLive() ? "present" : "removed");
       Map<String, Task> live = volume.liveTasks();
       long intact = live.values().stream().filter(Task::isIntact).count();
       tasks.set(intact + " intact / " + (live.size() - intact) + " stale");
@@ -43,9 +41,6 @@ public final class VolumesController {
 
   @FXML
   private TableColumn<Row, String> rootCol;
-
-  @FXML
-  private TableColumn<Row, String> stateCol;
 
   @FXML
   private TableColumn<Row, String> tasksCol;
@@ -73,7 +68,6 @@ public final class VolumesController {
   private void initialize() {
     tagCol.setCellValueFactory(data -> data.getValue().tag);
     rootCol.setCellValueFactory(data -> data.getValue().root);
-    stateCol.setCellValueFactory(data -> data.getValue().state);
     tasksCol.setCellValueFactory(data -> data.getValue().tasks);
     modifiedCol.setCellValueFactory(data -> data.getValue().modified);
     table.getSelectionModel().selectedItemProperty().addListener((x, was, now) -> updateButtons());
@@ -136,7 +130,7 @@ public final class VolumesController {
     if (row == null) return;
     Volume volume = row.volume;
     String title = "Delete volume";
-    String text = "Delete volume #" + volume.tag() + " at\n  " + volume.root()
+    String text = "Delete volume " + volume.tag() + " at\n  " + volume.root()
       + "\n(the directory contents are kept)?"
       + "\n\nThe referring task deletion tombstones propagate to the other storages.";
     Dialogs.confirmAndRun(context, title, text, () -> {
@@ -144,10 +138,10 @@ public final class VolumesController {
       // belong to a manager swapped out by a concurrent reload
       Manager manager = context.manager();
       Volume current = manager.volume(volume.tag());
-      if (current == null) throw new BitferryError("volume #" + volume.tag() + " is no longer registered");
+      if (current == null) throw new BitferryError("volume " + volume.tag() + " is no longer registered");
       current.delete();
       manager.commit();
-      logs.log("volume #" + current.tag() + " deleted");
+      logs.log("volume " + current.tag() + " deleted");
       context.fireModelChanged();
     }, logs);
   }

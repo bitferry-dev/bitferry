@@ -89,7 +89,7 @@ public class CreateBackupCommand implements Callable<Integer>, HasCommonOptions 
     Backup task = new Backup(m, src, repo, password, format, execute, f, c, sCadence, List.of(), exc, keyring);
     CliUtils.noteKeyringStorage(spec, task, keyring);
     if (m.volumes().values().stream().noneMatch(v -> task.refersVolume(v.tag()))) {
-      throw new BitferryError("task #" + task.tag() + " does not belong to any registered volume; it cannot be persisted");
+      throw new BitferryError("task " + task.tag() + " does not belong to any registered volume; it cannot be persisted");
     }
     m.commit();
     return 0;

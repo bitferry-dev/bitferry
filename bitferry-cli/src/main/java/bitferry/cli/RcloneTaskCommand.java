@@ -111,7 +111,7 @@ public abstract class RcloneTaskCommand implements Callable<Integer>, HasCommonO
       CliUtils.noteKeyringStorage(spec, task, keyring);
     }
     if (m.volumes().values().stream().noneMatch(v -> task.refersVolume(v.tag()))) {
-      throw new BitferryError("task #" + task.tag() + " does not belong to any registered volume; it cannot be persisted");
+      throw new BitferryError("task " + task.tag() + " does not belong to any registered volume; it cannot be persisted");
     }
     m.commit();
     return 0;

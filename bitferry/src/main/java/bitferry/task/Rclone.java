@@ -246,7 +246,7 @@ public abstract class Rclone extends Task {
     /// keep the storage kind), falling back to the creation-time selection; the stale
     /// entries in the other provider are dropped.
     void storePasswords(String password, String password2) {
-      if (password == null || password.isEmpty()) throw new BitferryError("password must be specified for task #" + task().tag());
+      if (password == null || password.isEmpty()) throw new BitferryError("password must be specified for task " + task().tag());
       Vault target = holding != null ? holding : vault;
       target.storeToken(task(), Passwords.encodePasswords(password, password2));
       if (target != Vault.volume()) Vault.volume().deleteToken(task());
@@ -273,7 +273,7 @@ public abstract class Rclone extends Task {
     private void cache() {
       if (!cached) {
         String token = retrieveToken();
-        if (token == null) throw new BitferryError("no stored password token for task #" + task().tag());
+        if (token == null) throw new BitferryError("no stored password token for task " + task().tag());
         String[] passwords = Passwords.decodeToken(token);
         cachedPassword = passwords[0];
         cachedPassword2 = passwords[1];

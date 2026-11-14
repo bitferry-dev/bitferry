@@ -101,7 +101,7 @@ public class Manager {
       try {
         return v.endpoint(canonical);
       } catch (BitferryError e) {
-        LOG.log(Level.DEBUG, () -> "path '" + canonical + "' can not be resolved against volume #" + v.tag());
+        LOG.log(Level.DEBUG, () -> "path '" + canonical + "' can not be resolved against volume " + v.tag());
       }
     }
     throw new BitferryError("failed to resolve path '" + canonical + "' against any registered volumes in " + this);
@@ -114,13 +114,13 @@ public class Manager {
     synchronized (registryLock) {
       Volume existing = volumes.get(volume.tag());
       if (existing == null) {
-        LOG.log(Level.INFO, () -> "volume #" + volume.tag() + " registered in " + this);
+        LOG.log(Level.INFO, () -> "volume " + volume.tag() + " registered in " + this);
       } else if (existing.mtime().isBefore(volume.mtime())
         || (existing.mtime().isEqual(volume.mtime()) && volume.pendingDeletion() && !existing.pendingDeletion())) {
         volumes.remove(volume.tag());
-        LOG.log(Level.INFO, () -> "replaced already registered volume #" + volume.tag() + " with the one with newer timestamp");
+        LOG.log(Level.INFO, () -> "replaced already registered volume " + volume.tag() + " with the one with newer timestamp");
       } else {
-        LOG.log(Level.INFO, () -> "kept already registered volume #" + volume.tag() + " with newer timestamp");
+        LOG.log(Level.INFO, () -> "kept already registered volume " + volume.tag() + " with newer timestamp");
         return;
       }
       volumes.put(volume.tag(), volume);
@@ -136,13 +136,13 @@ public class Manager {
     synchronized (registryLock) {
       Task existing = tasks.get(task.tag());
       if (existing == null) {
-        LOG.log(Level.INFO, () -> "task #" + task.tag() + " registered in " + this);
+        LOG.log(Level.INFO, () -> "task " + task.tag() + " registered in " + this);
       } else if (existing.mtime().isBefore(task.mtime())
         || (existing.mtime().isEqual(task.mtime()) && task.isDeleted() && !existing.isDeleted())) {
         tasks.remove(task.tag());
-        LOG.log(Level.INFO, () -> "replaced already registered task #" + task.tag() + " with the one with newer timestamp");
+        LOG.log(Level.INFO, () -> "replaced already registered task " + task.tag() + " with the one with newer timestamp");
       } else {
-        LOG.log(Level.INFO, () -> "kept already registered task #" + task.tag() + " with newer timestamp");
+        LOG.log(Level.INFO, () -> "kept already registered task " + task.tag() + " with newer timestamp");
         return;
       }
       tasks.put(task.tag(), task);
@@ -235,7 +235,7 @@ public class Manager {
       boolean allPresent = task.referredVolumes().stream().allMatch(vtag -> volume(vtag) != null);
       if (allPresent) {
         task.collect();
-        LOG.log(Level.INFO, () -> "collected the deleted task #" + task.tag());
+        LOG.log(Level.INFO, () -> "collected the deleted task " + task.tag());
       }
     }
   }
@@ -348,7 +348,7 @@ public class Manager {
       try {
         volume.commit();
       } catch (BitferryError e) {
-        LOG.log(Level.ERROR, () -> "commit failure(s) for volume #" + volume.tag() + ": " + e.getMessage());
+        LOG.log(Level.ERROR, () -> "commit failure(s) for volume " + volume.tag() + ": " + e.getMessage());
         problems.add(e.getMessage());
       }
     }
@@ -366,7 +366,7 @@ public class Manager {
       try {
         outcome = t.process(output) && outcome;
       } catch (BitferryError e) {
-        LOG.log(Level.ERROR, () -> "task #" + t.tag() + " processing failure: " + e.getMessage());
+        LOG.log(Level.ERROR, () -> "task " + t.tag() + " processing failure: " + e.getMessage());
         outcome = false;
       }
     }
@@ -403,7 +403,7 @@ public class Manager {
       try {
         outcome = t.serve(output) && outcome;
       } catch (BitferryError e) {
-        LOG.log(Level.ERROR, () -> "task #" + t.tag() + " servicing failure: " + e.getMessage());
+        LOG.log(Level.ERROR, () -> "task " + t.tag() + " servicing failure: " + e.getMessage());
         outcome = false;
       }
     }

@@ -51,7 +51,7 @@ public class ExecuteCommand implements Callable<Integer>, HasCommonOptions {
     for (Task t : tasks.values()) {
       i++;
       if (!m.quiet) {
-        String line = String.format("@|bold [%d/%d]|@ @|cyan #%s|@  %s", i, n, t.tag(), CliUtils.formatTask(t));
+        String line = String.format("@|bold [%d/%d]|@ @|cyan %s|@  %s", i, n, t.tag(), CliUtils.formatTask(t));
         out.println(Ansi.AUTO.string(line));
       }
       boolean ok = t.process(null);

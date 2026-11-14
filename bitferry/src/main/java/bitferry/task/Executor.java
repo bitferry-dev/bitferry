@@ -175,7 +175,7 @@ public interface Executor {
 
     @Override
     public boolean run(Task task, Consumer<String> output) {
-      String message = "backend execution is not implemented for task #" + task.tag() + "; the complete backend port is upcoming";
+      String message = "backend execution is not implemented for task " + task.tag() + "; the complete backend port is upcoming";
       LOG.log(Level.WARNING, () -> message);
       if (output != null) output.accept(message);
       return false;

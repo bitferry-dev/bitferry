@@ -80,7 +80,7 @@ public final class VolumeEndpoint implements Endpoint {
   @Override
   public Volume requireVolume(Manager manager, String message) {
     Volume volume = manager.volumes().get(vtag);
-    if (volume == null) throw new BitferryError("no volume #" + vtag + " is registered");
+    if (volume == null) throw new BitferryError("no volume " + vtag + " is registered");
     return volume;
   }
 
@@ -98,7 +98,7 @@ public final class VolumeEndpoint implements Endpoint {
 
   private Volume volume() {
     Volume volume = manager.volumes().get(vtag);
-    if (volume == null) throw new BitferryError("no volume #" + vtag + " is registered");
+    if (volume == null) throw new BitferryError("no volume " + vtag + " is registered");
     return volume;
   }
 }

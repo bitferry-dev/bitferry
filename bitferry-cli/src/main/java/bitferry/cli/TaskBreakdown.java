@@ -22,7 +22,7 @@ public final class TaskBreakdown {
     StringBuilder sb = new StringBuilder();
 
     // 1. Header & Identity
-    sb.append(Ansi.AUTO.string(String.format("@|bold # Task #%s: %s|@%n", task.tag(), task.displayOperation())));
+    sb.append(Ansi.AUTO.string(String.format("@|bold # Task %s: %s|@%n", task.tag(), task.displayOperation())));
 
     appendProperty(sb, "Status:", formatStatus(task));
     appendProperty(sb, "Backend:", task.backend());
@@ -99,7 +99,7 @@ public final class TaskBreakdown {
     try {
       Volume v = task.vaultVolume();
       if (v != null) {
-        return Ansi.AUTO.string(String.format("@|cyan #%s|@ (%s)", v.tag(), v.root()));
+        return Ansi.AUTO.string(String.format("@|cyan %s|@ (%s)", v.tag(), v.root()));
       }
     } catch (Exception e) {
       String tag = null;

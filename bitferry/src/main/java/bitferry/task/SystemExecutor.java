@@ -35,14 +35,14 @@ public class SystemExecutor implements Executor {
 
   @Override
   public boolean run(Task task, Consumer<String> output) {
-    LOG.log(Level.INFO, () -> "processing task #" + task.tag());
+    LOG.log(Level.INFO, () -> "processing task " + task.tag());
     // The double dispatch: the task lands on its per-tool slot
     return task.runWith(this, output);
   }
 
   @Override
   public boolean serve(Task task, Consumer<String> output) {
-    LOG.log(Level.INFO, () -> "servicing task #" + task.tag());
+    LOG.log(Level.INFO, () -> "servicing task " + task.tag());
     return task.serveWith(this, output);
   }
 

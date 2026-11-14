@@ -92,7 +92,7 @@ public class ModifyTaskCommand implements Callable<Integer>, HasCommonOptions {
     boolean hasExecute = execute != null;
 
     if (!password && !hasForget && !hasCheck && !hasServe && !hasInclude && !hasExclude && !hasExecute) {
-      throw new BitferryError("no modifications specified for task #" + tag);
+      throw new BitferryError("no modifications specified for task " + tag);
     }
 
     Manager m = CliUtils.restoreManager(opts);
@@ -143,7 +143,7 @@ public class ModifyTaskCommand implements Callable<Integer>, HasCommonOptions {
 
     m.commit();
     if (!m.quiet) {
-      out.println(Ansi.AUTO.string("@|green Task #" + task.tag() + " modified successfully.|@"));
+      out.println(Ansi.AUTO.string("@|green Task " + task.tag() + " modified successfully.|@"));
     }
     return 0;
   }

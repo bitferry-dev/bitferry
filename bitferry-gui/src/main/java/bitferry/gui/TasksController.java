@@ -29,7 +29,7 @@ public final class TasksController {
 
     Row(Task task) {
       this.task = task;
-      tag.set("#" + task.tag());
+      tag.set(task.tag());
       operation.set(task.displayOperation());
       source.set(task.source().describe());
       destination.set(task.destination().describe());
@@ -38,7 +38,7 @@ public final class TasksController {
       statusColor.set(intact ? Color.web("#2e7d32") : Color.web("#c62828"));
       try {
         Volume volume = task.vaultVolume();
-        vault.set(volume.isLive() ? "#" + volume.tag() : "#" + volume.tag() + " (missing)");
+        vault.set(volume.isLive() ? volume.tag() : volume.tag() + " (missing)");
       } catch (BitferryError e) {
         vault.set("—");
       }
@@ -210,17 +210,17 @@ public final class TasksController {
     if (row == null) return;
     Task task = row.task;
     Dialogs.confirmAndRun(context, "Delete task",
-      "Delete task #" + task.tag() + ":\n  " + task.describe() + "?\n\n"
+      "Delete task " + task.tag() + ":\n  " + task.describe() + "?\n\n"
         + "The deletion tombstone propagates to all the referring storages; the task repository is not removed.",
       () -> {
         // Re-resolve the task on the current manager: the captured row's task may
         // belong to a manager swapped out by a concurrent reload
         Manager manager = context.manager();
         Task current = manager.task(task.tag());
-        if (current == null) throw new BitferryError("task #" + task.tag() + " is no longer registered");
+        if (current == null) throw new BitferryError("task " + task.tag() + " is no longer registered");
         current.delete();
         manager.commit();
-        logs.log("task #" + current.tag() + " deleted");
+        logs.log("task " + current.tag() + " deleted");
         context.fireModelChanged();
       }, logs);
   }

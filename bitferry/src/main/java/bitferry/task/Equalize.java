@@ -97,7 +97,7 @@ public class Equalize extends Rclone {
     if (!resynced()) {
       resynced = true;
       touch();
-      LOG.log(Level.INFO, () -> "bisync baseline established for task #" + tag + "; the following runs propagate the deletions");
+      LOG.log(Level.INFO, () -> "bisync baseline established for task " + tag + "; the following runs propagate the deletions");
     }
   }
 
