@@ -22,6 +22,9 @@ final class RcloneExecutor {
   }
 
   /// Conformance test of the candidate encryption options against existing backend data.
+  /// The probe is limited to the top-level entries (the crypt remote encrypts the
+  /// directory names too, so the top level suffices for the password and the filename
+  /// encoding validation) keeping the large existing trees cheap to inspect.
   void conform(Rclone rclone) {
     if (rclone.encryption() instanceof Rclone.NoCrypt || rclone.encryption() == null) {
       return;
@@ -40,10 +43,14 @@ final class RcloneExecutor {
       return;
     }
 
+    // The probe is depth-limited to the top level on both sides (this walk and the
+    // rclone listing below): the crypt remote encrypts the directory names too, so any
+    // non-storage top-level entry exercises the filename decryption, and the symmetric
+    // limitation keeps the pass-through equality check below meaningful. The full-tree
+    // walk is unnecessary for the validation and prohibitive on the large existing trees.
     Set<String> rawPaths = new HashSet<>();
-    try (Stream<Path> stream = Files.walk(encryptedDir)) {
+    try (Stream<Path> stream = Files.list(encryptedDir)) {
       for (Path p : stream.toList()) {
-        if (p.equals(encryptedDir)) continue;
         Path rel = encryptedDir.relativize(p);
         if (isStoragePath(rel)) continue;
         rawPaths.add(rel.toString().replace('\\', '/'));
@@ -60,6 +67,10 @@ final class RcloneExecutor {
     cmd.add(ExecutorSupport.resolveExecutable("rclone"));
     cmd.add("lsjson");
     cmd.add("-R");
+    // The listing is depth-limited symmetrically with the raw walk above (the top level):
+    // an asymmetric limitation would make the pass-through equality check below meaningless
+    cmd.add("--max-depth");
+    cmd.add("1");
     cmd.add("--config");
     cmd.add(ExecutorSupport.isWindows() ? "NUL" : "/dev/null");
     cmd.add("--filter");

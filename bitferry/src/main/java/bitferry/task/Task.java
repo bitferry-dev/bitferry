@@ -90,10 +90,12 @@ public abstract class Task {
   }
 
   /// Constructor for restoring an existing task from the descriptor's common fields;
-  /// serves the concrete subclasses' Jackson creators. The task is registered with the
-  /// manager right upon the restoration mirroring the reference implementation.
-  // See the comment on the new task constructor for the deliberate this-escape rationale
-  @SuppressWarnings("this-escape")
+  /// serves the concrete subclasses' Jackson creators. The registration is deferred to
+  /// [restore]: it rides the fully built task, not the constructor — the Jackson field
+  /// injection (the deletion marker, the operation state) completes only after the
+  /// creators return, and the registration's conflict resolution (the tombstone winning
+  /// the equal-timestamp ties) must observe it. The deferral also keeps the tasks failing
+  /// their creator validation (e.g. the unsupported backend) unregistered.
   protected Task(Manager manager, Endpoint source, Endpoint destination, String tag, OffsetDateTime modified, List<String> include, List<String> exclude) {
     if (manager == null || source == null || destination == null || tag == null || modified == null) throw new BitferryError("invalid task descriptor");
     this.manager = manager;
@@ -104,16 +106,20 @@ public abstract class Task {
     this.exclude = exclude == null ? new ArrayList<>() : new ArrayList<>(exclude);
     this.mtime = modified;
     this.commitState = CommitState.LIVE;
-    manager.registerTask(this);
   }
 
   /// Restore a task from the storage descriptor node dispatching over the
-  /// 'operation' discriminator property. The manager is injected into the creator.
+  /// 'operation' discriminator property. The manager is injected into the creator;
+  /// the fully built task is registered upon the successful restoration.
   public static Task restore(Manager manager, JsonNode data) {
     try {
-      return Storage.mapper().readerFor(Task.class)
+      Task task = Storage.mapper().readerFor(Task.class)
         .with(new InjectableValues.Std(Map.of("manager", manager)))
         .readValue(data);
+      // The registration rides the fully built task (see the restore constructor):
+      // the conflict resolution must observe the post-construction injected state
+      manager.registerTask(task);
+      return task;
     } catch (RuntimeException e) {
       throw BitferryError.resolve(e, "invalid task descriptor: " + e.getMessage());
     }
@@ -286,6 +292,12 @@ public abstract class Task {
   /// Perform the encryption and backend target conformance validation against existing data.
   protected void conform() {}
 
+  /// Post-processing bookkeeping hook invoked after a successful real (non-simulated) run.
+  /// The runs are otherwise stateless: the hook lets the operations record their durable
+  /// outcomes (e.g. the equalize bisync baseline marker) for the following commit
+  /// materializing them into the storages.
+  protected void processed() {}
+
   /// Commit the task performing the pending FSM transitions.
   public void commit() {
     loop:
@@ -340,7 +352,10 @@ public abstract class Task {
         Volume v = manager.volume(vtag);
         if (v != null) v.checkPresence();
       }
-      return manager.backendExecutor().run(this, output);
+      boolean success = manager.backendExecutor().run(this, output);
+      // The bookkeeping rides the real successful runs only: the simulated runs change nothing
+      if (success && !manager.simulate) processed();
+      return success;
     } finally {
       processing = false;
     }

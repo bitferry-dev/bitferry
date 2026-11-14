@@ -7,6 +7,7 @@ import java.util.*;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.io.*;
 import tools.jackson.databind.*;
+import tools.jackson.databind.node.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 class TaskTest {
@@ -237,6 +238,71 @@ class TaskTest {
 
     copy.setProcessOptions("-");
     assertEquals(List.of(), copy.processOptions());
+  }
+
+  @Test
+  void equalizeResyncsOnlyUntilTheBaselineIsEstablished() {
+    Equalize task = new Equalize(manager, source(), destination(), null, List.of(), List.of());
+    // The fresh task carries the initial baseline rebuild (--resync)
+    assertFalse(task.resynced());
+    assertEquals(List.of("bisync", "--resync"), task.operationArgs());
+    assertNull(task.serialize().get("resynced"));
+
+    // The failed run leaves the baseline pending
+    manager.backendExecutor(Executor.stub());
+    assertFalse(task.process(null));
+    assertFalse(task.resynced());
+    assertEquals(List.of("bisync", "--resync"), task.operationArgs());
+
+    // The successful real run establishes the baseline: the following runs execute the
+    // plain bisync propagating the deletions (the --resync merge leaves them unpropagated)
+    manager.backendExecutor(new Executor() {
+      public boolean run(Task t, java.util.function.Consumer<String> output) { return true; }
+    });
+    assertTrue(task.process(null));
+    assertTrue(task.resynced());
+    assertEquals(List.of("bisync"), task.operationArgs());
+    assertTrue(task.serialize().get("resynced").asBoolean());
+
+    // The marker survives the descriptor round-trip; the equal-mtime restoration keeps
+    // the registered (resynced) copy
+    Task.restore(manager, task.serialize());
+    assertSame(task, manager.task(task.tag()));
+    assertTrue(((Equalize) manager.task(task.tag())).resynced());
+
+    // The filter change invalidates the saved-listings baseline (rclone bisync refuses
+    // to run with the mismatched filters): the following run rebuilds it with the new filters
+    task.setInclude(List.of("*.txt"));
+    assertFalse(task.resynced());
+    assertEquals(List.of("bisync", "--resync"), task.operationArgs());
+    assertNull(task.serialize().get("resynced"));
+  }
+
+  @Test
+  void equalTimestampConflictsPreferTheTombstone() {
+    Equalize task = new Equalize(manager, source(), destination(), null, List.of(), List.of());
+
+    // The equal-mtime plain copy keeps the registered one: the tie is resolved
+    // deterministically instead of by the registration order alone
+    Task.restore(manager, task.serialize());
+    assertSame(task, manager.task(task.tag()));
+
+    // The equal-mtime tombstoned copy wins: the deletions never lose a tie
+    ObjectNode tombstone = task.serialize();
+    tombstone.put("deleted", true);
+    Task marker = Task.restore(manager, tombstone);
+    assertSame(marker, manager.task(task.tag()));
+    assertTrue(marker.isDeleted());
+  }
+
+  @Test
+  void backupRejectsTheIncludeFilters() {
+    Backup backup = new Backup(manager, volumeSource(), destination(), "secret", null, null, null, null, List.of(), List.of());
+    // restic backup filters by exclusion only: the include filters would be silently ignored
+    assertThrows(BitferryError.class, () -> backup.setInclude(List.of("*.txt")));
+    assertTrue(backup.include().isEmpty());
+    // The legacy cleanup path stays available
+    assertDoesNotThrow(backup::clearInclude);
   }
 
   private static List<String> toStringList(JsonNode node) {

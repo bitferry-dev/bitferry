@@ -122,6 +122,15 @@ public final class Runner {
           int failedCount = failed;
           Platform.runLater(() -> listener.taskFinished(at, total, okCount, failedCount));
         }
+        // Persist the run bookkeeping (e.g. the equalize bisync baseline marker): only
+        // the volumes whose state actually changed are rewritten. A failing commit is
+        // reported without failing the run: the unmaterialized bookkeeping flips
+        // re-materialize upon the following commits.
+        try {
+          manager.commit();
+        } catch (RuntimeException e) {
+          output.accept("error: post-run commit failed: " + e.getMessage());
+        }
         if (aborted) {
           output.accept("    ✗ run aborted");
           doneAborted(listener, ok, failed);

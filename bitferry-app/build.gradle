@@ -66,7 +66,7 @@ def zuluJdkUrl = [
         'macos-aarch64' : "https://cdn.azul.com/zulu/bin/${zuluArtifact}-macosx_aarch64.zip",
 ][platformName]
 // e.g. zulu25.38.107-ca-jdk25.0.5-win_x64 - unique per version and platform
-def zuluDistName = zuluJdkUrl.substring(zuluJdkUrl.lastIndexOf('/') + 1)replaceAll(/\.(zip|tar\.gz)$/, '')
+def zuluDistName = zuluJdkUrl.substring(zuluJdkUrl.lastIndexOf('/') + 1).replaceAll(/\.(zip|tar\.gz)$/, '')
 
 // AOT caches can only be trained by executing the image JVM, which is possible
 // solely when the target platform matches the build host.

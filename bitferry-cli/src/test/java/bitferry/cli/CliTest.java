@@ -1399,7 +1399,8 @@ class CliTest {
     assertEquals(Cadence.PROFILES.get("default"), updated1.cadence());
     assertEquals(Backup.PROCESS.get("default"), updated1.processOptions());
 
-    // 2. Modify task using 'm t' with explicit values and include/exclude
+    // 2. The include filters are rejected for the backup tasks upfront (restic backup
+    // filters by exclusion only) and the rejected command mutates nothing
     cmd = Main.createCommandLine();
     out = new StringWriter();
     err = new StringWriter();
@@ -1408,15 +1409,30 @@ class CliTest {
     code = cmd.execute("--path", volDir.toString(), "m", "t", task.tag(),
       "-F", "--keep-daily,7", "-C", "--read-data", "-S", "14d,10", "-X", "--no-cache",
       "--include", "src/**", "--exclude", "*.tmp");
+    assertEquals(1, code);
+    assertTrue(err.toString().contains("include filters are not applicable to backup tasks"), () -> "stderr: " + err);
+
+    m = managerFor(volDir);
+    Backup unchanged = (Backup) m.selectTasks().get(task.tag());
+    assertEquals(Backup.FORGET.get("default"), unchanged.forget());
+    assertEquals(Backup.CHECK.get("default"), unchanged.check());
+    assertEquals(Cadence.PROFILES.get("default"), unchanged.cadence());
+    assertEquals(Backup.PROCESS.get("default"), unchanged.processOptions());
+    assertTrue(unchanged.include().isEmpty());
+
+    // The exclude filters still apply
+    cmd = Main.createCommandLine();
+    out = new StringWriter();
+    err = new StringWriter();
+    cmd.setOut(new PrintWriter(out));
+    cmd.setErr(new PrintWriter(err));
+    code = cmd.execute("--path", volDir.toString(), "m", "t", task.tag(),
+      "-X", "--no-cache", "--exclude", "*.tmp");
     assertEquals(0, code, () -> "stderr: " + err);
 
     m = managerFor(volDir);
     Backup updated2 = (Backup) m.selectTasks().get(task.tag());
-    assertEquals(List.of("--keep-daily", "7"), updated2.forget());
-    assertEquals(List.of("--read-data"), updated2.check());
-    assertEquals(new Cadence(java.time.Duration.ofDays(14), 10), updated2.cadence());
     assertEquals(List.of("--no-cache"), updated2.processOptions());
-    assertEquals(List.of("src/**"), updated2.include());
     assertEquals(List.of("*.tmp"), updated2.exclude());
 
     // 3. Clear/disable options using '-' and '--clear-*'

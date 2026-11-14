@@ -169,6 +169,7 @@ public final class TasksController {
 
   private void updateButtons() {
     boolean none = selected() == null;
+    create.setDisable(locked);
     modify.setDisable(locked || none);
     execute.setDisable(locked || none);
     serve.setDisable(locked || none);

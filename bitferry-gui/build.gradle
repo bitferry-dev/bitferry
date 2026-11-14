@@ -44,10 +44,12 @@ dependencies {
 application {
     mainModule = 'bitferry.gui'
     mainClass = 'bitferry.gui.Main'
-    // The JavaFX graphics and the JNA dispatch native load via System::load (a
-    // restricted method) - enabled here so the installed distribution stays
-    // warning-free and keeps working on the future JDKs with the integrity by default
-    applicationDefaultJvmArgs = ['--enable-native-access=javafx.graphics,com.sun.jna']
+    // The JavaFX graphics, the jansi console and the JNA dispatch native load via
+    // System::load (a restricted method) - enabled here so the installed distribution
+    // stays warning-free and keeps working on the future JDKs with the integrity by
+    // default. Mirrors guiNativeAccess in :bitferry-app (the AOT cache records the set
+    // and invalidates on drift, so the two sides must never diverge).
+    applicationDefaultJvmArgs = ['--enable-native-access=javafx.graphics,org.fusesource.jansi,com.sun.jna']
 }
 
 // No plain distribution archives: the real deliverables (jlink tree, jpackage app-image,

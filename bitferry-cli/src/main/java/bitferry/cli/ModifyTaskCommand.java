@@ -105,6 +105,12 @@ public class ModifyTaskCommand implements Callable<Integer>, HasCommonOptions {
       }
     }
 
+    // The include filters are rejected upfront (before any mutation): restic backup
+    // has no include patterns (the exclusion only), so they would be silently ignored
+    if ((include != null || includeExts != null) && task instanceof Backup) {
+      throw new BitferryError("include filters are not applicable to backup tasks (restic backup filters by exclusion only)");
+    }
+
     if (password) {
       if (task instanceof Rclone) {
         throw new BitferryError("rclone crypt parameters and passwords cannot be modified on an existing task; recreation is required");

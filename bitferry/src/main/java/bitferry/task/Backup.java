@@ -131,6 +131,14 @@ public class Backup extends Restic {
     touch();
   }
 
+  /// The backup tasks filter by exclusion only: restic backup has no include patterns
+  /// (unlike restic restore), so the include filters would be silently ignored. The
+  /// stored legacy filters, if any, are removable via [clearInclude].
+  @Override
+  public void setInclude(Collection<String> include) {
+    throw new BitferryError("include filters are not applicable to backup tasks (restic backup filters by exclusion only)");
+  }
+
   @Override
   @JsonProperty("restic")
   Backend storeBackend() {

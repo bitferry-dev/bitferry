@@ -107,13 +107,16 @@ public class Manager {
     throw new BitferryError("failed to resolve path '" + canonical + "' against any registered volumes in " + this);
   }
 
-  /// Register the volume upon its creation or restoration keeping the copy with the newest timestamp.
+  /// Register the volume upon its creation or restoration keeping the copy with the newest
+  /// timestamp. The equal-timestamp ties prefer the copy marked for deletion mirroring
+  /// the task tombstones: the deletions must never lose a conflict.
   public void registerVolume(Volume volume) {
     synchronized (registryLock) {
       Volume existing = volumes.get(volume.tag());
       if (existing == null) {
         LOG.log(Level.INFO, () -> "volume #" + volume.tag() + " registered in " + this);
-      } else if (existing.mtime().isBefore(volume.mtime())) {
+      } else if (existing.mtime().isBefore(volume.mtime())
+        || (existing.mtime().isEqual(volume.mtime()) && volume.pendingDeletion() && !existing.pendingDeletion())) {
         volumes.remove(volume.tag());
         LOG.log(Level.INFO, () -> "replaced already registered volume #" + volume.tag() + " with the one with newer timestamp");
       } else {
@@ -126,13 +129,16 @@ public class Manager {
 
   /// Register the task upon its creation or restoration keeping the copy with the newest timestamp.
   /// Since tasks may come from both endpoints' volumes there may be already a task restored
-  /// and registered; in this case the task with the newer timestamp wins.
+  /// and registered; in this case the task with the newer timestamp wins. The equal-timestamp
+  /// ties prefer the deletion tombstone: the deletions must never lose a conflict (a
+  /// resurrected task would restore the deleted data).
   public void registerTask(Task task) {
     synchronized (registryLock) {
       Task existing = tasks.get(task.tag());
       if (existing == null) {
         LOG.log(Level.INFO, () -> "task #" + task.tag() + " registered in " + this);
-      } else if (existing.mtime().isBefore(task.mtime())) {
+      } else if (existing.mtime().isBefore(task.mtime())
+        || (existing.mtime().isEqual(task.mtime()) && task.isDeleted() && !existing.isDeleted())) {
         tasks.remove(task.tag());
         LOG.log(Level.INFO, () -> "replaced already registered task #" + task.tag() + " with the one with newer timestamp");
       } else {

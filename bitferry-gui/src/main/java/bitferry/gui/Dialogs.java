@@ -229,12 +229,18 @@ final class Dialogs {
           backup.setCadence(form.serve());
         }
 
-        // Include filters
-        List<String> include = patterns(form.include());
-        if (include.isEmpty()) {
-          current.clearInclude();
-        } else {
-          current.setInclude(include);
+        // Include filters. The backup tasks filter by exclusion only (restic backup
+        // carries no include patterns): the handling is skipped and the form field is
+        // disabled — the stored legacy filters, if any, are managed via the CLI
+        // --clear-include
+        // FIXME get rid of the selector by defining include on the restore task only
+        if (!(current instanceof Backup)) {
+          List<String> include = patterns(form.include());
+          if (include.isEmpty()) {
+            current.clearInclude();
+          } else {
+            current.setInclude(include);
+          }
         }
 
         // Exclude filters
@@ -268,8 +274,8 @@ final class Dialogs {
   }
 
   /// Confirm the action and run it on the context's operations thread surfacing
-  /// the [BitferryError] failures into the log and the error alert. Shared by the
-  /// dialogs and the per-tab management actions.
+  /// the failures into the log and the error alert. Shared by the dialogs and the
+  /// per-tab management actions.
   static void confirmAndRun(AppContext context, String title, String text, Runnable action, LogController logs) {
     Alert confirm = new Alert(Alert.AlertType.CONFIRMATION, text, ButtonType.OK, ButtonType.CANCEL);
     confirm.setTitle(title);
@@ -279,7 +285,10 @@ final class Dialogs {
       context.operations().execute(() -> {
         try {
           action.run();
-        } catch (BitferryError e) {
+        } catch (RuntimeException e) {
+          // The whole unchecked family surfaces (the BitferryError along with the
+          // invalid-path/security-style failures): neither the log nor the alert
+          // may be silently skipped
           logs.log(title + " failed: " + e.getMessage());
           Platform.runLater(() -> errorAlert(context, title + " failed", e.getMessage()));
         }
@@ -470,7 +479,11 @@ final class Dialogs {
       rows.add(new FormRow("Type:", type, () -> true));
       rows.add(new FormRow("Source:", withBrowse(source), () -> true));
       rows.add(new FormRow("Destination:", withBrowse(destination), () -> true));
-      rows.add(new FormRow("Include:", withEditList(include, "Include Patterns", "Edit include patterns", () -> null), () -> true));
+      // The include control is disabled for the backup type: restic backup filters by
+      // exclusion only, so the entered patterns would be silently ignored
+      Node includeControl = withEditList(include, "Include Patterns", "Edit include patterns", () -> null);
+      includeControl.disableProperty().bind(type.valueProperty().isEqualTo("backup"));
+      rows.add(new FormRow("Include:", includeControl, () -> true));
       rows.add(new FormRow("Exclude:", withEditList(exclude, "Exclude Patterns", "Edit exclude patterns", () -> EXCLUDE_PROFILES), () -> true));
       rows.add(new FormRow("Options:", withEditList(execute, "Execution Options", "Edit backend execution options", this::executeProfiles), () -> true));
       rows.add(new FormRow("Encryption:", encryption, rclone));

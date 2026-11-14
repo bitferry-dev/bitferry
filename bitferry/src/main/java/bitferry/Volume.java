@@ -143,6 +143,14 @@ public final class Volume {
     return live;
   }
 
+  /// Whether the volume is marked for deletion (pending the DELETED -> DEAD commit
+  /// transition): the deletion wins the equal-timestamp conflicts mirroring the task
+  /// tombstones. Package-private: the commit state is internal bookkeeping (not a part
+  /// of the storage descriptor).
+  boolean pendingDeletion() {
+    return commitState == CommitState.DELETED;
+  }
+
   /// Return the volume-owned tasks referring the volume through either source or destination endpoints.
   public Map<String, Task> tasks() {
     return manager.tasks().entrySet().stream()
@@ -284,12 +292,6 @@ public final class Volume {
         } else {
           LOG.log(Level.DEBUG, () -> "volume #" + tag + " is up-to-date and no forced save requested; skipped");
         }
-        if (!manager.simulate) {
-          // On successful commit advance the volume's generation so that the referring tasks won't be flagged out-of-date anymore
-          var surviving = tasks();
-          generation = surviving.isEmpty() ? 0 : surviving.values().stream().mapToInt(Task::generation).max().orElseThrow() + 1;
-          modified = false;
-        }
         break loop;
       }
       case DELETED -> {
@@ -320,8 +322,12 @@ public final class Volume {
         break loop;
       }
     }
-    if (!manager.simulate) {
-      // On successful commit advance the volume's generation so that the referring tasks won't be flagged out-of-date anymore
+    // On successful commit advance the volume's generation so that the referring tasks
+    // won't be flagged out-of-date anymore. The simulation consumes no durable bookkeeping
+    // (the pending state is left for a following real commit), and the dead volumes
+    // (deleted or dead) skip the advance: their storages are gone, and no live tasks
+    // refer them anymore
+    if (!manager.simulate && live) {
       var surviving = tasks();
       generation = surviving.isEmpty() ? 0 : surviving.values().stream().mapToInt(Task::generation).max().orElseThrow() + 1;
       modified = false;
@@ -402,7 +408,11 @@ public final class Volume {
     try {
       if (Files.exists(sysdev.resolve("partition"))) {
         String disk = device.replaceAll("[0-9]+$", "");
-        if (disk.endsWith("p")) disk = disk.substring(0, disk.length() - 1);
+        // Strip the multiplexing 'p' separator (nvme0n1p1, mmcblk0p1) only when it is
+        // preceded by a digit: the base disk names may legitimately end with 'p' (the
+        // 16th SCSI disk sdp, the sdaa..sdaz series) and the blind strip would resolve
+        // the wrong (or nonexistent) disk
+        if (disk.matches(".*[0-9]p")) disk = disk.substring(0, disk.length() - 1);
         sysdev = Path.of("/sys/class/block", disk);
       }
       return Files.readString(sysdev.resolve("removable")).trim().equals("0");

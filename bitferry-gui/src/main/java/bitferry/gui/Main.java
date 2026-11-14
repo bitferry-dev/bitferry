@@ -41,6 +41,8 @@ public final class Main extends Application {
     // The normal bounds tracking seeds from the applied size and keeps the
     // pre-maximize geometry current for the capture upon hiding
     settings.attach(stage);
+    // The dialogs and alerts parent to the main window (set before the first use)
+    context.ownerWindow = stage;
     stage.show();
 
     // The window status (the placement, the size, the maximized flag, the log split
