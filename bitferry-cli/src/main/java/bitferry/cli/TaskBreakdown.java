@@ -234,7 +234,7 @@ public final class TaskBreakdown {
     if (backup.check() == null) {
       appendProperty(sb, "Check:", "none");
     } else if (backup.check().isEmpty()) {
-      appendProperty(sb, "Check:", "@default (structural)");
+      appendProperty(sb, "Check:", "@default (structural)"); 
     } else if (backup.check().contains("--read-data")) {
       appendProperty(sb, "Check:", "@full (--read-data)");
     } else {
