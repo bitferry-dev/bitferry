@@ -332,6 +332,19 @@ final class Dialogs {
       }
     }
 
+    /// Build a labeled row installing the truncation self-healing: the label column
+    /// pinning measures the labels in the constructor — before the scene CSS applies
+    /// (the DPI-scaled font lands with the first pulse) — and an under-width column
+    /// clips the right-aligned labels at their left. A truncation re-runs the relayout,
+    /// re-pinning the column with the post-CSS metrics.
+    private FormRow formRow(String labelText, Node control, BooleanSupplier visible) {
+      Label label = createLabel(labelText);
+      label.textTruncatedProperty().addListener((x, was, now) -> {
+        if (now) relayout();
+      });
+      return new FormRow(label, control, visible);
+    }
+
     private final AppContext context;
     private final Task existing;
 
@@ -363,6 +376,11 @@ final class Dialogs {
     // The scroll pane wrapping the grid, created up front: the relayout sizes it to
     // the grid's natural (content-derived) width before the dialog shows
     private final ScrollPane scroller = new ScrollPane(grid);
+
+    // The label column is pinned per relayout to the widest visible label's width:
+    // the labels can never truncate (the entry fields absorb any width deficit)
+    private final ColumnConstraints labelColumn = new ColumnConstraints();
+    private final ColumnConstraints controlColumn = new ColumnConstraints();
 
     // The auto-loaded (never user-edited) pre-filled defaults keyed by the field:
     // switching the operation replaces them with the new operation's defaults while
@@ -491,39 +509,35 @@ final class Dialogs {
       BooleanSupplier formatVisible = () -> existing == null && backup.getAsBoolean();
       BooleanSupplier keyringVisible = () -> existing == null && (restic.getAsBoolean() || encrypted.getAsBoolean());
 
-      rows.add(new FormRow("Type:", type, () -> true));
-      rows.add(new FormRow("Source:", withBrowse(source), () -> true));
-      rows.add(new FormRow("Destination:", withBrowse(destination), () -> true));
+      rows.add(formRow("Type:", type, () -> true));
+      rows.add(formRow("Source:", withBrowse(source), () -> true));
+      rows.add(formRow("Destination:", withBrowse(destination), () -> true));
       // The include control is disabled for the backup type: restic backup filters by
       // exclusion only, so the entered patterns would be silently ignored
       Node includeControl = withEditList(include, "Include Patterns", "Edit include patterns", () -> null);
       includeControl.disableProperty().bind(type.valueProperty().isEqualTo("backup"));
-      rows.add(new FormRow("Include:", includeControl, () -> true));
-      rows.add(new FormRow("Exclude:", withEditList(exclude, "Exclude Patterns", "Edit exclude patterns", () -> EXCLUDE_PROFILES), () -> true));
-      rows.add(new FormRow("Options:", withEditList(execute, "Execution Options", "Edit backend execution options", this::executeProfiles), () -> true));
-      rows.add(new FormRow("Encryption:", encryption, rclone));
-      rows.add(new FormRow("Encryption options:", withEditList(profile, "Encryption Options",
+      rows.add(formRow("Include:", includeControl, () -> true));
+      rows.add(formRow("Exclude:", withEditList(exclude, "Exclude Patterns", "Edit exclude patterns", () -> EXCLUDE_PROFILES), () -> true));
+      rows.add(formRow("Options:", withEditList(execute, "Execution Options", "Edit backend execution options", this::executeProfiles), () -> true));
+      rows.add(formRow("Encryption:", encryption, rclone));
+      rows.add(formRow("Encryption options:", withEditList(profile, "Encryption Options",
         "Edit encryption options (the crypt filename encoding profiles or the raw comma-separated options)", () -> Rclone.PROFILE), encrypted));
-      rows.add(new FormRow("Password:", cryptPassword, cryptPasswordVisible));
-      rows.add(new FormRow("Confirm:", cryptPasswordConfirm, cryptPasswordVisible));
-      rows.add(new FormRow("Password:", password, restic));
-      rows.add(new FormRow("Confirm:", passwordConfirm, restic));
-      rows.add(new FormRow("Password storage:", keyring, keyringVisible));
-      rows.add(new FormRow("Retention:", withEditList(forget, "Retention Policy", "Edit snapshot retention policy options", () -> Backup.FORGET), backup));
-      rows.add(new FormRow("Check:", withEditList(check, "Integrity Check", "Edit repository integrity check options", () -> Backup.CHECK), backup));
-      rows.add(new FormRow("Format:", format, formatVisible));
-      rows.add(new FormRow("Serve:", serve, backup));
+      rows.add(formRow("Password:", cryptPassword, cryptPasswordVisible));
+      rows.add(formRow("Confirm:", cryptPasswordConfirm, cryptPasswordVisible));
+      rows.add(formRow("Password:", password, restic));
+      rows.add(formRow("Confirm:", passwordConfirm, restic));
+      rows.add(formRow("Password storage:", keyring, keyringVisible));
+      rows.add(formRow("Retention:", withEditList(forget, "Retention Policy", "Edit snapshot retention policy options", () -> Backup.FORGET), backup));
+      rows.add(formRow("Check:", withEditList(check, "Integrity Check", "Edit repository integrity check options", () -> Backup.CHECK), backup));
+      rows.add(formRow("Format:", format, formatVisible));
+      rows.add(formRow("Serve:", serve, backup));
 
       grid.setHgap(8);
       grid.setVgap(8);
       grid.setPadding(new Insets(10));
-      // The label column sizes itself to the widest visible label (content-driven,
-      // so it scales with the font size) keeping every label on a single line
-      ColumnConstraints col0 = new ColumnConstraints();
-      col0.setHalignment(HPos.RIGHT);
-      ColumnConstraints col1 = new ColumnConstraints();
-      col1.setHgrow(Priority.ALWAYS);
-      grid.getColumnConstraints().setAll(col0, col1);
+      labelColumn.setHalignment(HPos.RIGHT);
+      controlColumn.setHgrow(Priority.ALWAYS);
+      grid.getColumnConstraints().setAll(labelColumn, controlColumn);
 
       // The new-task option entries start from the operation's default profiles
       loadDefaultProfiles();
@@ -537,8 +551,16 @@ final class Dialogs {
     }
 
     private Node pane() {
+      // The first relayout ran before the scene existed (the pre-CSS font measurement):
+      // re-run it once the dialog shows, so the column widths land with the real metrics
+      scroller.sceneProperty().addListener((x, was, now) -> {
+        if (now != null) Platform.runLater(this::relayout);
+      });
       scroller.setFitToWidth(true);
-      scroller.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+      // AS_NEEDED: the last-resort valve — when even the pinned minimums cannot fit
+      // (the screen clamping the window growth), the user scrolls instead of the
+      // content truncating
+      scroller.setHbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
       scroller.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
       scroller.setStyle("-fx-background-color: transparent; -fx-padding: 0;");
       scroller.setMaxHeight(480);
@@ -562,11 +584,27 @@ final class Dialogs {
           row++;
         }
       }
+      // The label column pinned to the widest visible label (measured, so it scales
+      // with the font size): when the viewport squeezes the grid (the vertical scrollbar
+      // appearing, the screen clamping the window growth), the deficit is absorbed by
+      // the entry fields — the labels can never truncate
+      double widestLabel = 0;
+      for (FormRow formRow : rows) {
+        if (formRow.label().isVisible()) {
+          widestLabel = Math.max(widestLabel, formRow.label().prefWidth(-1));
+        }
+      }
+      labelColumn.setMinWidth(widestLabel);
+      labelColumn.setPrefWidth(widestLabel);
+
       // The scroll pane carries a content-derived width so the dialog tracks its
       // contents: the width follows the widest visible row and the font size instead
       // of a fixed pixel value (a floor keeps the sparse layouts comfortable). The
-      // row toggles re-measure it, and the sizeToScene below carries it to the window.
-      scroller.setPrefWidth(Math.max(grid.prefWidth(-1), 440));
+      // vertical scrollbar allowance keeps the window wide enough for the scrollbar
+      // not to squeeze the columns. The row toggles re-measure it, and the sizeToScene
+      // below carries it to the window.
+      boolean verticalScrollbar = grid.prefHeight(-1) > 460;
+      scroller.setPrefWidth(Math.max(grid.prefWidth(-1) + (verticalScrollbar ? 14 : 0), 440));
 
       Platform.runLater(() -> {
         if (grid.getScene() != null && grid.getScene().getWindow() != null) {
