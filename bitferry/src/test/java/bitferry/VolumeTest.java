@@ -104,7 +104,7 @@ class VolumeTest {
     assertTrue(Files.exists(dir.resolve("volume").resolve(Bitferry.STORAGE)));
 
     manager.simulate = true;
-    volume.delete(false);
+    volume.delete();
     manager.commit();
     // The simulated deletion removes nothing and stays pending
     assertTrue(Files.exists(dir.resolve("volume").resolve(Bitferry.STORAGE)));
@@ -123,7 +123,7 @@ class VolumeTest {
     manager.commit();
     assertTrue(Files.exists(dir.resolve("volume").resolve(Bitferry.STORAGE)));
 
-    volume.delete(false);
+    volume.delete();
     manager.commit();
     assertFalse(Files.exists(dir.resolve("volume").resolve(Bitferry.STORAGE)));
     assertFalse(Files.exists(dir.resolve("volume").resolve(Bitferry.STORAGE_IMAGE)));
@@ -131,23 +131,6 @@ class VolumeTest {
     assertFalse(manager.liveVolumes().containsKey(volume.tag()));
   }
 
-  @Test
-  void deletionWithWipeEmptiesTheDirectory() throws IOException {
-    Manager manager = new Manager();
-    Path root = dir.resolve("volume");
-    Files.createDirectories(root);
-    Volume volume = new Volume(manager, root);
-    Files.writeString(root.resolve("payload.txt"), "data");
-    Files.createDirectories(root.resolve("nested").resolve("deep"));
-    Files.writeString(root.resolve("nested").resolve("deep").resolve("payload.txt"), "data");
-    manager.commit();
-
-    volume.delete(true);
-    manager.commit();
-    assertFalse(Files.exists(root.resolve("payload.txt")));
-    assertFalse(Files.exists(root.resolve("nested")));
-    assertTrue(Files.exists(root)); // The root itself is retained
-  }
 
   @Test
   void corruptedStorageIsReported() throws IOException {

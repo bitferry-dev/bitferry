@@ -38,7 +38,6 @@ public final class Volume {
   private int generation;
   private CommitState commitState;
   private boolean live = true;
-  private boolean wipe;
 
   // The identity (source/type pair) of the file system the root resides on, captured
   // at the discovery time and re-checked before every durable storage operation: the
@@ -188,9 +187,9 @@ public final class Volume {
     generation = ts.isEmpty() ? 0 : ts.values().stream().mapToInt(Task::generation).min().orElseThrow() - 1;
   }
 
-  /// Mark the volume for deletion optionally wiping the entire volume directory.
-  public void delete(boolean wipe) {
-    this.wipe = wipe;
+  /// Mark the volume for deletion: the storage file is removed upon the commit while
+  /// the volume directory contents are kept.
+  public void delete() {
     this.commitState = CommitState.DELETED;
     touch();
   }
@@ -301,9 +300,6 @@ public final class Volume {
           // the deletion stays pending for a following real commit
           LOG.log(Level.INFO, () -> "simulated volume #" + tag + " storage removal");
           break loop;
-        } else if (wipe) {
-          wipeDirectory();
-          LOG.log(Level.INFO, () -> "wiped volume #" + tag + " directory '" + root + "'");
         } else {
           // Both the storage file and the possibly stale intermediate
           // image of an interrupted commit are removed
@@ -333,21 +329,6 @@ public final class Volume {
       modified = false;
     }
     if (!problems.isEmpty()) throw new BitferryError("task commit failure(s) in volume #" + tag + ": " + String.join("; ", problems));
-  }
-
-  // Remove the volume directory contents (directories recursively, other entries unlinked)
-  private void wipeDirectory() {
-    try (Stream<Path> entries = Files.list(root)) {
-      for (Path entry : entries.toList()) {
-        if (Files.isDirectory(entry) && !Files.isSymbolicLink(entry)) {
-          deleteRecursively(entry);
-        } else {
-          Files.deleteIfExists(entry);
-        }
-      }
-    } catch (IOException e) {
-      throw new BitferryError("volume #" + tag + " directory wiping failure", e);
-    }
   }
 
   /// The identity of the file system the specified directory resides on (the source
@@ -440,13 +421,6 @@ public final class Volume {
       throw new BitferryError("volume #" + tag + " root '" + root + "' has disappeared (its file system is no longer " + fileStore + ")");
   }
 
-  private static void deleteRecursively(Path dir) {
-    try (Stream<Path> entries = Files.walk(dir)) {
-      for (Path entry : entries.sorted(java.util.Comparator.reverseOrder()).toList()) Files.deleteIfExists(entry);
-    } catch (IOException e) {
-      throw new BitferryError("directory removal failure for '" + dir + "'", e);
-    }
-  }
 
   /// Return the obscured password token of the task stored in the volume vault
   /// (used by the vault providers).

@@ -9,9 +9,9 @@ import javafx.scene.control.*;
 
 import java.util.*;
 
-/// The volumes tab controller: the management actions (create, delete, delete with
-/// wipe) confirmed and dispatched through the context's operations thread mirroring
-/// the CLI delete/create flows, over the volumes listing.
+/// The volumes tab controller: the management actions (create, delete) confirmed
+/// and dispatched through the context's operations thread mirroring the CLI
+/// delete/create flows, over the volumes listing.
 public final class VolumesController {
 
   /// The display row snapshot; rebuilt wholesale upon every model change.
@@ -59,8 +59,6 @@ public final class VolumesController {
   @FXML
   private Button delete;
 
-  @FXML
-  private Button deleteWipe;
 
   private AppContext context;
   private LogController logs;
@@ -119,7 +117,6 @@ public final class VolumesController {
     // apply after the run ends with no feedback (mirroring the tasks pane)
     create.setDisable(locked);
     delete.setDisable(locked || none);
-    deleteWipe.setDisable(locked || none);
   }
 
   @FXML
@@ -129,24 +126,18 @@ public final class VolumesController {
 
   @FXML
   private void onDelete() {
-    deleteVolume(false);
+    deleteVolume();
   }
 
-  @FXML
-  private void onDeleteWipe() {
-    deleteVolume(true);
-  }
-
-  // Delete the selected volume (optionally wiping the directory contents) mirroring
-  // the CLI delete volume [--wipe] flow
-  private void deleteVolume(boolean wipe) {
+  // Delete the selected volume mirroring the CLI delete volume flow: the storage file
+  // is removed while the directory contents are kept
+  private void deleteVolume() {
     Row row = selected();
     if (row == null) return;
     Volume volume = row.volume;
-    String title = wipe ? "Delete volume and wipe" : "Delete volume";
-    String text = (wipe
-      ? "Delete volume #" + volume.tag() + " at\n  " + volume.root() + "\nand wipe its directory contents permanently?"
-      : "Delete volume #" + volume.tag() + " at\n  " + volume.root() + "\n(the directory contents are kept)?")
+    String title = "Delete volume";
+    String text = "Delete volume #" + volume.tag() + " at\n  " + volume.root()
+      + "\n(the directory contents are kept)?"
       + "\n\nThe referring task deletion tombstones propagate to the other storages.";
     Dialogs.confirmAndRun(context, title, text, () -> {
       // Re-resolve the volume on the current manager: the captured row's volume may
@@ -154,9 +145,9 @@ public final class VolumesController {
       Manager manager = context.manager();
       Volume current = manager.volume(volume.tag());
       if (current == null) throw new BitferryError("volume #" + volume.tag() + " is no longer registered");
-      current.delete(wipe);
+      current.delete();
       manager.commit();
-      logs.log("volume #" + current.tag() + " deleted" + (wipe ? " (wiped)" : ""));
+      logs.log("volume #" + current.tag() + " deleted");
       context.fireModelChanged();
     }, logs);
   }

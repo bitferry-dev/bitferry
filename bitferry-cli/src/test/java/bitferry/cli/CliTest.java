@@ -631,7 +631,7 @@ class CliTest {
     // The options supplied to the intermediate group commands (between the root and the
     // leaf) must be honored by the executed leaf: resolveOptions walks the whole spec
     // hierarchy, not just the root. The regression guard for the dropped --dry-run on
-    // the destructive paths (e.g. delete -n volume TAG --wipe).
+    // the destructive paths (e.g. delete -n volume TAG).
     CommandLine.ParseResult parsed = cmd.parseArgs("delete", "-n", "--force", "volume", "UNKNOWN-TAG");
     CommandLine.ParseResult leafResult = parsed.subcommand();
     while (leafResult.subcommand() != null) leafResult = leafResult.subcommand();

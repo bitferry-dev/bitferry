@@ -23,9 +23,6 @@ public class DeleteVolumeCommand implements Callable<Integer>, HasCommonOptions 
   @Parameters(arity = "1..*", description = "Tags matching volumes to delete.", paramLabel = "TAGS")
   List<String> tags;
 
-  @Option(names = "--wipe", description = "Wipe the target directory contents upon deletion.")
-  boolean wipe;
-
   @Override
   public CommonOptions commonOptions() {
     return options;
@@ -36,7 +33,7 @@ public class DeleteVolumeCommand implements Callable<Integer>, HasCommonOptions 
     CommonOptions opts = CliUtils.resolveOptions(spec, options);
     Manager m = CliUtils.restoreManager(opts);
     for (Volume v : m.selectVolumes(tags)) {
-      v.delete(wipe);
+      v.delete();
     }
     m.commit();
     return 0;

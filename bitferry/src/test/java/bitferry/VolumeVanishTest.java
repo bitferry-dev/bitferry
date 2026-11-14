@@ -55,7 +55,7 @@ class VolumeVanishTest {
       });
     }
 
-    volume.delete(false);
+    volume.delete();
     BitferryError error = assertThrows(BitferryError.class, volume::commit);
     assertTrue(error.getMessage().contains("has disappeared"), error.getMessage());
     assertFalse(Files.exists(root));

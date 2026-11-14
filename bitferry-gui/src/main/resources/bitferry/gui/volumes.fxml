@@ -9,7 +9,7 @@
 <?import javafx.scene.layout.Region?>
 <?import javafx.scene.layout.VBox?>
 
-<!-- The volumes tab: the framed vertical management panel (create, delete, wipe)
+<!-- The volumes tab: the framed vertical management panel (create, delete)
      docked to the left of the volumes listing; the listing is padded to align
      with the panel's outer edges. -->
 <BorderPane xmlns="http://javafx.com/javafx/17" xmlns:fx="http://javafx.com/fxml/1"
@@ -22,8 +22,6 @@
       <Button fx:id="create" text="New Volume" onAction="#onCreate" maxWidth="Infinity"/>
       <Region VBox.vgrow="ALWAYS"/>
       <Button fx:id="delete" text="Delete" onAction="#onDelete" maxWidth="Infinity"/>
-      <Button fx:id="deleteWipe" text="Delete + Wipe" onAction="#onDeleteWipe" style="-fx-base: #ffebee;"
-              maxWidth="Infinity"/>
     </VBox>
   </left>
   <center>
