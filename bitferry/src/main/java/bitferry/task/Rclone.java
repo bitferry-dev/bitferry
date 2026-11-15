@@ -138,12 +138,16 @@ public abstract class Rclone extends Task {
 
   /// Serialize the backend descriptor section; omitted when empty mirroring
   /// the reference implementation's `filter_nones` behavior.
+  // The execution options are the exception: the explicitly cleared ones (null or empty,
+  // the '-' specifier) persist as the empty execute list. An absent rclone section (or an
+  // absent execute key) resolves into the default profile (--metadata) upon the
+  // restoration, so the omitted key would resurrect the cleared options at every reload.
   @JsonProperty("rclone")
   Backend storeBackend() {
-    List<String> execute = orNull(processOptions);
+    List<String> execute = processOptions == null || processOptions.isEmpty() ? List.of() : processOptions;
     List<String> encrypt = "encrypt".equals(encryption.operation()) ? orNull(encryption.options()) : null;
     List<String> decrypt = "decrypt".equals(encryption.operation()) ? orNull(encryption.options()) : null;
-    return execute == null && encrypt == null && decrypt == null ? null : new Backend(execute, encrypt, decrypt);
+    return new Backend(execute, encrypt, decrypt);
   }
 
   @Override

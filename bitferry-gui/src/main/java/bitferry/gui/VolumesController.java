@@ -132,7 +132,8 @@ public final class VolumesController {
     String title = "Delete volume";
     String text = "Delete volume " + volume.tag() + " at\n  " + volume.root()
       + "\n(the directory contents are kept)?"
-      + "\n\nThe referring task deletion tombstones propagate to the other storages.";
+      + "\n\nThe referring tasks are deleted with it:"
+      + "\ntheir deletion tombstones propagate to the surviving storages.";
     Dialogs.confirmAndRun(context, title, text, () -> {
       // Re-resolve the volume on the current manager: the captured row's volume may
       // belong to a manager swapped out by a concurrent reload
@@ -142,7 +143,14 @@ public final class VolumesController {
       current.delete();
       manager.commit();
       logs.log("volume " + current.tag() + " deleted");
-      context.fireModelChanged();
+      // The removal is a filesystem-level change the media watcher cannot observe
+      // (the mount set is unchanged): re-probe the manager explicitly. The reload
+      // restores the fresh-CLI consistency (the tasks carried only by the deleted
+      // volume are dropped along with its storage, the tombstones the commit left
+      // in the surviving storages are collected) and swaps the model in wholesale;
+      // the reload's own model change notification refreshes the panes. Queued from
+      // the operations thread onto itself: it runs right after this action returns.
+      context.reload();
     }, logs);
   }
 }

@@ -57,6 +57,13 @@ public final class Main extends Application {
     if (!train) context.startMediaWatcher();
 
     if (train) {
+      // Warm up the dialog forms so the AOT cache covers the dialog controllers and FXML resources
+      try {
+        TaskFormController.load(context, null);
+        ItemListController.load(java.util.List.of(), java.util.Map.of());
+      } catch (Throwable t) {
+        log.log(Level.WARNING, "Dialog forms training warmup failure", t);
+      }
       // Exit after the first frame pulse: enough to exercise the toolkit startup
       // the AOT cache covers.
       PauseTransition pulse = new PauseTransition(Duration.millis(200));

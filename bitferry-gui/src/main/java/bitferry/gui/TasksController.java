@@ -120,13 +120,16 @@ public final class TasksController {
     // The custom cell (not CheckBoxTableCell): its bidirectional binding writes the
     // STALE visual state of a reused cell into the next row's property on every
     // table rebuild — flipping the flags arbitrarily. The explicit cell sets the
-    // state from the persisted flag and persists only the user's own clicks.
+    // state from the row's snapshot and persists only the user's own clicks (the
+    // snapshot follows the click: the re-renders — the scrolling, the resizing —
+    // must not repaint the stale pre-click state over the user's toggle).
     runnableColumn.setCellFactory(column -> new TableCell<>() {
       private final CheckBox checkBox = new CheckBox();
       {
         checkBox.setOnAction(event -> {
           if (getTableRow() != null && getTableRow().getItem() instanceof Row row) {
             row.task.setRunnable(checkBox.isSelected());
+            row.runnable.set(checkBox.isSelected());
           }
         });
       }
@@ -225,11 +228,16 @@ public final class TasksController {
 
   /// The mass checkbox controls: all on / all off / invert over every live task.
   /// Session-only: the toggles change the runtime execution status without
-  /// touching the persisted descriptor.
+  /// touching the persisted descriptor. The model change notification rides the
+  /// mutation: without it the row snapshots (and hence the checkboxes) keep
+  /// rendering the stale states while the mass runs honor the flipped flags —
+  /// "All Off" followed by Execute All runs nothing, looking like the buttons
+  /// do nothing at all.
   private void setMassAll(boolean value) {
     context.operations().execute(() -> {
       Manager manager = context.manager();
       for (Task t : manager.liveTasks().values()) t.setRunnable(value);
+      context.fireModelChanged();
     });
   }
 
@@ -237,6 +245,7 @@ public final class TasksController {
     context.operations().execute(() -> {
       Manager manager = context.manager();
       for (Task t : manager.liveTasks().values()) t.setRunnable(!t.isRunnable());
+      context.fireModelChanged();
     });
   }
 
@@ -303,7 +312,11 @@ public final class TasksController {
         current.delete();
         manager.commit();
         logs.log("task " + current.tag() + " deleted");
-        context.fireModelChanged();
+        // Re-probe the manager mirroring the volume deletion flow: the reload's
+        // garbage collection retires the tombstone right away when all the referred
+        // volumes are visible (the storages are cleaned by the following commits),
+        // and the wholesale swap keeps the GUI consistent with the fresh-CLI state.
+        context.reload();
       }, logs);
   }
 }

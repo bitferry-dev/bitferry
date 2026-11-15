@@ -175,4 +175,28 @@ class TombstoneTest {
     assertFalse(Storage.readJson(dir.resolve("first").resolve(Bitferry.STORAGE)).has("tasks"));
     assertFalse(Storage.readJson(dir.resolve("second").resolve(Bitferry.STORAGE)).has("tasks"));
   }
+
+  @Test
+  void volumeDeletionTombstonesTheReferringTasks() throws IOException {
+    Task task = bindTask();
+    manager.commit();
+
+    // Deleting a volume tombstones its referring tasks in memory
+    second.delete();
+    assertTrue(task.isDeleted());
+
+    // The commit removes the deleted volume's storage while the tombstone lands
+    // into the storage of the surviving volume the task also refers to
+    manager.commit();
+    assertFalse(Files.exists(dir.resolve("second").resolve(Bitferry.STORAGE)));
+    JsonNode a = Storage.readJson(dir.resolve("first").resolve(Bitferry.STORAGE));
+    assertTrue(a.get("tasks").get(0).get("deleted").asBoolean());
+
+    // The restored manager keeps the tombstone: the deleted task never resurrects
+    // from the surviving plain copy and stays invisible for all the operations
+    Manager restored = new Manager().restore(List.of(dir.resolve("first")));
+    assertTrue(restored.task(task.tag()).isDeleted());
+    assertTrue(restored.selectTasks().isEmpty());
+    assertThrows(BitferryError.class, () -> restored.selectLiveTasks(List.of(task.tag())));
+  }
 }

@@ -159,9 +159,31 @@ class TaskTest {
     Copy raw = new Copy(manager, source(), destination(), "custom,options", List.of(), List.of());
     assertEquals(List.of("custom", "options"), toStringList(raw.serialize().get("rclone").get("execute")));
 
-    // '-' disables execution options
+    // '-' disables execution options: the cleared state persists as the explicit
+    // empty list (an absent key would resolve into the default profile at the restore)
     Copy disabled = new Copy(manager, source(), destination(), "-", List.of(), List.of());
-    assertNull(disabled.serialize().get("rclone"));
+    assertEquals(List.of(), toStringList(disabled.serialize().get("rclone").get("execute")));
+  }
+
+  @Test
+  void clearedExecutionOptionsSurviveTheRestoration() {
+    // The cleared ('-') execution options must not resolve back into the backend's
+    // default profile upon the restoration (the rclone --metadata, the restore --sparse)
+    Copy copy = new Copy(manager, source(), destination(), null, List.of(), List.of());
+    copy.setProcessOptions("-");
+    Task restored = Task.restore(manager, copy.serialize());
+    assertEquals(List.of(), restored.processOptions());
+
+    Restore restore = new Restore(manager, destination(), volumeRestored(), "secret", "@default", List.of(), List.of());
+    restore.setProcessOptions("-");
+    Task restoredRestore = Task.restore(manager, restore.serialize());
+    assertEquals(List.of(), restoredRestore.processOptions());
+
+    // The round trip through the actual volume storage keeps the cleared state too
+    manager.commit();
+    Manager reloaded = new Manager().restore(dir.resolve("volume"));
+    Task stored = reloaded.tasks().get(copy.tag());
+    assertEquals(List.of(), stored.processOptions());
   }
 
   @Test

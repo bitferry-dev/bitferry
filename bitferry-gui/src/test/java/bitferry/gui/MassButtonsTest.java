@@ -39,8 +39,12 @@ class MassButtonsTest {
 
     @BeforeAll
     static void startFxAndBuildThePane() throws Exception {
-        Platform.startup(FX_READY::countDown);
-        if (!FX_READY.await(10, TimeUnit.SECONDS)) throw new IllegalStateException("the FX toolkit did not start");
+        try {
+            Platform.startup(FX_READY::countDown);
+            if (!FX_READY.await(10, TimeUnit.SECONDS)) throw new IllegalStateException("the FX toolkit did not start");
+        } catch (IllegalStateException ignored) {
+            // Already started by another test class in this JVM
+        }
 
         CountDownLatch built = new CountDownLatch(1);
         AtomicReference<Throwable> failure = new AtomicReference<>();
@@ -76,7 +80,6 @@ class MassButtonsTest {
 
     @AfterAll
     static void stopFx() {
-        Platform.exit();
     }
 
     @Test
@@ -89,6 +92,20 @@ class MassButtonsTest {
         fireAndWait("massInvert", false);
         // All On once more: the steady state
         fireAndWait("massAll", true);
+    }
+
+    @Test
+    void massButtonsNotifyTheModelChange() throws Exception {
+        // The toggles ride the model change notification: without it the rows (and
+        // the checkboxes) keep rendering the stale states — the "the buttons do
+        // nothing" report. The listener fan-out runs on the operations thread; the
+        // listener stays registered for the remaining tests (a counted-down latch
+        // makes it a no-op).
+        CountDownLatch notified = new CountDownLatch(1);
+        context.onModelChanged(notified::countDown);
+        fireAndWait("massAll", true);
+        assertTrue(notified.await(5, TimeUnit.SECONDS),
+            "the mass buttons must fire the model change notification for the panes to refresh");
     }
 
     @Test

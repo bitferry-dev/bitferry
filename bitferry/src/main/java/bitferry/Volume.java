@@ -191,6 +191,12 @@ public final class Volume {
   /// the volume directory contents are kept.
   public void delete() {
     this.commitState = CommitState.DELETED;
+    // The referring tasks are tombstoned with the volume: the deletion markers ride
+    // the commit into the storages of the surviving volumes the tasks also refer to
+    // (the tasks carried only by this volume vanish along with its storage), winning
+    // the conflicting restorations over the stale plain copies - the deleted tasks
+    // never resurrect upon the following restores.
+    for (Task task : liveTasks().values()) task.delete();
     touch();
   }
 
