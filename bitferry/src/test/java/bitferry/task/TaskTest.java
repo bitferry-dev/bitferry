@@ -279,6 +279,45 @@ class TaskTest {
   }
 
   @Test
+  void massRunParticipationDefaultsAndPersists() {
+    var task = new Synchronize(manager, source(), destination(), null, List.of(), List.of());
+    // The default: every task participates in the mass runs (the descriptor omits the flag)
+    assertTrue(task.isRunnable());
+    assertFalse(task.isManual());
+    assertNull(task.serialize().get("manual"));
+
+    // The runtime opt-out: the checkbox toggles the execution status without touching
+    // the persisted descriptor (the mass run skips the task, the explicit tag runs it)
+    task.setRunnable(false);
+    assertFalse(task.isRunnable());
+    assertFalse(task.isManual());
+    assertNull(task.serialize().get("manual"));
+    assertFalse(manager.selectTasks(List.of()).containsKey(task.tag()));
+    assertTrue(manager.selectTasks(task.tag()).containsKey(task.tag()));
+
+    // The persisted manual flag (set via the dialog): the descriptor carries it and
+    // the mass run skips the task
+    task.setManual(true);
+    assertTrue(task.isManual());
+    assertFalse(task.isRunnable());
+    assertEquals(Boolean.TRUE, task.serialize().get("manual").asBoolean());
+    assertFalse(manager.selectTasks(List.of()).containsKey(task.tag()));
+
+    // The descriptor round-trip: the restored execution status mirrors the persisted flag
+    task.setManual(false);
+    var restored = (Synchronize) Task.restore(manager, task.serialize());
+    assertFalse(restored.isManual());
+    assertTrue(restored.isRunnable());
+
+    task.setManual(true);
+    restored = (Synchronize) Task.restore(manager, task.serialize());
+    assertTrue(restored.isManual());
+    assertFalse(restored.isRunnable());
+    assertSame(task, manager.task(task.tag()));
+  }
+
+
+  @Test
   void equalTimestampConflictsPreferTheTombstone() {
     Equalize task = new Equalize(manager, source(), destination(), null, List.of(), List.of());
 

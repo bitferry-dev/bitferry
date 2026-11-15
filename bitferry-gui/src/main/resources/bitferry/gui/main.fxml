@@ -25,7 +25,7 @@
       <padding>
         <Insets top="4" right="0" bottom="8" left="0"/>
       </padding>
-      <Button fx:id="executeAll" text="Execute All" defaultButton="true" style="-fx-base: #e8f5e9;"
+      <Button fx:id="executeAll" text="Execute" defaultButton="true" style="-fx-base: #e8f5e9;"
               onAction="#onExecuteAll">
         <tooltip>
           <Tooltip text="Execute all intact tasks"/>

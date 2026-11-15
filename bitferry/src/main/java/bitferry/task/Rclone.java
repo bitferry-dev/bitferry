@@ -162,6 +162,16 @@ public abstract class Rclone extends Task {
     manager.backendExecutor().conform(this);
   }
 
+  /// The encryption summary for the breakdown listings: the crypt mode and the
+  /// options from the Encryption hierarchy.
+  @Override
+  public java.util.Optional<String> encryptionSummary() {
+    var enc = encryption;
+    if (enc == null || enc.operation() == null) return java.util.Optional.of("none");
+    String opts = encryption.options() == null || encryption.options().isEmpty() ? "" : " (options: " + String.join(" ", encryption.options()) + ")";
+    return java.util.Optional.of(encryption.operation() + opts);
+  }
+
   /// The tool dispatch (the double dispatch landing on the executor's rclone slot).
   @Override
   public boolean runWith(Executor executor, Consumer<String> output) {

@@ -102,6 +102,13 @@ public class Backup extends Restic {
     return source.requireVolume(manager, "backup directory endpoint must reside within a Bitferry volume");
   }
 
+  /// The backup direction: the source is the data directory, the destination is the
+  /// repository.
+  @Override
+  public List<EndpointEntry> endpointEntries() {
+    return List.of(new EndpointEntry("Source:", source), new EndpointEntry("Repository:", destination));
+  }
+
   /// The repository travels with the destination endpoint.
   @Override
   public Endpoint repoEndpoint() {

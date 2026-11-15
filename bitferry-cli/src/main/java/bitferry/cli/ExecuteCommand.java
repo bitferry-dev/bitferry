@@ -42,6 +42,13 @@ public class ExecuteCommand implements Callable<Integer>, HasCommonOptions {
     if (!stale.isEmpty() && m.verbose()) {
       err.println(Ansi.AUTO.string("@|faint " + stale.size() + " task(s) skipped: their volumes are currently absent (see 'bitferry info -v')|@"));
     }
+    // The mass-excluded tasks (manual-only) are surfaced in verbose mode
+    if (tags == null || tags.isEmpty()) {
+      long manual = m.liveTasks().values().stream().filter(Task::isIntact).filter(Task::isManual).count();
+      if (manual > 0 && m.verbose()) {
+        err.println(Ansi.AUTO.string("@|faint " + manual + " task(s) excluded from the mass run (manual-only; execute them by their tags)|@"));
+      }
+    }
     Map<String, Task> tasks = m.selectTasks(tags);
     // An empty selection succeeds silently
     if (tasks.isEmpty()) return 0;

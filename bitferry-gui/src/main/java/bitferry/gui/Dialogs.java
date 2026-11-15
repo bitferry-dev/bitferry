@@ -170,6 +170,7 @@ final class Dialogs {
         if (form.encryption() != null && task.supportsEncryption()) {
           task.setEncryption(form.encryption(), form.password(), null, Rclone.Encryption.options(form.profile()), keyring);
         }
+        task.setManual(form.manual());
         Task candidate = task;
         if (manager.volumes().values().stream().noneMatch(v -> candidate.refersVolume(v.tag()))) {
           throw new BitferryError("task does not belong to any registered volume; it cannot be persisted");
@@ -219,6 +220,10 @@ final class Dialogs {
 
         // Backup retention, check, and cadence options
         current.applyPolicyOptions(form.forget(), form.check(), form.serve());
+
+        // The manual flag (the mass-run participation): the dialog checkbox is the
+        // editor (the grid checkbox mirrors it)
+        current.setManual(form.manual());
 
         // Include filters. The backup tasks filter by exclusion only (restic backup
         // carries no include patterns): the handling is skipped and the form field is
@@ -367,6 +372,7 @@ final class Dialogs {
     private final RadioButton vaultChoice = new RadioButton("volume vault — travels with the volume");
     private final Node keyring = new HBox(12, keyringChoice, vaultChoice);
     private final CheckBox format = new CheckBox("initialize the repository over the existing data");
+    private final CheckBox manual = new CheckBox("exclude from mass runs");
     private final TextField forget = new TextField();
     private final TextField check = new TextField();
     private final TextField serve = new TextField();
@@ -476,6 +482,8 @@ final class Dialogs {
           cryptPasswordConfirm.setDisable(true);
         }
 
+        manual.setSelected(existing.isManual());
+
         if (existing instanceof Backup backup) {
           if (backup.forget() != null && !backup.forget().isEmpty()) {
             forget.setText(String.join(", ", backup.forget()));
@@ -531,6 +539,7 @@ final class Dialogs {
       rows.add(formRow("Check:", withEditList(check, "Integrity Check", "Edit repository integrity check options", () -> Backup.CHECK), backup));
       rows.add(formRow("Format:", format, formatVisible));
       rows.add(formRow("Serve:", serve, backup));
+      rows.add(formRow("Manual:", manual, () -> true));
 
       grid.setHgap(8);
       grid.setVgap(8);
@@ -794,6 +803,12 @@ final class Dialogs {
       String value = serve.getText().trim();
       if (value.isEmpty()) return existing == null ? null : "-";
       return value;
+    }
+
+    /// The mass-run participation: the checkbox inverted (checked = manual-only,
+    /// excluded from the mass runs).
+    boolean manual() {
+      return manual.isSelected() && !manual.isDisable();
     }
 
     boolean keyring() {

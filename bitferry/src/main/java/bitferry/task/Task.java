@@ -23,7 +23,7 @@ import tools.jackson.databind.node.*;
   @JsonSubTypes.Type(value = Backup.class, name = "backup"),
   @JsonSubTypes.Type(value = Restore.class, name = "restore")
 })
-@JsonPropertyOrder({"task", "operation", "backend", "source", "destination", "modified", "include", "exclude", "deleted"})
+@JsonPropertyOrder({"task", "operation", "backend", "source", "destination", "modified", "include", "exclude", "deleted", "manual"})
 public abstract class Task {
 
   // Tags used by the commit()'s FSM
@@ -76,6 +76,14 @@ public abstract class Task {
   @JsonProperty("deleted")
   protected Boolean deleted;
 
+  /// The mass-run participation marker (inverted): true = the task is manual-only —
+  /// excluded from the mass runs (the no-tags execute/serve invocations) and run only
+  /// when requested specifically by its tag; absent (and omitted from the descriptor)
+  /// = the task participates in the mass runs. The default keeps the existing storages
+  /// and the new tasks participating.
+  @JsonProperty("manual")
+  protected Boolean manual;
+
   private static final System.Logger LOG = System.getLogger(Task.class.getName());
 
   /// Constructor for a new task instance.
@@ -125,6 +133,9 @@ public abstract class Task {
       // The registration rides the fully built task (see the restore constructor):
       // the conflict resolution must observe the post-construction injected state
       manager.registerTask(task);
+      // The execution status is copied from the persisted manual flag at the
+      // restoration: the initial checkbox state mirrors the descriptor
+      task.runnable = !task.isManual();
       return task;
     } catch (RuntimeException e) {
       throw BitferryError.resolve(e, "invalid task descriptor: " + e.getMessage());
@@ -226,6 +237,41 @@ public abstract class Task {
     return source.isIntact() && destination.isIntact();
   }
 
+  /// The runtime execution status: whether the task participates in the mass runs
+  /// (the no-tags execute/serve invocations). Copied from the persisted manual flag
+  /// at the restoration time; the GUI checkbox toggles change this runtime state
+  /// without touching the persisted descriptor.
+  protected boolean runnable = true;
+
+  /// Whether the task is manual-only: the persisted flag set at the creation time
+  /// (the descriptor carries "manual": true). The mass runs skip manual-only tasks.
+  @JsonIgnore
+  public boolean isManual() {
+    return Boolean.TRUE.equals(manual);
+  }
+
+  /// Whether the task participates in the mass runs (the runtime execution status).
+  @JsonIgnore
+  public boolean isRunnable() {
+    return runnable;
+  }
+
+  /// Set the runtime execution status (the checkbox toggle). Does not touch the
+  /// persisted descriptor: the state is session-only, re-initialized from the
+  /// persisted manual flag at the restoration.
+  public void setRunnable(boolean mass) {
+    this.runnable = mass;
+  }
+
+  /// Set the manual-only flag directly (the persisted property; the dialog is the
+  /// editor). The runtime execution status follows.
+  @JsonIgnore
+  public void setManual(boolean manual) {
+    this.manual = manual ? Boolean.TRUE : null;
+    this.runnable = !manual;
+    touch();
+  }
+
   /// Whether the task keeps a secret within the vault providers (the keyring advisory
   /// gating). The restic tasks keep the repository password; the encrypted rclone tasks
   /// keep the crypt password pair.
@@ -244,6 +290,13 @@ public abstract class Task {
   /// decrypt wiring. Raises [BitferryError] on the tasks not supporting the encryption.
   public Task setEncryption(String mode, String password, String password2, List<String> options, boolean keyring) {
     throw new BitferryError("encryption is supported for the rclone tasks only");
+  }
+
+  /// The encryption summary for the breakdown listings (empty for the tasks without
+  /// encryption). The rclone tasks override with the crypt mode and the options.
+  @JsonIgnore
+  public java.util.Optional<String> encryptionSummary() {
+    return java.util.Optional.empty();
   }
 
   /// Whether the task accepts the include filters (the backup tasks filter by
@@ -271,6 +324,18 @@ public abstract class Task {
   public boolean refersVolume(String vtag) {
     return source.refersVolume(vtag) || destination.refersVolume(vtag);
   }
+
+  /// The endpoint entries for the breakdown listings: the (label, endpoint) pairs
+  /// reflecting the task's direction (the backup tasks label the destination as the
+  /// repository, the restore tasks label the source as the repository). The base
+  /// implementation provides the generic Source/Destination pair; the subclasses
+  /// override to re-label.
+  public List<EndpointEntry> endpointEntries() {
+    return List.of(new EndpointEntry("Source:", source), new EndpointEntry("Destination:", destination));
+  }
+
+  /// The per-type endpoint entry: the label and the endpoint pair.
+  public record EndpointEntry(String label, Endpoint endpoint) {}
 
   /// Return the volume hosting the task's password vault: the volume of the unencrypted
   /// end of the task, so the password travels along with the plaintext data.

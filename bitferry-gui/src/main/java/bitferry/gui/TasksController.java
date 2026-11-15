@@ -6,6 +6,7 @@ import javafx.beans.property.*;
 import javafx.collections.FXCollections;
 import javafx.fxml.FXML;
 import javafx.scene.control.*;
+import javafx.scene.control.cell.CheckBoxTableCell;
 import javafx.scene.paint.Color;
 
 import java.util.*;
@@ -19,6 +20,7 @@ public final class TasksController {
   /// The display row snapshot; rebuilt wholesale upon every model change.
   public static final class Row {
     final Task task;
+    final BooleanProperty runnable = new SimpleBooleanProperty();
     final StringProperty tag = new SimpleStringProperty();
     final StringProperty operation = new SimpleStringProperty();
     final StringProperty source = new SimpleStringProperty();
@@ -29,6 +31,7 @@ public final class TasksController {
 
     Row(Task task) {
       this.task = task;
+      runnable.set(task.isRunnable());
       tag.set(task.tag());
       operation.set(task.displayOperation());
       source.set(task.source().describe());
@@ -57,28 +60,40 @@ public final class TasksController {
   private TableView<Row> table;
 
   @FXML
-  private TableColumn<Row, String> tagCol;
+  private TableColumn<Row, Boolean> runnableColumn;
 
   @FXML
-  private TableColumn<Row, String> operationCol;
+  private TableColumn<Row, String> tagColumn;
 
   @FXML
-  private TableColumn<Row, String> sourceCol;
+  private TableColumn<Row, String> operationColumn;
 
   @FXML
-  private TableColumn<Row, String> destinationCol;
+  private TableColumn<Row, String> sourceColumn;
 
   @FXML
-  private TableColumn<Row, String> statusCol;
+  private TableColumn<Row, String> destinationColumn;
 
   @FXML
-  private TableColumn<Row, String> vaultCol;
+  private TableColumn<Row, String> statusColumn;
+
+  @FXML
+  private TableColumn<Row, String> vaultColumn;
 
   @FXML
   private Button create;
 
   @FXML
   private Button modify;
+
+  @FXML
+  private Button massAll;
+
+  @FXML
+  private Button massNone;
+
+  @FXML
+  private Button massInvert;
 
   @FXML
   private Button execute;
@@ -101,13 +116,40 @@ public final class TasksController {
   // The display wiring (no context needed yet)
   @FXML
   private void initialize() {
-    tagCol.setCellValueFactory(data -> data.getValue().tag);
-    operationCol.setCellValueFactory(data -> data.getValue().operation);
-    sourceCol.setCellValueFactory(data -> data.getValue().source);
-    destinationCol.setCellValueFactory(data -> data.getValue().destination);
-    vaultCol.setCellValueFactory(data -> data.getValue().vault);
-    statusCol.setCellValueFactory(data -> data.getValue().status);
-    statusCol.setCellFactory(column -> new TableCell<>() {
+    table.setEditable(true);
+    // The custom cell (not CheckBoxTableCell): its bidirectional binding writes the
+    // STALE visual state of a reused cell into the next row's property on every
+    // table rebuild — flipping the flags arbitrarily. The explicit cell sets the
+    // state from the persisted flag and persists only the user's own clicks.
+    runnableColumn.setCellFactory(column -> new TableCell<>() {
+      private final CheckBox checkBox = new CheckBox();
+      {
+        checkBox.setOnAction(event -> {
+          if (getTableRow() != null && getTableRow().getItem() instanceof Row row) {
+            row.task.setRunnable(checkBox.isSelected());
+          }
+        });
+      }
+
+      @Override
+      protected void updateItem(Boolean item, boolean empty) {
+        super.updateItem(item, empty);
+        Row row = getTableRow() != null && getTableRow().getItem() instanceof Row r ? r : null;
+        if (empty || row == null) {
+          setGraphic(null);
+          return;
+        }
+        checkBox.setSelected(row.runnable.get());
+        setGraphic(checkBox);
+      }
+    });
+    tagColumn.setCellValueFactory(data -> data.getValue().tag);
+    operationColumn.setCellValueFactory(data -> data.getValue().operation);
+    sourceColumn.setCellValueFactory(data -> data.getValue().source);
+    destinationColumn.setCellValueFactory(data -> data.getValue().destination);
+    vaultColumn.setCellValueFactory(data -> data.getValue().vault);
+    statusColumn.setCellValueFactory(data -> data.getValue().status);
+    statusColumn.setCellFactory(column -> new TableCell<>() {
       private final Label label = new Label();
       @Override
       protected void updateItem(String item, boolean empty) {
@@ -149,7 +191,9 @@ public final class TasksController {
     Row selected = table.getSelectionModel().getSelectedItem();
     String selectedTag = selected == null ? null : selected.task.tag();
     List<Row> rows = new ArrayList<>();
-    for (Task task : manager.liveTasks().values()) rows.add(new Row(task));
+    for (Task task : manager.liveTasks().values()) {
+      rows.add(new Row(task));
+    }
     table.getItems().setAll(rows);
     if (selectedTag != null) {
       rows.stream().filter(r -> r.task.tag().equals(selectedTag)).findFirst()
@@ -170,10 +214,48 @@ public final class TasksController {
   private void updateButtons() {
     boolean none = selected() == null;
     create.setDisable(locked);
+    massAll.setDisable(locked);
+    massNone.setDisable(locked);
+    massInvert.setDisable(locked);
     modify.setDisable(locked || none);
     execute.setDisable(locked || none);
     serve.setDisable(locked || none);
     delete.setDisable(locked || none);
+  }
+
+  /// The mass checkbox controls: all on / all off / invert over every live task.
+  /// Session-only: the toggles change the runtime execution status without
+  /// touching the persisted descriptor.
+  private void setMassAll(boolean value) {
+    context.operations().execute(() -> {
+      Manager manager = context.manager();
+      for (Task t : manager.liveTasks().values()) t.setRunnable(value);
+    });
+  }
+
+  private void invertMass() {
+    context.operations().execute(() -> {
+      Manager manager = context.manager();
+      for (Task t : manager.liveTasks().values()) t.setRunnable(!t.isRunnable());
+    });
+  }
+
+  @FXML
+  private void onMassAll() {
+    if (locked) return;
+    setMassAll(true);
+  }
+
+  @FXML
+  private void onMassNone() {
+    if (locked) return;
+    setMassAll(false);
+  }
+
+  @FXML
+  private void onMassInvert() {
+    if (locked) return;
+    invertMass();
   }
 
   @FXML

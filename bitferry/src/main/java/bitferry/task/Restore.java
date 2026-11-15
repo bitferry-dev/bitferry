@@ -58,6 +58,13 @@ public class Restore extends Restic {
     return source;
   }
 
+  /// The restore direction: the source is the repository, the destination is the
+  /// target directory.
+  @Override
+  public List<EndpointEntry> endpointEntries() {
+    return List.of(new EndpointEntry("Repository:", source), new EndpointEntry("Target:", destination));
+  }
+
   /// The conformance dispatch: the override makes the call land on the executor's
   /// restore slot (the static type of `this` decides the overload).
   @Override

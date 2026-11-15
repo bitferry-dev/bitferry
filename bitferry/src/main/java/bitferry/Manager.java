@@ -192,7 +192,12 @@ public class Manager {
   public Map<String, Task> selectTasks(List<String> tags) {
     Map<String, Task> intact = new LinkedHashMap<>();
     for (Volume volume : volumes().values()) intact.putAll(volume.intactTasks());
-    if (tags == null || tags.isEmpty()) return intact;
+    if (tags == null || tags.isEmpty()) {
+      // The mass run: the tasks whose runtime execution status excludes them are
+      // skipped (they run when requested specifically by their tags)
+      intact.values().removeIf(t -> !t.isRunnable());
+      return intact;
+    }
     Map<String, Task> selected = new LinkedHashMap<>();
     for (Task t : pick(intact, tags, 1)) selected.put(t.tag(), t);
     return selected;

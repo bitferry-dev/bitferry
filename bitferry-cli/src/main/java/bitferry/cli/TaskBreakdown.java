@@ -27,15 +27,21 @@ public final class TaskBreakdown {
     appendProperty(sb, "Status:", formatStatus(task));
     appendProperty(sb, "Backend:", task.backend());
     appendProperty(sb, "Operation:", task.operation());
+    appendProperty(sb, "Mass run:", task.isRunnable() ? "yes" : "no (manual-only)");
 
-    if (task instanceof Rclone rclone) {
-      appendRcloneDetails(sb, rclone);
-    } else if (task instanceof Backup backup) {
-      appendBackupEndpoints(sb, backup);
-    } else if (task instanceof Restore restore) {
-      appendRestoreEndpoints(sb, restore);
-    } else {
-      appendDefaultEndpoints(sb, task);
+    // The endpoint entries ride the task hierarchy (the per-type labels and the
+    // per-type data)
+    for (Task.EndpointEntry entry : task.endpointEntries()) {
+      appendProperty(sb, entry.label(), formatEndpoint(entry.endpoint()));
+    }
+
+    // The encryption summary (the polymorphic accessor returns empty for the tasks
+    // without encryption)
+    task.encryptionSummary().ifPresent(s -> appendProperty(sb, "Encryption:", s));
+
+    // The execution options (when present)
+    if (!task.processOptions().isEmpty()) {
+      appendProperty(sb, "Execute Opts:", String.join(" ", task.processOptions()));
     }
 
     String vault = formatVaultVolume(task);

@@ -39,6 +39,13 @@ dependencies {
     api "org.openjfx:javafx-graphics:$javafxVersion:$javafxClassifier"
     api "org.openjfx:javafx-controls:$javafxVersion:$javafxClassifier"
     api "org.openjfx:javafx-fxml:$javafxVersion:$javafxClassifier"
+
+    testImplementation(libs.junit.jupiter)
+    testRuntimeOnly(libs.junit.platform.launcher)
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
 }
 
 application {
