@@ -29,6 +29,9 @@ public class ModifyTaskCommand implements Callable<Integer>, HasCommonOptions {
   @Option(names = {"-p", "--password"}, description = "Update the repository password.")
   boolean password;
 
+  @Option(names = {"-t", "--type"}, description = "Operation type for rclone tasks (copy, update, synchronize, equalize).", paramLabel = "TYPE")
+  String type;
+
   @Option(names = "-f", description = "Apply default snapshot retention policy options.")
   boolean defaultForget;
 
@@ -90,14 +93,19 @@ public class ModifyTaskCommand implements Callable<Integer>, HasCommonOptions {
     boolean hasInclude = clearInclude || include != null || includeExts != null;
     boolean hasExclude = clearExclude || exclude != null || excludeExts != null;
     boolean hasExecute = execute != null;
+    boolean hasType = type != null;
 
-    if (!password && !hasForget && !hasCheck && !hasServe && !hasInclude && !hasExclude && !hasExecute) {
+    if (!password && !hasForget && !hasCheck && !hasServe && !hasInclude && !hasExclude && !hasExecute && !hasType) {
       throw new BitferryError("no modifications specified for task " + tag);
     }
 
     Manager m = CliUtils.restoreManager(opts);
     List<Task> selected = m.selectLiveTasks(List.of(tag));
     Task task = selected.get(0);
+
+    if (hasType) {
+      task = task.morph(type);
+    }
 
     if (hasForget || hasCheck || hasServe) {
       if (!task.supportsRetentionPolicy()) {

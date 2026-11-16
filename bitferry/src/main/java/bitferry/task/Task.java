@@ -305,6 +305,16 @@ public abstract class Task {
     return true;
   }
 
+  /// Whether the task supports altering its operation type.
+  public boolean supportsOperationChange() {
+    return false;
+  }
+
+  /// Morph this task into another operation type.
+  public Task morph(String newOperation) {
+    throw new BitferryError("altering operation type is not supported for " + operation() + " tasks");
+  }
+
   /// Whether the task carries the retention/check/cadence policy options.
   public boolean supportsRetentionPolicy() {
     return false;
@@ -575,9 +585,12 @@ public abstract class Task {
       .toList();
   }
 
-  // Resolve the restored processing options list against the profile route
+  /// Resolve the restored processing options list: @default profiles are applied
+  /// at task creation time only; task restoration restores whatever options are read
+  /// from the storage descriptor, and absent or empty options remain empty without
+  /// falling back to the default profile.
   protected static List<String> optional(List<String> options, Map<String, List<String>> route) {
-    return options == null ? route.get(null) : options;
+    return options == null ? List.of() : options;
   }
 
   // The list reduced to null when empty for the section omission

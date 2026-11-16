@@ -1591,6 +1591,20 @@ class CliTest {
     code = cmd.execute("--path", volDir.toString(), "m", "t", task.tag(), "-S", "@default");
     assertNotEquals(0, code);
     assertTrue(err.toString().contains("forget, check, and serve options are only applicable to backup tasks"));
+
+    // 4. Modifying operation type on rclone succeeds
+    cmd = Main.createCommandLine();
+    out = new StringWriter();
+    err = new StringWriter();
+    cmd.setOut(new PrintWriter(out));
+    cmd.setErr(new PrintWriter(err));
+    code = cmd.execute("--path", volDir.toString(), "m", "t", task.tag(), "-t", "copy");
+    assertEquals(0, code, () -> "stderr: " + err);
+
+    m = managerFor(volDir);
+    Task morphed = m.selectTasks().get(task.tag());
+    assertInstanceOf(Copy.class, morphed);
+    assertEquals("copy", morphed.operation());
   }
 
   @Test

@@ -167,6 +167,14 @@ public class Manager {
     }
   }
 
+  /// Replace an existing task in the registry (e.g. upon an operation type change).
+  public void replaceTask(Task task) {
+    synchronized (registryLock) {
+      tasks.put(task.tag(), task);
+      LOG.log(Level.INFO, () -> "task " + task.tag() + " replaced in " + this);
+    }
+  }
+
   /// Drop the volume from the registry: the abort of a failed creation (the commit
   /// of a pristine volume may reject it - e.g. the refusal to overwrite the existing
   /// foreign storage). Without the rollback the rejected volume would stay registered

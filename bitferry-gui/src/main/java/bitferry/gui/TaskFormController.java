@@ -95,7 +95,25 @@ public final class TaskFormController {
   private TextField source;
 
   @FXML
+  private Button browseSourceSmart;
+
+  @FXML
+  private Button browseSourceLocal;
+
+  @FXML
+  private Button browseSourceVolume;
+
+  @FXML
   private TextField destination;
+
+  @FXML
+  private Button browseDestinationSmart;
+
+  @FXML
+  private Button browseDestinationLocal;
+
+  @FXML
+  private Button browseDestinationVolume;
 
   @FXML
   private TextField include;
@@ -114,6 +132,9 @@ public final class TaskFormController {
 
   @FXML
   private TextField profile;
+
+  @FXML
+  private Button editProfile;
 
   @FXML
   private PasswordField cryptPassword;
@@ -253,6 +274,17 @@ public final class TaskFormController {
 
     includeControl.disableProperty().bind(type.valueProperty().isEqualTo("backup"));
 
+    // The endpoint browsing buttons mirror the disabled state of the corresponding entries
+    browseSourceSmart.disableProperty().bind(source.disableProperty());
+    browseSourceLocal.disableProperty().bind(source.disableProperty());
+    browseSourceVolume.disableProperty().bind(source.disableProperty());
+    browseDestinationSmart.disableProperty().bind(destination.disableProperty());
+    browseDestinationLocal.disableProperty().bind(destination.disableProperty());
+    browseDestinationVolume.disableProperty().bind(destination.disableProperty());
+
+    // The encryption options edit button mirrors the disabled state of the profile entry
+    editProfile.disableProperty().bind(profile.disableProperty());
+
     // The volume vault is the default destination (selected in the FXML); the keyring
     // choice is offered (and honored) only when the OS keyring is usable on this host
     // — otherwise it is grayed out and the vault stays the only selectable option
@@ -297,8 +329,14 @@ public final class TaskFormController {
         case Restore ignored -> "restore";
         default -> "";
       };
-      type.setValue(existingType);
-      type.setDisable(true);
+      if (existing.supportsOperationChange()) {
+        type.getItems().setAll("copy", "update", "synchronize", "equalize");
+        type.setValue(existingType);
+        type.setDisable(false);
+      } else {
+        type.setValue(existingType);
+        type.setDisable(true);
+      }
 
       source.setText(existing.source().describe());
       source.setDisable(true);
@@ -313,9 +351,7 @@ public final class TaskFormController {
       }
 
       List<String> curOpts = existing.processOptions();
-      if (!curOpts.isEmpty()) {
-        execute.setText(String.join(", ", curOpts));
-      }
+      execute.setText(String.join(", ", curOpts));
 
       if (existing instanceof Rclone rclone) {
         Rclone.Encryption enc = rclone.encryption();
@@ -424,6 +460,7 @@ public final class TaskFormController {
   // parses back into the volume endpoint), the explicit local: form outside the
   // volumes (the bare form would be rejected by the parser)
   private void browseSmart(TextField field) {
+    if (field.isDisable()) return;
     File chosen = browseDirectory(field, new File(System.getProperty("user.home")), "Select the local directory");
     if (chosen != null) field.setText(endpointSpecifier(context.manager(), chosen.toPath()));
   }
@@ -431,11 +468,13 @@ public final class TaskFormController {
   // The explicit local form browse: the only way to reference the paths outside
   // the volumes (and to force the local form for a path inside one)
   private void browseLocal(TextField field) {
+    if (field.isDisable()) return;
     File chosen = browseDirectory(field, new File(System.getProperty("user.home")), "Select the local directory");
     if (chosen != null) field.setText("local:" + Bitferry.canonicalize(chosen.toPath()));
   }
 
   private void browseVolume(TextField field) {
+    if (field.isDisable()) return;
     List<Volume> volumes = new ArrayList<>(context.manager().liveVolumes().values());
     if (volumes.isEmpty()) {
       Dialogs.alert(context, javafx.scene.control.Alert.AlertType.WARNING, "No volumes", "No volumes are registered — reload the manager or create one first.");
@@ -455,6 +494,7 @@ public final class TaskFormController {
   }
 
   private void editList(TextField field, String title, String header, Supplier<Map<String, List<String>>> profilesSupplier) {
+    if (field.isDisable()) return;
     List<String> current = patterns(field.getText());
     Map<String, List<String>> profiles = profilesSupplier != null ? profilesSupplier.get() : null;
     if (current.size() == 1 && current.get(0).startsWith("@") && profiles != null) {
@@ -636,7 +676,7 @@ public final class TaskFormController {
 
   String execute() {
     String value = execute.getText().trim();
-    if (value.isEmpty()) return existing == null ? null : "-";
+    if (value.isEmpty()) return "-";
     return value;
   }
 

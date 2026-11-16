@@ -164,13 +164,9 @@ public abstract class Restic extends Task {
 
   /// Serialize the backend descriptor section; omitted when empty mirroring
   /// the reference implementation's `filter_nones` behavior.
-  // The execution options are the exception (mirroring the rclone backend): the
-  // explicitly cleared ones (null or empty, the '-' specifier) persist as the empty
-  // execute list - the absent key resolves into the default profile (--sparse for the
-  // restore tasks) upon the restoration, resurrecting the cleared options at every
-  // reload. The backup tasks override the section omitting it when everything is at
-  // the defaults (their default execution options are empty, so the omission keeps
-  // the cleared state).
+  // The execution options are persisted explicitly: explicitly cleared options (empty or null)
+  // persist as an empty execute list. Task restoration restores whatever options are read from
+  // storage without falling back to @default profiles (which apply at task creation time only).
   @JsonProperty("restic")
   Backend storeBackend() {
     return new Backend(processOptions == null || processOptions.isEmpty() ? List.of() : processOptions, null, null);

@@ -3,10 +3,13 @@ package bitferry.gui;
 import bitferry.Manager;
 import bitferry.Volume;
 import bitferry.endpoint.Endpoints;
+import bitferry.task.Backup;
+import bitferry.task.Copy;
 import bitferry.task.Synchronize;
 import bitferry.task.Task;
 import javafx.application.Platform;
 import javafx.scene.Node;
+import javafx.scene.control.Button;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.TextField;
 import javafx.scene.layout.GridPane;
@@ -110,9 +113,26 @@ class TaskFormControllerTest {
         TextField destination = field(form, "destination");
         TextField include = field(form, "include");
         TextField exclude = field(form, "exclude");
-        assertTrue(type.isDisable());
+        assertFalse(type.isDisable());
+        assertEquals(List.of("copy", "update", "synchronize", "equalize"), type.getItems());
         assertTrue(source.isDisable());
         assertTrue(destination.isDisable());
+        Button browseSourceSmart = field(form, "browseSourceSmart");
+        Button browseSourceLocal = field(form, "browseSourceLocal");
+        Button browseSourceVolume = field(form, "browseSourceVolume");
+        Button browseDestinationSmart = field(form, "browseDestinationSmart");
+        Button browseDestinationLocal = field(form, "browseDestinationLocal");
+        Button browseDestinationVolume = field(form, "browseDestinationVolume");
+        assertTrue(browseSourceSmart.isDisable());
+        assertTrue(browseSourceLocal.isDisable());
+        assertTrue(browseSourceVolume.isDisable());
+        assertTrue(browseDestinationSmart.isDisable());
+        assertTrue(browseDestinationLocal.isDisable());
+        assertTrue(browseDestinationVolume.isDisable());
+        TextField profile = field(form, "profile");
+        Button editProfile = field(form, "editProfile");
+        assertTrue(profile.isDisable());
+        assertTrue(editProfile.isDisable());
         assertEquals(task.source().describe(), source.getText());
         assertEquals("keep/**", include.getText());
         assertEquals("skip/**", exclude.getText());
@@ -120,6 +140,139 @@ class TaskFormControllerTest {
         assertEquals("--metadata", execute(form).getText());
         // The stored manual flag mirrors into the checkbox
         assertFalse(form.manual());
+    }
+
+    @Test
+    void clearingExecutionOptionsInNewTaskFormPersists() throws Exception {
+        TaskFormController form = load(null);
+        Button browseSourceSmart = field(form, "browseSourceSmart");
+        assertFalse(browseSourceSmart.isDisable());
+        Button editProfile = field(form, "editProfile");
+        assertFalse(editProfile.isDisable());
+        TextField exec = execute(form);
+        assertEquals("--metadata", exec.getText());
+
+        // Clear execution options in new task dialog
+        runFx(() -> exec.setText(""));
+        assertEquals("-", form.execute());
+
+        // Task created with form.execute() has empty options
+        Copy copy = new Copy(manager,
+            Endpoints.parse(manager, "local:" + Files.createTempDirectory("bitferry-new-copy-src")),
+            Endpoints.parse(manager, ":" + volume.tag() + ":new-copy-dst"),
+            form.execute(), List.of(), List.of());
+        assertEquals(List.of(), copy.processOptions());
+        manager.commit();
+
+        // Round trip through volume restore keeps empty options
+        Manager reloaded = new Manager().restore(volume.root());
+        Task restored = reloaded.tasks().get(copy.tag());
+        assertNotNull(restored);
+        assertEquals(List.of(), restored.processOptions());
+
+        // Editing the restored task reflects the empty options
+        TaskFormController editForm = load(restored);
+        assertEquals("", execute(editForm).getText());
+    }
+
+    @Test
+    void modifyingExecutionOptionsInEditTaskFormPersists() throws Exception {
+        Task task = new Copy(manager,
+            Endpoints.parse(manager, "local:" + Files.createTempDirectory("bitferry-edit-copy-src")),
+            Endpoints.parse(manager, ":" + volume.tag() + ":edit-copy-dst"),
+            null, List.of(), List.of());
+        assertEquals(List.of("--metadata"), task.processOptions());
+        manager.commit();
+
+        // 1. Change options to custom list
+        TaskFormController form1 = load(task);
+        TextField exec1 = execute(form1);
+        assertEquals("--metadata", exec1.getText());
+        runFx(() -> exec1.setText("--checkers, 8, --fast-list"));
+        task.setProcessOptions(form1.execute());
+        assertEquals(List.of("--checkers", "8", "--fast-list"), task.processOptions());
+        manager.commit();
+
+        // Verify across reload
+        Manager reload1 = new Manager().restore(volume.root());
+        Task restored1 = reload1.tasks().get(task.tag());
+        assertEquals(List.of("--checkers", "8", "--fast-list"), restored1.processOptions());
+        TaskFormController editForm1 = load(restored1);
+        assertEquals("--checkers, 8, --fast-list", execute(editForm1).getText());
+
+        // 2. Change options to empty
+        TextField exec2 = execute(editForm1);
+        runFx(() -> exec2.setText(""));
+        restored1.setProcessOptions(editForm1.execute());
+        assertEquals(List.of(), restored1.processOptions());
+        reload1.commit();
+
+        // Verify empty options persist across reload
+        Manager reload2 = new Manager().restore(volume.root());
+        Task restored2 = reload2.tasks().get(task.tag());
+        assertEquals(List.of(), restored2.processOptions());
+        TaskFormController editForm2 = load(restored2);
+        assertEquals("", execute(editForm2).getText());
+    }
+
+    @Test
+    void modifyFormDisablesTypeForNonRcloneTasks() throws Exception {
+        Task task = new Backup(manager,
+            Endpoints.parse(manager, ":" + volume.tag() + ":backup-src"),
+            Endpoints.parse(manager, "local:" + Files.createTempDirectory("bitferry-backup-repo")),
+            "secret", false, null, null, null, null, List.of(), List.of(), false);
+        try {
+            TaskFormController form = load(task);
+            assertEquals("backup", form.type());
+            ComboBox<String> type = field(form, "type");
+            assertTrue(type.isDisable());
+        } finally {
+            manager.deregisterTask(task);
+        }
+    }
+
+    @Test
+    void alteringOperationTypeForRcloneTasksMorphsAndPersists() throws Exception {
+        Task task = new Copy(manager,
+            Endpoints.parse(manager, "local:" + Files.createTempDirectory("bitferry-morph-src")),
+            Endpoints.parse(manager, ":" + volume.tag() + ":morph-dst"),
+            null, List.of("data/**"), List.of("*.tmp"));
+        manager.commit();
+
+        Task morphed = null;
+        try {
+            TaskFormController form = load(task);
+            ComboBox<String> type = field(form, "type");
+            assertFalse(type.isDisable());
+            assertEquals("copy", form.type());
+
+            // Alter operation type to synchronize
+            runFx(() -> type.setValue("synchronize"));
+            assertEquals("synchronize", form.type());
+
+            // Morph the task
+            morphed = task.morph(form.type());
+            assertInstanceOf(Synchronize.class, morphed);
+            assertEquals(task.tag(), morphed.tag());
+            assertEquals(task.source().describe(), morphed.source().describe());
+            assertEquals(task.destination().describe(), morphed.destination().describe());
+            assertEquals(List.of("data/**"), morphed.include());
+            assertEquals(List.of("*.tmp"), morphed.exclude());
+            manager.commit();
+
+            // Round trip through volume restore keeps morphed type
+            Manager reloaded = new Manager().restore(volume.root());
+            Task restored = reloaded.tasks().get(task.tag());
+            assertNotNull(restored);
+            assertInstanceOf(Synchronize.class, restored);
+            assertEquals("synchronize", restored.operation());
+            assertEquals(List.of("data/**"), restored.include());
+            assertEquals(List.of("*.tmp"), restored.exclude());
+        } finally {
+            task.delete();
+            if (morphed != null) morphed.delete();
+            manager.commit();
+        }
     }
 
     // The helpers: the FXML controller is loaded through its factory, the private

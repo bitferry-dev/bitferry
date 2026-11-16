@@ -138,10 +138,9 @@ public abstract class Rclone extends Task {
 
   /// Serialize the backend descriptor section; omitted when empty mirroring
   /// the reference implementation's `filter_nones` behavior.
-  // The execution options are the exception: the explicitly cleared ones (null or empty,
-  // the '-' specifier) persist as the empty execute list. An absent rclone section (or an
-  // absent execute key) resolves into the default profile (--metadata) upon the
-  // restoration, so the omitted key would resurrect the cleared options at every reload.
+  // The execution options are persisted explicitly: explicitly cleared options (empty or null)
+  // persist as an empty execute list. Task restoration restores whatever options are read from
+  // storage without falling back to @default profiles (which apply at task creation time only).
   @JsonProperty("rclone")
   Backend storeBackend() {
     List<String> execute = processOptions == null || processOptions.isEmpty() ? List.of() : processOptions;
@@ -174,6 +173,37 @@ public abstract class Rclone extends Task {
     if (enc == null || enc.operation() == null) return java.util.Optional.of("none");
     String opts = encryption.options() == null || encryption.options().isEmpty() ? "" : " (options: " + String.join(" ", encryption.options()) + ")";
     return java.util.Optional.of(encryption.operation() + opts);
+  }
+
+  @Override
+  public boolean supportsOperationChange() {
+    return true;
+  }
+
+  /// Morph this rclone task into another rclone operation type (copy, update, synchronize, equalize).
+  @Override
+  public Rclone morph(String newOperation) {
+    if (operation().equals(newOperation)) return this;
+    Rclone morphed = switch (newOperation) {
+      case Copy.OPERATION -> new Copy(manager, source, destination, tag, BACKEND, mtime, include, exclude, storeBackend());
+      case Update.OPERATION -> new Update(manager, source, destination, tag, BACKEND, mtime, include, exclude, storeBackend());
+      case Synchronize.OPERATION -> new Synchronize(manager, source, destination, tag, BACKEND, mtime, include, exclude, storeBackend());
+      case Equalize.OPERATION -> new Equalize(manager, source, destination, tag, BACKEND, mtime, include, exclude, storeBackend());
+      default -> throw new BitferryError("invalid rclone operation '" + newOperation + "'");
+    };
+    morphed.manual = this.manual;
+    morphed.runnable = this.runnable;
+    morphed.commitState = this.commitState;
+    morphed.processOptions = this.processOptions;
+    if (!(this.encryption instanceof NoCrypt) && !(morphed.encryption instanceof NoCrypt)) {
+      morphed.encryption.copySecretsFrom(this.encryption);
+    }
+    if (this instanceof Equalize thisEq && morphed instanceof Equalize eq) {
+      eq.resynced = thisEq.resynced;
+    }
+    morphed.touch();
+    manager.replaceTask(morphed);
+    return morphed;
   }
 
   /// The tool dispatch (the double dispatch landing on the executor's rclone slot).
@@ -340,6 +370,14 @@ public abstract class Rclone extends Task {
     /// vault volume fixed), the per-volume vault otherwise. Creation-time only.
     void selectVault(boolean keyringRequested) {
       this.vault = Vault.select(task(), keyringRequested);
+    }
+
+    void copySecretsFrom(Encryption other) {
+      this.vault = other.vault;
+      this.holding = other.holding;
+      this.cachedPassword = other.cachedPassword;
+      this.cachedPassword2 = other.cachedPassword2;
+      this.cached = other.cached;
     }
 
     Vault vault() {

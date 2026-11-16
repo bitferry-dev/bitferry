@@ -213,6 +213,11 @@ final class Dialogs {
         Task current = manager.task(task.tag());
         if (current == null) throw new BitferryError("task " + task.tag() + " is no longer registered");
 
+        // Morph the task if its operation type was changed (supported for rclone tasks)
+        if (!current.operation().equals(form.type())) {
+          current = current.morph(form.type());
+        }
+
         // Rotate repository password if entered (restic only)
         if (form.resticMode() && !form.password().isEmpty()) {
           manager.passwd((Restic) current, form.password());

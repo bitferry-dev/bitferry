@@ -187,6 +187,35 @@ class TaskTest {
   }
 
   @Test
+  void emptyCommandOptionsListOnRestoreDoesNotTriggerDefaultList() {
+    tools.jackson.databind.node.ObjectNode data = Storage.mapper().createObjectNode();
+    data.put("operation", "copy");
+    data.put("task", "test-tag-empty-exec");
+    data.put("modified", java.time.OffsetDateTime.now().toString());
+    data.set("source", Endpoints.parse(manager, "local:/src").serialize());
+    data.set("destination", Endpoints.parse(manager, "local:/dst").serialize());
+
+    // 1. Explicit empty execute list []
+    tools.jackson.databind.node.ObjectNode rclone = Storage.mapper().createObjectNode();
+    rclone.putArray("execute");
+    data.set("rclone", rclone);
+    Task t1 = Task.restore(manager, data);
+    assertEquals(List.of(), t1.processOptions());
+
+    // 2. rclone section without execute key
+    data.put("task", "test-tag-no-exec-key");
+    data.set("rclone", Storage.mapper().createObjectNode());
+    Task t2 = Task.restore(manager, data);
+    assertEquals(List.of(), t2.processOptions());
+
+    // 3. No rclone section at all
+    data.put("task", "test-tag-no-rclone");
+    data.remove("rclone");
+    Task t3 = Task.restore(manager, data);
+    assertEquals(List.of(), t3.processOptions());
+  }
+
+  @Test
   void unknownOptionsProfilesAreRejected() {
     assertThrows(BitferryError.class, () -> new Copy(manager, source(), destination(), "@nonexistent", List.of(), List.of()));
     assertThrows(BitferryError.class, () -> new Backup(manager, volumeSource(), destination(), "secret", null, null, "@nonexistent", null, List.of(), List.of()));

@@ -57,17 +57,17 @@
         <Label fx:id="sourceLabel" text="Source:" style="-fx-text-fill: #222222;"/>
         <HBox spacing="6">
           <TextField fx:id="source" promptText="directory | local:directory | ::directory | :tag:directory" prefColumnCount="40" HBox.hgrow="ALWAYS"/>
-          <Button text="Smart…" onAction="#onBrowseSourceSmart">
+          <Button fx:id="browseSourceSmart" text="Smart…" onAction="#onBrowseSourceSmart">
             <tooltip>
               <Tooltip text="Browse the local filesystem — the engine picks the specifier: the bare volume-attached path inside the volumes, the explicit local: form outside them"/>
             </tooltip>
           </Button>
-          <Button text="Local…" onAction="#onBrowseSourceLocal">
+          <Button fx:id="browseSourceLocal" text="Local…" onAction="#onBrowseSourceLocal">
             <tooltip>
               <Tooltip text="Browse the local filesystem — fills the explicit 'local:' form referencing the path outside the volumes"/>
             </tooltip>
           </Button>
-          <Button text="Volume…" onAction="#onBrowseSourceVolume">
+          <Button fx:id="browseSourceVolume" text="Volume…" onAction="#onBrowseSourceVolume">
             <tooltip>
               <Tooltip text="Browse within a registered volume — starts at the volume root, fills the volume-relative ':tag:path' specifier"/>
             </tooltip>
@@ -77,17 +77,17 @@
         <Label fx:id="destinationLabel" text="Destination:" style="-fx-text-fill: #222222;"/>
         <HBox spacing="6">
           <TextField fx:id="destination" promptText="directory | local:directory | ::directory | :tag:directory" prefColumnCount="40" HBox.hgrow="ALWAYS"/>
-          <Button text="Smart…" onAction="#onBrowseDestinationSmart">
+          <Button fx:id="browseDestinationSmart" text="Smart…" onAction="#onBrowseDestinationSmart">
             <tooltip>
               <Tooltip text="Browse the local filesystem — the engine picks the specifier: the bare volume-attached path inside the volumes, the explicit local: form outside them"/>
             </tooltip>
           </Button>
-          <Button text="Local…" onAction="#onBrowseDestinationLocal">
+          <Button fx:id="browseDestinationLocal" text="Local…" onAction="#onBrowseDestinationLocal">
             <tooltip>
               <Tooltip text="Browse the local filesystem — fills the explicit 'local:' form referencing the path outside the volumes"/>
             </tooltip>
           </Button>
-          <Button text="Volume…" onAction="#onBrowseDestinationVolume">
+          <Button fx:id="browseDestinationVolume" text="Volume…" onAction="#onBrowseDestinationVolume">
             <tooltip>
               <Tooltip text="Browse within a registered volume — starts at the volume root, fills the volume-relative ':tag:path' specifier"/>
             </tooltip>
@@ -142,7 +142,7 @@
               <Tooltip text="The extra crypt options passed to rclone (comma-separated); the filename encoding presets (@default, @extended) load via Edit…"/>
             </tooltip>
           </TextField>
-          <Button text="Edit…" onAction="#onEditProfile">
+          <Button fx:id="editProfile" text="Edit…" onAction="#onEditProfile">
             <tooltip>
               <Tooltip text="Open list editor for item-by-item editing, reordering, and profile presets"/>
             </tooltip>
