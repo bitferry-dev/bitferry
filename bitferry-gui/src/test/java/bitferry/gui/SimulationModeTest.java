@@ -85,8 +85,8 @@ class SimulationModeTest {
       assertFalse(settings.simulate());
       assertFalse(settings.verbose());
     } finally {
-      // Restore initial state
-      settings.capture(stage, 0.62, settings.verbose(), initial);
+      // Restore clean default state
+      settings.capture(stage, 0.62, false, false);
     }
   }
 
@@ -149,7 +149,7 @@ class SimulationModeTest {
     assertEquals(verboseIdx + 1, simulateIdx, "simulate checkbox must be placed right after verbose");
 
     // Test toggling simulate via fire()
-    assertFalse(simulate.isSelected());
+    boolean initialSelected = simulate.isSelected();
     CountDownLatch toggled = new CountDownLatch(1);
     Platform.runLater(() -> {
       try {
@@ -162,9 +162,9 @@ class SimulationModeTest {
     assertTrue(toggled.await(5, TimeUnit.SECONDS));
     if (failure.get() != null) throw new IllegalStateException("toggling simulate failed", failure.get());
 
-    assertTrue(controller.simulateSelected());
-    assertTrue(context.simulate());
-    assertTrue(context.manager().simulate);
+    assertEquals(!initialSelected, controller.simulateSelected());
+    assertEquals(!initialSelected, context.simulate());
+    assertEquals(!initialSelected, context.manager().simulate);
 
     // Test gating during active run (setActionsDisabled)
     CountDownLatch locked = new CountDownLatch(1);

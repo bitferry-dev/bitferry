@@ -123,6 +123,7 @@ public final class TasksController {
     // state from the row's snapshot and persists only the user's own clicks (the
     // snapshot follows the click: the re-renders — the scrolling, the resizing —
     // must not repaint the stale pre-click state over the user's toggle).
+    runnableColumn.setCellValueFactory(data -> data.getValue().runnable);
     runnableColumn.setCellFactory(column -> new TableCell<>() {
       private final CheckBox checkBox = new CheckBox();
       {

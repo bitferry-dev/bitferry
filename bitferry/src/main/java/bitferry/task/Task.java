@@ -449,10 +449,10 @@ public abstract class Task {
       }
       // The deletion is effected by the omission of the dead tasks from the future
       // storage dumps (the tasks are stored redundantly within the volume storages);
-      // no descriptor cleanup is required
-      // TODO perform post-mortem backend-side actions (e.g. repository cleanup)
+      // no descriptor cleanup is required. Backend repositories and destination data
+      // are deliberately preserved on task deletion to protect user data from accidental
+      // destruction.
       case DELETED -> {
-        // TODO perform post-mortem actions (storage removal etc.)
         commitState = CommitState.DEAD;
       }
       case DEAD -> {

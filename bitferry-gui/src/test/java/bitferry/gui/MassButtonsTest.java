@@ -212,6 +212,7 @@ class MassButtonsTest {
         return field("table");
     }
 
+    @SuppressWarnings("unchecked")
     private static <T> T field(String name) throws Exception {
         var field = TasksController.class.getDeclaredField(name);
         field.setAccessible(true);

@@ -36,7 +36,7 @@
     <HBox spacing="10">
       <ListView fx:id="listView" prefWidth="360" prefHeight="260" editable="true" HBox.hgrow="ALWAYS"/>
       <VBox spacing="6" alignment="TOP_CENTER" prefWidth="120">
-        <Button fx:id="editBtn" text="Edit inline" maxWidth="Infinity" onAction="#onEditInline">
+        <Button fx:id="editBtn" text="Edit" maxWidth="Infinity" onAction="#onEditInline">
           <tooltip>
             <Tooltip text="Edit the selected entry directly in the list (or double-click the row)"/>
           </tooltip>

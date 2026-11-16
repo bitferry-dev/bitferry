@@ -75,6 +75,14 @@ public class ServeCommand implements Callable<Integer>, HasCommonOptions {
         : String.format("@|red Some of the %d task(s) failed servicing.|@", n);
       out.println(Ansi.AUTO.string(summary));
     }
+    // Persist the post-service state changes (mirroring ExecuteCommand and Runner):
+    // only the volumes whose state actually changed are rewritten. A failing commit warns
+    // without failing the run outcome.
+    try {
+      m.commit();
+    } catch (BitferryError e) {
+      err.println(Ansi.AUTO.string("@|red     ✗ post-service commit failed: " + e.getMessage() + "|@"));
+    }
     return outcome ? 0 : 1;
   }
 }
