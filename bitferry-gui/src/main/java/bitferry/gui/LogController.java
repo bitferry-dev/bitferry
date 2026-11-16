@@ -52,7 +52,7 @@ public final class LogController {
     private boolean follow = true;
 
     /// Guard against the stream's own programmatic appends tripping the tail-tracking listener.
-    private boolean updating;
+    private int updating;
 
     /// Number of Text nodes per line for fast line capping.
     private final ArrayDeque<Integer> lineNodeCounts = new ArrayDeque<>();
@@ -128,8 +128,19 @@ public final class LogController {
       });
 
       sp.vvalueProperty().addListener((obs, was, now) -> {
-        if (!updating) {
+        if (updating == 0) {
           follow = atTail();
+        }
+      });
+      tf.heightProperty().addListener((obs, oldVal, newVal) -> {
+        if (follow) {
+          updating++;
+          try {
+            sp.layout();
+            sp.setVvalue(sp.getVmax());
+          } finally {
+            updating--;
+          }
         }
       });
     }
@@ -152,6 +163,7 @@ public final class LogController {
       flow.getChildren().clear();
       lineNodeCounts.clear();
       lineCount = 0;
+      follow = true;
     }
 
     // Append on the emitting thread; the flush marshals the buffer to the UI
@@ -183,7 +195,7 @@ public final class LogController {
         newNodes.addAll(parsed);
       }
 
-      updating = true;
+      updating++;
       try {
         flow.getChildren().addAll(newNodes);
         lineNodeCounts.addAll(counts);
@@ -205,20 +217,26 @@ public final class LogController {
         if (follow) {
           flow.applyCss();
           flow.layout();
+          scroll.layout();
           scroll.setVvalue(scroll.getVmax());
           Platform.runLater(() -> {
-            if (follow) {
-              updating = true;
-              try {
+            try {
+              if (follow) {
+                flow.applyCss();
+                flow.layout();
+                scroll.layout();
                 scroll.setVvalue(scroll.getVmax());
-              } finally {
-                updating = false;
               }
+            } finally {
+              updating--;
             }
           });
+        } else {
+          updating--;
         }
-      } finally {
-        updating = false;
+      } catch (Throwable t) {
+        updating--;
+        throw t;
       }
     }
 
