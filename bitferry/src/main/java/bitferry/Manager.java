@@ -358,6 +358,11 @@ public class Manager {
     return restore(Arrays.asList(roots));
   }
 
+  /// Return true if any registered live volume is modified.
+  public boolean isModified() {
+    return volumes().values().stream().anyMatch(v -> v.isLive() && v.isModified());
+  }
+
   /// Commit all the live volumes raising [BitferryError] on a caught failure of any of
   /// them. The garbage collection is deliberately not performed here: the freshly
   /// recorded tombstones must persist within this commit (collecting them beforehand

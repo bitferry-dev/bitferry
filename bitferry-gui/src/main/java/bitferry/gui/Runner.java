@@ -130,10 +130,12 @@ public final class Runner {
         // the volumes whose state actually changed are rewritten. A failing commit is
         // reported without failing the run: the unmaterialized bookkeeping flips
         // re-materialize upon the following commits.
-        try {
-          manager.commit();
-        } catch (RuntimeException e) {
-          output.accept("error: post-run commit failed: " + e.getMessage());
+        if (manager.isModified()) {
+          try {
+            manager.commit();
+          } catch (RuntimeException e) {
+            output.accept("error: post-run commit failed: " + e.getMessage());
+          }
         }
         if (aborted) {
           output.accept("    ✗ run aborted");

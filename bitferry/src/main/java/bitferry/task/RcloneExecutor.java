@@ -69,9 +69,9 @@ final class RcloneExecutor {
     cmd.add("--config");
     cmd.add(ExecutorSupport.isWindows() ? "NUL" : "/dev/null");
     cmd.add("--filter");
-    cmd.add("- " + Bitferry.STORAGE);
+    cmd.add("- " + Bitferry.STORAGE + "*");
     cmd.add("--filter");
-    cmd.add("- " + Bitferry.STORAGE_IMAGE);
+    cmd.add("- " + Bitferry.STORAGE + "*/**");
     cmd.addAll(rclone.encryption().options());
     cmd.add("--crypt-remote");
     cmd.add(encryptedSide);
@@ -121,7 +121,7 @@ final class RcloneExecutor {
   private static boolean isStoragePath(Path rel) {
     for (Path element : rel) {
       String name = element.toString();
-      if (Bitferry.STORAGE.equals(name) || Bitferry.STORAGE_IMAGE.equals(name)) {
+      if (name.startsWith(Bitferry.STORAGE)) {
         return true;
       }
     }
@@ -129,7 +129,7 @@ final class RcloneExecutor {
   }
 
   private static boolean isDecryptionError(String line) {
-    if (line.contains(Bitferry.STORAGE) || line.contains(Bitferry.STORAGE_IMAGE)) {
+    if (line.contains(Bitferry.STORAGE)) {
       return false;
     }
     String l = line.toLowerCase(Locale.ROOT);
@@ -194,6 +194,10 @@ final class RcloneExecutor {
     List<String> cmd = new ArrayList<>();
     cmd.add(ExecutorSupport.resolveExecutable("rclone"));
 
+    // Endpoints
+    List<String> endpoints = rclone.encryption().processOpts(rclone);
+    rclone.prepare(endpoints);
+
     // The backend operation arguments: the rclone subcommand and its modifiers
     cmd.addAll(rclone.operationArgs());
 
@@ -202,11 +206,11 @@ final class RcloneExecutor {
       cmd.add("--filter");
       cmd.add("+ " + inc);
     }
-    // Exclude Bitferry storage files
+    // Exclude Bitferry storage files and per-task metadata
     cmd.add("--filter");
-    cmd.add("- " + Bitferry.STORAGE);
+    cmd.add("- " + Bitferry.STORAGE + "*");
     cmd.add("--filter");
-    cmd.add("- " + Bitferry.STORAGE_IMAGE);
+    cmd.add("- " + Bitferry.STORAGE + "*/**");
     // Exclude filters
     for (String exc : rclone.exclude()) {
       cmd.add("--filter");
@@ -232,12 +236,15 @@ final class RcloneExecutor {
     if (manager.simulate) {
       cmd.add("--dry-run");
     }
+    if (manager.force && !cmd.contains("--force")) {
+      cmd.add("--force");
+    }
 
     // Process options
     cmd.addAll(rclone.processOptions());
 
     // The endpoints (or the crypt tail placing the ':crypt:' remote for the encrypted tasks)
-    cmd.addAll(rclone.encryption().processOpts(rclone));
+    cmd.addAll(endpoints);
 
     return cmd;
   }
@@ -266,11 +273,11 @@ final class RcloneExecutor {
       cmd.add("--filter");
       cmd.add("+ " + inc);
     }
-    // Exclude Bitferry storage files
+    // Exclude Bitferry storage files and per-task metadata
     cmd.add("--filter");
-    cmd.add("- " + Bitferry.STORAGE);
+    cmd.add("- " + Bitferry.STORAGE + "*");
     cmd.add("--filter");
-    cmd.add("- " + Bitferry.STORAGE_IMAGE);
+    cmd.add("- " + Bitferry.STORAGE + "*/**");
     // Exclude filters
     for (String exc : rclone.exclude()) {
       cmd.add("--filter");

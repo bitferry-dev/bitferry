@@ -309,11 +309,9 @@ final class ResticExecutor {
     cmd.add("--tag");
     cmd.add("bitferry," + backup.tag());
 
-    // Exclude filters
+    // Exclude Bitferry storage files and per-task metadata
     cmd.add("--exclude");
-    cmd.add(Bitferry.STORAGE);
-    cmd.add("--exclude");
-    cmd.add(Bitferry.STORAGE_IMAGE);
+    cmd.add(Bitferry.STORAGE + "*");
     for (String exc : backup.exclude()) {
       cmd.add("--exclude");
       cmd.add(exc);

@@ -68,6 +68,16 @@ public final class TaskFormController {
     EXCLUDE_PROFILES.put("@build", List.of("build/**", "target/**", "node_modules/**", "*.class", "*.o"));
   }
 
+  /// Execution options profiles per task operation type.
+  private static final Map<String, Map<String, List<String>>> EXECUTE_PROFILES = Map.of(
+    Backup.OPERATION, Restic.PROCESS,
+    Restore.OPERATION, Restore.PROCESS,
+    Equalize.OPERATION, Equalize.PROCESS,
+    Copy.OPERATION, Rclone.PROCESS,
+    Update.OPERATION, Rclone.PROCESS,
+    Synchronize.OPERATION, Rclone.PROCESS
+  );
+
   /// The volume selector entry carrying the display form.
   private record VolumeChoice(Volume volume) {
     @Override
@@ -538,14 +548,7 @@ public final class TaskFormController {
   }
 
   private Map<String, List<String>> executeProfiles() {
-    String t = type();
-    if ("backup".equals(t)) {
-      return Restic.PROCESS;
-    } else if ("restore".equals(t)) {
-      return Restore.PROCESS;
-    } else {
-      return Rclone.PROCESS;
-    }
+    return EXECUTE_PROFILES.getOrDefault(type(), Rclone.PROCESS);
   }
 
   /// Pre-load the @default profile's concrete options into an empty (or untouched

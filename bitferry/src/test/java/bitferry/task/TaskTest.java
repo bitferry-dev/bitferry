@@ -2,6 +2,7 @@ package bitferry.task;
 
 import bitferry.*;
 import bitferry.endpoint.*;
+import java.io.IOException;
 import java.nio.file.*;
 import java.util.*;
 import org.junit.jupiter.api.*;
@@ -54,7 +55,8 @@ class TaskTest {
     assertEquals(List.of("copy"), new Copy(manager, source(), destination(), null, List.of(), List.of()).operationArgs());
     assertEquals(List.of("copy", "--update"), new Update(manager, source(), destination(), null, List.of(), List.of()).operationArgs());
     assertEquals(List.of("sync"), new Synchronize(manager, source(), destination(), null, List.of(), List.of()).operationArgs());
-    assertEquals(List.of("bisync", "--resync"), new Equalize(manager, source(), destination(), null, List.of(), List.of()).operationArgs());
+    Equalize eqTask = new Equalize(manager, source(), destination(), null, List.of(), List.of());
+    assertEquals(List.of("bisync", "--resync", "--workdir", eqTask.workdir().toString()), eqTask.operationArgs());
   }
 
   @Test
@@ -294,39 +296,94 @@ class TaskTest {
   @Test
   void equalizeResyncsOnlyUntilTheBaselineIsEstablished() {
     Equalize task = new Equalize(manager, source(), destination(), null, List.of(), List.of());
+    String workdir = task.workdir().toString();
     // The fresh task carries the initial baseline rebuild (--resync)
     assertFalse(task.resynced());
-    assertEquals(List.of("bisync", "--resync"), task.operationArgs());
+    assertEquals(List.of("bisync", "--resync", "--workdir", workdir), task.operationArgs());
     assertNull(task.serialize().get("resynced"));
 
     // The failed run leaves the baseline pending
     manager.backendExecutor(Executor.stub());
     assertFalse(task.process(null));
     assertFalse(task.resynced());
-    assertEquals(List.of("bisync", "--resync"), task.operationArgs());
+    assertEquals(List.of("bisync", "--resync", "--workdir", workdir), task.operationArgs());
 
-    // The successful real run establishes the baseline: the following runs execute the
-    // plain bisync propagating the deletions (the --resync merge leaves them unpropagated)
+    // Commit the newly created task so manager is clean
+    manager.commit();
+    assertFalse(manager.isModified());
+
+    // The successful run establishes the baseline (rclone creates listings in workdir):
+    // following runs execute plain bisync without mutating task descriptor or touching volume
     manager.backendExecutor(new Executor() {
-      public boolean run(Task t, java.util.function.Consumer<String> output) { return true; }
+      public boolean run(Task t, java.util.function.Consumer<String> output) {
+        try {
+          Files.createDirectories(task.workdir());
+          Files.createFile(task.workdir().resolve("test.path1.lst"));
+          return true;
+        } catch (IOException e) {
+          throw new RuntimeException(e);
+        }
+      }
     });
     assertTrue(task.process(null));
     assertTrue(task.resynced());
-    assertEquals(List.of("bisync"), task.operationArgs());
-    assertTrue(task.serialize().get("resynced").asBoolean());
+    assertEquals(List.of("bisync", "--workdir", workdir), task.operationArgs());
+    assertNull(task.serialize().get("resynced"));
+    assertFalse(manager.isModified()); // Execution does not mutate descriptor or trigger commits!
 
-    // The marker survives the descriptor round-trip; the equal-mtime restoration keeps
-    // the registered (resynced) copy
+    // The state is held in workdir; the descriptor round-trip remains clean
     Task.restore(manager, task.serialize());
     assertSame(task, manager.task(task.tag()));
     assertTrue(((Equalize) manager.task(task.tag())).resynced());
 
-    // The filter change invalidates the saved-listings baseline (rclone bisync refuses
-    // to run with the mismatched filters): the following run rebuilds it with the new filters
+    // The filter change invalidates the saved-listings baseline by removing listings
     task.setInclude(List.of("*.txt"));
     assertFalse(task.resynced());
-    assertEquals(List.of("bisync", "--resync"), task.operationArgs());
+    assertEquals(List.of("bisync", "--resync", "--workdir", workdir), task.operationArgs());
     assertNull(task.serialize().get("resynced"));
+  }
+
+  @Test
+  void equalizeAdaptsListingNamesOnPathShift() throws IOException {
+    Equalize task = new Equalize(manager, source(), destination(), null, List.of(), List.of());
+    Path workdir = task.workdir();
+    Files.createDirectories(workdir);
+
+    // Old session from a previous mount
+    String oldSession = "old_mount_src..dest";
+    Files.createFile(workdir.resolve(oldSession + ".path1.lst"));
+    Files.createFile(workdir.resolve(oldSession + ".path2.lst"));
+    assertTrue(task.resynced());
+
+    // Prepare workdir with new paths
+    String newP1 = "/new/mount/src";
+    String newP2 = "/new/mount/dest";
+    String expectedSession = Equalize.rcloneSessionName(newP1, newP2);
+    task.prepareWorkdir(newP1, newP2);
+
+    // Old listing files should be renamed to match expectedSession
+    assertTrue(Files.exists(workdir.resolve(expectedSession + ".path1.lst")));
+    assertTrue(Files.exists(workdir.resolve(expectedSession + ".path2.lst")));
+    assertFalse(Files.exists(workdir.resolve(oldSession + ".path1.lst")));
+    assertTrue(task.resynced());
+  }
+
+  @Test
+  void equalizeProcessProfilesResolveCorrectly() {
+    Equalize def = new Equalize(manager, source(), destination(), null, List.of(), List.of());
+    assertEquals(List.of("--metadata", "--recover", "--resilient", "--force"), def.processOptions());
+
+    Equalize explicitDefault = new Equalize(manager, source(), destination(), "@default", List.of(), List.of());
+    assertEquals(List.of("--metadata", "--recover", "--resilient", "--force"), explicitDefault.processOptions());
+
+    Equalize safe = new Equalize(manager, source(), destination(), "@safe", List.of(), List.of());
+    assertEquals(List.of("--metadata", "--recover", "--resilient"), safe.processOptions());
+
+    def.setProcessOptions("@safe");
+    assertEquals(List.of("--metadata", "--recover", "--resilient"), def.processOptions());
+
+    def.setProcessOptions("@default");
+    assertEquals(List.of("--metadata", "--recover", "--resilient", "--force"), def.processOptions());
   }
 
   @Test
@@ -393,6 +450,27 @@ class TaskTest {
     assertTrue(backup.include().isEmpty());
     // The legacy cleanup path stays available
     assertDoesNotThrow(backup::clearInclude);
+  }
+
+  @Test
+  void rcloneDeleteCleansUpWorkdirEvenIfMorphed() throws IOException {
+    Equalize task = new Equalize(manager, source(), destination(), null, List.of(), List.of());
+    Path workdir = task.workdir();
+    Files.createDirectories(workdir);
+    Files.writeString(workdir.resolve("test.lst"), "dummy content");
+    assertTrue(Files.exists(workdir.resolve("test.lst")));
+
+    // 1. Morph to Synchronize cleans up old equalize workdir
+    Rclone morphed = task.morph("synchronize");
+    assertFalse(Files.exists(workdir));
+
+    // 2. Re-create workdir and test deleting a non-equalize Rclone task removes it
+    Files.createDirectories(workdir);
+    Files.writeString(workdir.resolve("test.lst"), "dummy content");
+    assertTrue(Files.exists(workdir));
+
+    morphed.delete();
+    assertFalse(Files.exists(workdir));
   }
 
   private static List<String> toStringList(JsonNode node) {

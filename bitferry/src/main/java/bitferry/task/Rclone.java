@@ -4,6 +4,8 @@ import bitferry.*;
 import bitferry.endpoint.*;
 import bitferry.vault.*;
 import com.fasterxml.jackson.annotation.*;
+import java.io.IOException;
+import java.nio.file.*;
 import java.time.*;
 import java.util.function.Consumer;
 import java.util.*;
@@ -26,8 +28,13 @@ public abstract class Rclone extends Task {
 
   /// Constructor for a new task instance.
   protected Rclone(Manager manager, Endpoint source, Endpoint destination, String process, Collection<String> include, Collection<String> exclude) {
+    this(manager, source, destination, process, PROCESS, include, exclude);
+  }
+
+  /// Constructor for a new task instance with a custom processing options route.
+  protected Rclone(Manager manager, Endpoint source, Endpoint destination, String process, Map<String, List<String>> route, Collection<String> include, Collection<String> exclude) {
     super(manager, source, destination, include, exclude);
-    this.processRoute = PROCESS;
+    this.processRoute = route != null ? route : PROCESS;
     this.processOptions = optional(process, processRoute);
   }
 
@@ -39,8 +46,14 @@ public abstract class Rclone extends Task {
   // merely keeps the back-reference to its owning task for the lazy password retrieval
   @SuppressWarnings("this-escape")
   protected Rclone(Manager manager, Endpoint source, Endpoint destination, String tag, OffsetDateTime modified, List<String> include, List<String> exclude, Backend backend) {
+    this(manager, source, destination, tag, modified, include, exclude, backend, PROCESS);
+  }
+
+  /// Constructor for restoring an existing task with a custom processing options route.
+  @SuppressWarnings("this-escape")
+  protected Rclone(Manager manager, Endpoint source, Endpoint destination, String tag, OffsetDateTime modified, List<String> include, List<String> exclude, Backend backend, Map<String, List<String>> route) {
     super(manager, source, destination, tag, modified, include, exclude);
-    this.processRoute = PROCESS;
+    this.processRoute = route != null ? route : PROCESS;
     this.processOptions = optional(backend == null ? null : backend.execute(), processRoute);
     this.encryption = Encryption.restore(this, backend);
   }
@@ -61,6 +74,9 @@ public abstract class Rclone extends Task {
   public List<String> operationArgs() {
     return List.of(operation());
   }
+
+  /// Pre-execution hook for concrete rclone operations (e.g. preparing working directories).
+  public void prepare(List<String> endpoints) {}
 
   /// Return the human-readable operation label incorporating the encryption mode when active.
   @Override
@@ -184,6 +200,9 @@ public abstract class Rclone extends Task {
   @Override
   public Rclone morph(String newOperation) {
     if (operation().equals(newOperation)) return this;
+    if (this instanceof Equalize) {
+      deleteWorkdirs();
+    }
     Rclone morphed = switch (newOperation) {
       case Copy.OPERATION -> new Copy(manager, source, destination, tag, BACKEND, mtime, include, exclude, storeBackend());
       case Update.OPERATION -> new Update(manager, source, destination, tag, BACKEND, mtime, include, exclude, storeBackend());
@@ -198,12 +217,38 @@ public abstract class Rclone extends Task {
     if (!(this.encryption instanceof NoCrypt) && !(morphed.encryption instanceof NoCrypt)) {
       morphed.encryption.copySecretsFrom(this.encryption);
     }
-    if (this instanceof Equalize thisEq && morphed instanceof Equalize eq) {
-      eq.resynced = thisEq.resynced;
-    }
     morphed.touch();
     manager.replaceTask(morphed);
     return morphed;
+  }
+
+  /// Clean up any per-task hidden metadata directory (.bitferry.<task_id>) that may exist
+  /// on either endpoint (e.g. from an equalize task, or a task converted from equalize).
+  protected void deleteWorkdirs() {
+    deleteWorkdir(source);
+    deleteWorkdir(destination);
+  }
+
+  private void deleteWorkdir(Endpoint endpoint) {
+    if (endpoint == null) return;
+    try {
+      Path dir = Path.of(endpoint.processOpts()).resolve(Bitferry.STORAGE + "." + tag());
+      if (Files.isDirectory(dir)) {
+        try (var stream = Files.walk(dir)) {
+          stream.sorted(Comparator.reverseOrder()).forEach(p -> {
+            try {
+              Files.deleteIfExists(p);
+            } catch (IOException ignored) {}
+          });
+        }
+      }
+    } catch (Exception ignored) {}
+  }
+
+  @Override
+  public void delete() {
+    super.delete();
+    deleteWorkdirs();
   }
 
   /// The tool dispatch (the double dispatch landing on the executor's rclone slot).

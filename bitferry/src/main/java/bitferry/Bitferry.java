@@ -24,6 +24,23 @@ public final class Bitferry {
   /// by an interrupted commit) so it is excluded from all the task operations.
   public static final String STORAGE_IMAGE = STORAGE + "~";
 
+  /// Universal exclusion prefix covering volume storage files (.bitferry and .bitferry~)
+  /// as well as per-task runtime metadata directories (.bitferry.<task_id>).
+  public static final String STORAGE_PREFIX = STORAGE + "*";
+
+  /// Attempt to set the Windows hidden attribute (dos:hidden) on the given path if supported,
+  /// keeping dotfiles and metadata directories hidden in Windows Explorer.
+  public static void hideIfSupported(Path path) {
+    try {
+      var dosView = Files.getFileAttributeView(path, java.nio.file.attribute.DosFileAttributeView.class);
+      if (dosView != null) {
+        dosView.setHidden(true);
+      }
+    } catch (Exception ignored) {
+      // Best-effort attribute setting; ignore on non-compliant filesystems
+    }
+  }
+
   private Bitferry() {}
 
   // Read the build-provided version from the classpath resource

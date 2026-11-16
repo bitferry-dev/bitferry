@@ -73,6 +73,9 @@ public final class Storage {
       } catch (AtomicMoveNotSupportedException e) {
         Files.move(image, target, StandardCopyOption.REPLACE_EXISTING);
       }
+      if (target.getFileName().toString().startsWith(".")) {
+        Bitferry.hideIfSupported(target);
+      }
     } catch (IOException e) {
       try {
         Files.deleteIfExists(image);

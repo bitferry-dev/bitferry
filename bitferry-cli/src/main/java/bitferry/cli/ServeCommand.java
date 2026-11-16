@@ -78,10 +78,12 @@ public class ServeCommand implements Callable<Integer>, HasCommonOptions {
     // Persist the post-service state changes (mirroring ExecuteCommand and Runner):
     // only the volumes whose state actually changed are rewritten. A failing commit warns
     // without failing the run outcome.
-    try {
-      m.commit();
-    } catch (BitferryError e) {
-      err.println(Ansi.AUTO.string("@|red     ✗ post-service commit failed: " + e.getMessage() + "|@"));
+    if (m.isModified()) {
+      try {
+        m.commit();
+      } catch (BitferryError e) {
+        err.println(Ansi.AUTO.string("@|red     ✗ post-service commit failed: " + e.getMessage() + "|@"));
+      }
     }
     return outcome ? 0 : 1;
   }

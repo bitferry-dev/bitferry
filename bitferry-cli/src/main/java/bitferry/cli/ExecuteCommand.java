@@ -79,10 +79,12 @@ public class ExecuteCommand implements Callable<Integer>, HasCommonOptions {
     // volumes whose state actually changed are rewritten. A failing commit warns without
     // failing the run outcome: the unmaterialized bookkeeping flips re-materialize upon
     // the following commits.
-    try {
-      m.commit();
-    } catch (BitferryError e) {
-      err.println(Ansi.AUTO.string("@|red     ✗ post-run commit failed: " + e.getMessage() + "|@"));
+    if (m.isModified()) {
+      try {
+        m.commit();
+      } catch (BitferryError e) {
+        err.println(Ansi.AUTO.string("@|red     ✗ post-run commit failed: " + e.getMessage() + "|@"));
+      }
     }
     return outcome ? 0 : 1;
   }

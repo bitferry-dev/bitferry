@@ -248,6 +248,10 @@ public final class Volume {
   /// upon creation, dump the storage contents when modified, remove the storage upon
   /// the deletion.
   public void commit() {
+    if (!isModified() && !manager.force && commitState == CommitState.LIVE) {
+      LOG.log(Level.DEBUG, () -> "volume " + tag + " is up-to-date and no forced save requested; skipped");
+      return;
+    }
     Path storage = root.resolve(Bitferry.STORAGE);
     var ts = tasks();
     List<String> problems = new ArrayList<>();

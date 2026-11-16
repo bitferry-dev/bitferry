@@ -261,8 +261,8 @@ class SystemExecutorTest {
 
     // Filters
     assertTrue(cmd.contains("+ *.txt"));
-    assertTrue(cmd.contains("- " + Bitferry.STORAGE));
-    assertTrue(cmd.contains("- " + Bitferry.STORAGE_IMAGE));
+    assertTrue(cmd.contains("- " + Bitferry.STORAGE + "*"));
+    assertTrue(cmd.contains("- " + Bitferry.STORAGE + "*/**"));
     assertTrue(cmd.contains("- *.bak"));
 
     // Default metadata & config
@@ -292,6 +292,8 @@ class SystemExecutorTest {
     executor.run(equalize, null);
     assertEquals("bisync", recorder.invocations.get(2).command().get(1));
     assertEquals("--resync", recorder.invocations.get(2).command().get(2));
+    assertTrue(recorder.invocations.get(2).command().contains("--workdir"));
+    assertTrue(recorder.invocations.get(2).command().contains(equalize.workdir().toString()));
   }
 
   @Test
@@ -401,7 +403,8 @@ class SystemExecutorTest {
     assertEquals("sync", cmd.get(1));
     assertTrue(cmd.contains("+ *.txt"));
     assertTrue(cmd.contains("- *.bak"));
-    assertTrue(cmd.contains("- " + Bitferry.STORAGE));
+    assertTrue(cmd.contains("- " + Bitferry.STORAGE + "*"));
+    assertTrue(cmd.contains("- " + Bitferry.STORAGE + "*/**"));
 
     Restore restore = new Restore(manager, destination(), volumeRestored(), "secret", null, List.of("docs/**"), List.of("*.tmp"));
     List<List<String>> restoreCmds = restore.commands();
@@ -784,8 +787,8 @@ class SystemExecutorTest {
     assertEquals("lsjson", cmd.get(1));
     assertEquals("-R", cmd.get(2));
     assertTrue(cmd.contains("--config"));
-    assertTrue(cmd.contains("- " + Bitferry.STORAGE));
-    assertTrue(cmd.contains("- " + Bitferry.STORAGE_IMAGE));
+    assertTrue(cmd.contains("- " + Bitferry.STORAGE + "*"));
+    assertTrue(cmd.contains("- " + Bitferry.STORAGE + "*/**"));
     assertTrue(cmd.contains("--crypt-filename-encoding"));
     assertTrue(cmd.contains("base32"));
     assertTrue(cmd.contains("--crypt-filename-encryption"));

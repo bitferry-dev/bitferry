@@ -453,9 +453,11 @@ public abstract class Task {
           // leaving the transition pending for a following real commit
           commitState = CommitState.LIVE;
         }
+        LOG.log(Level.INFO, () -> "task " + tag + " committed");
+        return;
       }
       case LIVE -> {
-        break loop;
+        return;
       }
       // The deletion is effected by the omission of the dead tasks from the future
       // storage dumps (the tasks are stored redundantly within the volume storages);
@@ -464,12 +466,13 @@ public abstract class Task {
       // destruction.
       case DELETED -> {
         commitState = CommitState.DEAD;
+        LOG.log(Level.INFO, () -> "task " + tag + " committed");
+        return;
       }
       case DEAD -> {
         return; // Task is RIP, do nothing
       }
     }
-    LOG.log(Level.INFO, () -> "task " + tag + " committed");
   }
 
   /// Process the task by delegating the backend utility execution to the manager's
