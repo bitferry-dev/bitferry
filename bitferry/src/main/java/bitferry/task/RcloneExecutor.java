@@ -220,6 +220,8 @@ final class RcloneExecutor {
     // Common options
     cmd.add("--config");
     cmd.add(ExecutorSupport.isWindows() ? "NUL" : "/dev/null");
+    cmd.add("--color");
+    cmd.add("ALWAYS");
     // The verbosity applies to both execution modes; the interactive progress display
     // is requested only for the passthrough runs (stdout inherited, the real terminal):
     // over the captured pipes the rclone's own progress degrades to the periodic
@@ -287,6 +289,8 @@ final class RcloneExecutor {
     // Common options
     cmd.add("--config");
     cmd.add(ExecutorSupport.isWindows() ? "NUL" : "/dev/null");
+    cmd.add("--color");
+    cmd.add("ALWAYS");
     if (manager.verbose()) {
       cmd.add("--verbose");
     }

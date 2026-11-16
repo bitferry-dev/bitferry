@@ -99,7 +99,7 @@ public final class Runner {
         String runTitle = (manager.simulate ? "simulated " : "") + (serve ? "service" : "run") + ": " + tasks.size() + " task(s)";
         Consumer<String> output = logs.openRun(runTitle);
         if (manager.simulate) {
-          output.accept("simulation mode (dry run) — no on-disk changes will be made");
+          output.accept("\u001B[33msimulation mode (dry run) — no on-disk changes will be made\u001B[0m");
         }
         int index = 0;
         for (Task task : tasks) {
@@ -109,18 +109,18 @@ public final class Runner {
           index++;
           int at = index;
           Platform.runLater(() -> listener.taskStarted(at, total, task.tag()));
-          output.accept(String.format("[%d/%d] %s  %s", at, total, task.tag(), task.describe()));
+          output.accept(String.format("\u001B[1m[%d/%d]\u001B[0m \u001B[36m%s\u001B[0m  %s", at, total, task.tag(), task.describe()));
           boolean okTask;
           try {
             okTask = serve ? task.serve(output) : task.process(output);
           } catch (BitferryError e) {
-            output.accept("error: " + e.getMessage());
+            output.accept("\u001B[31merror: " + e.getMessage() + "\u001B[0m");
             okTask = false;
           } catch (RuntimeException e) {
-            output.accept("unexpected failure: " + e);
+            output.accept("\u001B[31munexpected failure: " + e + "\u001B[0m");
             okTask = false;
           }
-          output.accept(okTask ? "    ✓ success" : "    ✗ failure");
+          output.accept(okTask ? "\u001B[32m    ✓ success\u001B[0m" : "\u001B[31m    ✗ failure\u001B[0m");
           if (okTask) ok++; else failed++;
           int okCount = ok;
           int failedCount = failed;
@@ -134,13 +134,18 @@ public final class Runner {
           try {
             manager.commit();
           } catch (RuntimeException e) {
-            output.accept("error: post-run commit failed: " + e.getMessage());
+            output.accept("\u001B[31merror: post-run commit failed: " + e.getMessage() + "\u001B[0m");
           }
         }
         if (aborted) {
-          output.accept("    ✗ run aborted");
+          output.accept("\u001B[31m    ✗ run aborted\u001B[0m");
           doneAborted(listener, ok, failed);
         } else {
+          output.accept("");
+          String summary = failed == 0
+            ? String.format("\u001B[32mAll %d task(s) %s successfully.\u001B[0m", total, serve ? "serviced" : "executed")
+            : String.format("\u001B[31mSome of the %d task(s) failed to %s.\u001B[0m", total, serve ? "service" : "execute");
+          output.accept(summary);
           done(listener, failed == 0, ok, failed);
         }
       } catch (RuntimeException e) {

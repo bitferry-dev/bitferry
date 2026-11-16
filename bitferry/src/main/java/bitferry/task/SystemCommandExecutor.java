@@ -36,6 +36,10 @@ public final class SystemCommandExecutor implements CommandExecutor {
     if (workingDirectory != null) {
       builder.directory(workingDirectory.toFile());
     }
+    // Default terminal and color capabilities for CLI backends
+    builder.environment().put("CLICOLOR_FORCE", "1");
+    builder.environment().put("TERM", "xterm-256color");
+    builder.environment().put("COLORTERM", "truecolor");
     if (environment != null && !environment.isEmpty()) {
       builder.environment().putAll(environment);
     }
