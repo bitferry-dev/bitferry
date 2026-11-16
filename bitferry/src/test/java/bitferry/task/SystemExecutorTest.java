@@ -360,6 +360,8 @@ class SystemExecutorTest {
     assertTrue(cmdBackup.contains("--tag"));
     assertTrue(cmdBackup.contains("bitferry," + backup.tag()));
     assertTrue(cmdBackup.contains("--exclude"));
+    assertTrue(cmdBackup.contains(Bitferry.STORAGE + "*"));
+    assertTrue(cmdBackup.contains(Bitferry.STORAGE + "*/**"));
     assertTrue(cmdBackup.contains("*.tmp"));
     assertTrue(cmdBackup.contains("-r"));
     assertEquals(destination().processOpts(), cmdBackup.get(cmdBackup.size() - 1));
@@ -386,6 +388,8 @@ class SystemExecutorTest {
     assertTrue(cmd.contains("--include"));
     assertTrue(cmd.contains("docs/**"));
     assertTrue(cmd.contains("--exclude"));
+    assertTrue(cmd.contains(Bitferry.STORAGE + "*"));
+    assertTrue(cmd.contains(Bitferry.STORAGE + "*/**"));
     assertTrue(cmd.contains("*.tmp"));
   }
 
@@ -415,12 +419,16 @@ class SystemExecutorTest {
     assertEquals("latest", rcmd.get(2));
     assertTrue(rcmd.contains("--target"));
     assertEquals(volumeRestored().processOpts(), rcmd.get(rcmd.indexOf("--target") + 1));
+    assertTrue(rcmd.contains(Bitferry.STORAGE + "*"));
+    assertTrue(rcmd.contains(Bitferry.STORAGE + "*/**"));
 
     // Backup commands return routine backup command
     Backup backupDefault = new Backup(manager, volumeSource(), destination(), "secret", null, null, "@default", "@default", List.of(), List.of("*.tmp"));
     List<List<String>> backupCmds = backupDefault.commands();
     assertEquals(1, backupCmds.size());
     assertEquals("backup", backupCmds.get(0).get(1));
+    assertTrue(backupCmds.get(0).contains(Bitferry.STORAGE + "*"));
+    assertTrue(backupCmds.get(0).contains(Bitferry.STORAGE + "*/**"));
 
     // Backup serveCommands return check, forget, prune
     List<List<String>> serveCmds = backupDefault.serveCommands();

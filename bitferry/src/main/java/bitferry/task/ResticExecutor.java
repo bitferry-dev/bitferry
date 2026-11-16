@@ -312,6 +312,8 @@ final class ResticExecutor {
     // Exclude Bitferry storage files and per-task metadata
     cmd.add("--exclude");
     cmd.add(Bitferry.STORAGE + "*");
+    cmd.add("--exclude");
+    cmd.add(Bitferry.STORAGE + "*/**");
     for (String exc : backup.exclude()) {
       cmd.add("--exclude");
       cmd.add(exc);
@@ -420,6 +422,12 @@ final class ResticExecutor {
     cmd.add("latest");
     cmd.add("--target");
     cmd.add(restore.destination().processOpts());
+
+    // Exclude Bitferry storage files and per-task metadata
+    cmd.add("--exclude");
+    cmd.add(Bitferry.STORAGE + "*");
+    cmd.add("--exclude");
+    cmd.add(Bitferry.STORAGE + "*/**");
 
     for (String inc : restore.include()) {
       cmd.add("--include");
