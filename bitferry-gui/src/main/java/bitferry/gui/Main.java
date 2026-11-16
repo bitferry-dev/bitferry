@@ -46,10 +46,10 @@ public final class Main extends Application {
     stage.show();
 
     // The window status (the placement, the size, the maximized flag, the log split
-    // position, the verbosity) travels back into the preferences store upon hiding
+    // position, the verbosity, the simulation mode) travels back into the preferences store upon hiding
     // (both the Exit action and the window manager close go through the same hook)
     stage.setOnHiding(event ->
-      settings.capture(stage, controller.dividerPosition(), controller.verboseSelected()));
+      settings.capture(stage, controller.dividerPosition(), controller.verboseSelected(), controller.simulateSelected()));
 
     // The initial manager restoration travels through the operations thread;
     // the panes fill in upon the model change notification

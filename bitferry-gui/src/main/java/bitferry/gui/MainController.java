@@ -24,6 +24,9 @@ public final class MainController {
   private CheckBox verbose;
 
   @FXML
+  private CheckBox simulate;
+
+  @FXML
   private Button exit;
 
   @FXML
@@ -76,6 +79,8 @@ public final class MainController {
     split.setDividerPositions(settings.divider());
     verbose.setSelected(settings.verbose());
     context.verbose(settings.verbose());
+    simulate.setSelected(settings.simulate());
+    context.simulate(settings.simulate());
     // The tasks pane is the working surface: open on it rather than the volumes tab
     contentTabs.getTabs().stream()
       .filter(tab -> "Tasks".equals(tab.getText()))
@@ -97,6 +102,11 @@ public final class MainController {
     return verbose.isSelected();
   }
 
+  /// The simulation mode switch state (for the status capture upon hiding).
+  public boolean simulateSelected() {
+    return simulate.isSelected();
+  }
+
   @FXML
   private void onExecuteAll() {
     startRun(List.of(), false);
@@ -111,6 +121,12 @@ public final class MainController {
   private void onVerbose() {
     context.verbose(verbose.isSelected());
     logPaneController.log("backend verbosity: " + (verbose.isSelected() ? "verbose" : "normal"));
+  }
+
+  @FXML
+  private void onSimulate() {
+    context.simulate(simulate.isSelected());
+    logPaneController.log("simulation mode: " + (simulate.isSelected() ? "enabled (dry run)" : "disabled"));
   }
 
   @FXML
@@ -146,7 +162,10 @@ public final class MainController {
 
   /// The run listener driving the status bar, the busy gating and the post-run refresh.
   private Runner.Listener buildRunListener(String verb) {
-    String doing = verb.equals("service") ? "Servicing" : "Executing";
+    boolean sim = context.simulate();
+    String action = verb.equals("service") ? "service" : "execute";
+    String baseDoing = (sim ? "simulating " : "") + (verb.equals("service") ? "servicing" : "executing");
+    String doing = Character.toUpperCase(baseDoing.charAt(0)) + baseDoing.substring(1);
     return new Runner.Listener() {
       @Override
       public void runStarted(int total) {
@@ -173,11 +192,11 @@ public final class MainController {
       public void runFinished(boolean outcome, int ok, int failed) {
         setActionsDisabled(false);
         progress.setProgress(ok + failed == 0 ? 0 : (double) ok / (ok + failed));
-        String what = verb.equals("service") ? "service pass" : "run";
+        String what = (sim ? "simulated " : "") + (verb.equals("service") ? "service pass" : "run");
         status.setText(outcome && ok == 0
-          ? "No intact tasks to " + (verb.equals("service") ? "service" : "execute")
+          ? "No intact tasks to " + action
           : outcome
-            ? "All " + ok + " task(s) " + (verb.equals("service") ? "serviced" : "executed") + " successfully"
+            ? "All " + ok + " task(s) " + (verb.equals("service") ? "serviced" : "executed") + (sim ? " (simulated)" : "") + " successfully"
             : what + " finished: " + ok + " ok, " + failed + " failed");
         refreshPanes();
       }
@@ -186,7 +205,7 @@ public final class MainController {
       public void runAborted(int ok, int failed) {
         setActionsDisabled(false);
         progress.setProgress(ok + failed == 0 ? 0 : (double) ok / (ok + failed));
-        status.setText("Run aborted — " + ok + " ok, " + failed + " failed, the rest skipped");
+        status.setText((sim ? "Simulated run" : "Run") + " aborted — " + ok + " ok, " + failed + " failed, the rest skipped");
         refreshPanes();
       }
     };
@@ -195,6 +214,7 @@ public final class MainController {
   private void setActionsDisabled(boolean disabled) {
     executeAll.setDisable(disabled);
     reload.setDisable(disabled);
+    simulate.setDisable(disabled);
     // The abort is only meaningful while a run is in progress: the inverse gating
     abort.setDisable(!disabled);
     volumesPaneController.setActionsDisabled(disabled);

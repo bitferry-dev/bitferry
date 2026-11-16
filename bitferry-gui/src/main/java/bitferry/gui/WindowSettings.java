@@ -44,6 +44,7 @@ final class WindowSettings {
   private boolean maximized;
   private double divider = DEFAULT_DIVIDER;
   private boolean verbose;
+  private boolean simulate;
 
   /// Read the persisted state (the missing entries fall back to the defaults).
   static WindowSettings load() {
@@ -56,6 +57,7 @@ final class WindowSettings {
     settings.maximized = prefs.getBoolean("maximized", false);
     settings.divider = clamp(prefs.getDouble("divider", DEFAULT_DIVIDER), 0.1, 0.9);
     settings.verbose = prefs.getBoolean("verbose", false);
+    settings.simulate = prefs.getBoolean("simulate", false);
     return settings;
   }
 
@@ -116,13 +118,18 @@ final class WindowSettings {
   /// Capture the live state and persist it (call upon the window hiding, while the
   /// platform still reports the geometry). The maximized flag travels from the
   /// stage; the geometry comes from the normal bounds tracker. The divider position
-  /// (the log pane share) and the verbosity switch travel from the caller.
-  void capture(Stage stage, double divider, boolean verbose) {
+  /// (the log pane share), the verbosity switch, and the simulation mode travel from the caller.
+  void capture(Stage stage, double divider, boolean verbose, boolean simulate) {
     track(stage);
     maximized = stage.isMaximized();
     this.divider = clamp(divider, 0.1, 0.9);
     this.verbose = verbose;
+    this.simulate = simulate;
     save();
+  }
+
+  void capture(Stage stage, double divider, boolean verbose) {
+    capture(stage, divider, verbose, false);
   }
 
   double divider() {
@@ -131,6 +138,10 @@ final class WindowSettings {
 
   boolean verbose() {
     return verbose;
+  }
+
+  boolean simulate() {
+    return simulate;
   }
 
   // Write the state into the preferences store; the storage failures are swallowed
@@ -143,6 +154,7 @@ final class WindowSettings {
     prefs.putBoolean("maximized", maximized);
     prefs.putDouble("divider", divider);
     prefs.putBoolean("verbose", verbose);
+    prefs.putBoolean("simulate", simulate);
     try {
       prefs.flush();
     } catch (BackingStoreException e) {

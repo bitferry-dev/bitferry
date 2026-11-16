@@ -47,6 +47,11 @@
           <Tooltip text="Echo the backend command lines and request the backends' verbose output"/>
         </tooltip>
       </CheckBox>
+      <CheckBox fx:id="simulate" text="Simulate" onAction="#onSimulate">
+        <tooltip>
+          <Tooltip text="Make no on-disk changes (simulation mode)"/>
+        </tooltip>
+      </CheckBox>
       <Region HBox.hgrow="ALWAYS"/>
       <Label fx:id="version" style="-fx-text-fill: gray;"/>
       <Separator orientation="VERTICAL"/>

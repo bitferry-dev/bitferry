@@ -88,6 +88,15 @@ public class Manager {
     verbosity = value ? Verbosity.VERBOSE : Verbosity.NORMAL;
   }
 
+  /// The simulation mode flag.
+  public boolean simulate() {
+    return simulate;
+  }
+
+  public void simulate(boolean value) {
+    this.simulate = value;
+  }
+
   /// Resolve the specified root with respect to the one of registered volumes' root.
   /// Raises [BitferryError] if the root is not a subpath of any volume's root.
   public Endpoint endpoint(Path root) {

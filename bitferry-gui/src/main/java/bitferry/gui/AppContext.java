@@ -46,6 +46,10 @@ public final class AppContext {
   /// instance since the manager swap upon the reload resets it to the default.
   private volatile boolean verbose;
 
+  /// The simulation mode switch (the toolbar toggle); re-applied to every manager
+  /// instance since the manager swap upon the reload resets it to the default.
+  private volatile boolean simulate;
+
   /// The run-in-progress gate consulted by the media watcher (wired by the main
   /// window once the runner exists; the default keeps the watcher ungated).
   public volatile java.util.function.BooleanSupplier busy = () -> false;
@@ -56,6 +60,7 @@ public final class AppContext {
   public AppContext() {
     manager = new Manager();
     manager.verbose(verbose);
+    manager.simulate(simulate);
   }
 
   public Manager manager() {
@@ -72,6 +77,18 @@ public final class AppContext {
   public void verbose(boolean value) {
     verbose = value;
     manager.verbose(value);
+  }
+
+  /// The current simulation mode flag.
+  public boolean simulate() {
+    return simulate;
+  }
+
+  /// Set the simulation mode applying it to the live manager immediately (the
+  /// application thread; the flag is also carried over the manager swaps).
+  public void simulate(boolean value) {
+    simulate = value;
+    manager.simulate(value);
   }
 
   /// Return the operations executor the core operations must be submitted to.
@@ -146,6 +163,7 @@ public final class AppContext {
     roots.addAll(Manager.mountPoints());
     Manager restored = new Manager().restore(roots);
     restored.verbose(verbose);
+    restored.simulate(simulate);
     return restored;
   }
 

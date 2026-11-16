@@ -96,7 +96,11 @@ public final class Runner {
         }
         int total = tasks.size();
         Platform.runLater(() -> listener.runStarted(total));
-        Consumer<String> output = logs.openRun((serve ? "service" : "run") + ": " + tasks.size() + " task(s)");
+        String runTitle = (manager.simulate ? "simulated " : "") + (serve ? "service" : "run") + ": " + tasks.size() + " task(s)";
+        Consumer<String> output = logs.openRun(runTitle);
+        if (manager.simulate) {
+          output.accept("simulation mode (dry run) — no on-disk changes will be made");
+        }
         int index = 0;
         for (Task task : tasks) {
           // The abort request skips the remaining tasks (the running backend has
