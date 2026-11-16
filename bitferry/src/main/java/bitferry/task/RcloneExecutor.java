@@ -299,7 +299,7 @@ final class RcloneExecutor {
     }
 
     // Process options
-    cmd.addAll(rclone.processOptions());
+    cmd.addAll(rclone.serveOptions());
 
     // The endpoints (or the crypt tail placing the ':crypt:' remote for the encrypted tasks)
     cmd.addAll(rclone.encryption().processOpts(rclone));

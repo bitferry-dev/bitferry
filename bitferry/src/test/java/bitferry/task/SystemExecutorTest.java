@@ -442,6 +442,65 @@ class SystemExecutorTest {
     List<List<String>> backupSkipCmds = backupSkip.commands();
     assertEquals(1, backupSkipCmds.size());
     assertEquals("backup", backupSkipCmds.get(0).get(1));
+
+    // Equalize serveCommands strips bisync-only flags from rclone check
+    Equalize equalize = new Equalize(manager, source(), destination(), null, List.of(), List.of());
+    List<List<String>> eqServeCmds = equalize.serveCommands();
+    assertEquals(1, eqServeCmds.size());
+    List<String> eqCheck = eqServeCmds.get(0);
+    assertEquals("rclone", eqCheck.get(0));
+    assertEquals("check", eqCheck.get(1));
+    assertFalse(eqCheck.contains("--recover"));
+    assertFalse(eqCheck.contains("--resilient"));
+    assertFalse(eqCheck.contains("--force"));
+    assertTrue(eqCheck.contains("--metadata"));
+  }
+
+  @Test
+  void equalizeServeCommandFiltersOutBisyncSpecificFlags() {
+    RecordingCommandExecutor recorder = new RecordingCommandExecutor();
+    SystemExecutor executor = new SystemExecutor(recorder);
+    manager.backendExecutor(executor);
+
+    Equalize equalize = new Equalize(manager, source(), destination(), null, List.of(), List.of());
+    assertTrue(equalize.processOptions().contains("--recover"));
+    assertTrue(equalize.processOptions().contains("--resilient"));
+    assertTrue(equalize.processOptions().contains("--force"));
+
+    List<String> serveOpts = equalize.serveOptions();
+    assertFalse(serveOpts.contains("--recover"));
+    assertFalse(serveOpts.contains("--resilient"));
+    assertFalse(serveOpts.contains("--force"));
+    assertTrue(serveOpts.contains("--metadata"));
+
+    boolean ok = executor.serve(equalize, null);
+    assertTrue(ok);
+    assertEquals(1, recorder.invocations.size());
+    List<String> cmd = recorder.invocations.get(0).command();
+    assertEquals("rclone", cmd.get(0));
+    assertEquals("check", cmd.get(1));
+    assertFalse(cmd.contains("--recover"));
+    assertFalse(cmd.contains("--resilient"));
+    assertFalse(cmd.contains("--force"));
+    assertTrue(cmd.contains("--metadata"));
+  }
+
+  @Test
+  void equalizeServeExecutesSuccessfullyWithRealRclone() throws IOException {
+    Assumptions.assumeTrue(available("rclone"), "rclone not available for integration check");
+    Path src = dir.resolve("eq-src");
+    Path dst = dir.resolve("eq-dst");
+    Files.createDirectories(src);
+    Files.createDirectories(dst);
+    Files.writeString(src.resolve("file.txt"), "content");
+    Files.writeString(dst.resolve("file.txt"), "content");
+
+    Equalize equalize = new Equalize(manager, Endpoints.parse(manager, "local:" + src), Endpoints.parse(manager, "local:" + dst), null, List.of(), List.of());
+    SystemExecutor executor = new SystemExecutor(SystemCommandExecutor.INSTANCE);
+    manager.backendExecutor(executor);
+    List<String> output = new ArrayList<>();
+    boolean ok = executor.serve(equalize, output::add);
+    assertTrue(ok, "Expected rclone check to succeed, but got: " + output);
   }
 
   @Test

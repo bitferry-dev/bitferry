@@ -175,6 +175,11 @@ public abstract class Rclone extends Task {
     return DIRECTOR;
   }
 
+  /// Return options to pass to the integrity check command (rclone check).
+  public List<String> serveOptions() {
+    return processOptions();
+  }
+
   /// Perform candidate encryption options conformance test against existing backend data.
   @Override
   protected void conform() {

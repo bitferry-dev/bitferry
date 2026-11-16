@@ -214,6 +214,50 @@ public class Equalize extends Rclone {
     super.delete();
   }
 
+  /// Flags specific to rclone bisync that are not recognized by rclone check.
+  private static final Set<String> BISYNC_ONLY_FLAGS = Set.of(
+    "--recover", "--resilient", "--force", "--resync",
+    "--check-access", "--create-empty-src-dirs", "--download-hash",
+    "--ignore-listing-checksum", "--max-delete-renames-aware",
+    "--no-cleanup", "--no-slow-hash", "--remove-empty-dirs", "--slow-hash-sync-only"
+  );
+
+  private static final Set<String> BISYNC_VALUED_FLAGS = Set.of(
+    "--resync-mode", "--workdir", "--check-filename", "--check-sync",
+    "--compare", "--conflict-loser", "--conflict-resolve", "--conflict-suffix",
+    "--filters-file", "--max-lock", "--backup-dir1", "--backup-dir2"
+  );
+
+  /// Return options to pass to the integrity check command (rclone check): filters out
+  /// bisync-specific modifiers (--recover, --resilient, --force) which are not supported
+  /// by rclone check.
+  @Override
+  public List<String> serveOptions() {
+    List<String> options = new ArrayList<>();
+    List<String> all = processOptions();
+    for (int i = 0; i < all.size(); i++) {
+      String opt = all.get(i);
+      if (BISYNC_ONLY_FLAGS.contains(opt)) {
+        continue;
+      }
+      if (BISYNC_VALUED_FLAGS.contains(opt)) {
+        i++; // skip flag value
+        continue;
+      }
+      if (opt.startsWith("--")) {
+        int eq = opt.indexOf('=');
+        if (eq > 0) {
+          String flagName = opt.substring(0, eq);
+          if (BISYNC_ONLY_FLAGS.contains(flagName) || BISYNC_VALUED_FLAGS.contains(flagName)) {
+            continue;
+          }
+        }
+      }
+      options.add(opt);
+    }
+    return options;
+  }
+
   /// The bidirectional arrow: the equalize tasks render (and describe) differently
   /// from the one-way operations.
   @Override
