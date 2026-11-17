@@ -61,6 +61,9 @@ public final class Main {
     // installed before the logging configuration so that the JUL handlers bind the
     // jansi-wrapped streams (not the raw ones they replace).
     AnsiConsole.systemInstall();
+    // The unicode axis of the rendering matrix: probe once, before any output —
+    // the colors ride the picocli Ansi.AUTO tty detection (the orthogonal axis)
+    Symbols.unicode(CliUtils.unicodeCapable());
     // The compact single-line console logging in place of the verbose JUL blocks
     ConsoleLog.compact();
     int exitCode;

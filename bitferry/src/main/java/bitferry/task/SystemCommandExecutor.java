@@ -36,10 +36,6 @@ public final class SystemCommandExecutor implements CommandExecutor {
     if (workingDirectory != null) {
       builder.directory(workingDirectory.toFile());
     }
-    // Default terminal and color capabilities for CLI backends
-    builder.environment().put("CLICOLOR_FORCE", "1");
-    builder.environment().put("TERM", "xterm-256color");
-    builder.environment().put("COLORTERM", "truecolor");
     if (environment != null && !environment.isEmpty()) {
       builder.environment().putAll(environment);
     }
@@ -99,7 +95,15 @@ public final class SystemCommandExecutor implements CommandExecutor {
         BackendProcesses.unregister(process);
       }
     } else {
-      // GUI / captured mode: merge stdout and stderr, stream line-by-line in real time
+      // GUI / captured mode: merge stdout and stderr, stream line-by-line in real time.
+      // The consumer renders the escapes (the GUI log parser), so the colors are
+      // forced on with an emulated capable terminal; the passthrough runs inherit
+      // the real environment instead — the backends' own tty detection colors the
+      // real terminal and keeps the redirected files plain (the coloring and the
+      // unicode axes of the rendering matrix are the consumer-type decisions)
+      builder.environment().put("CLICOLOR_FORCE", "1");
+      builder.environment().put("TERM", "xterm-256color");
+      builder.environment().put("COLORTERM", "truecolor");
       builder.redirectErrorStream(true);
       Process process = builder.start();
       BackendProcesses.register(process);

@@ -10,6 +10,7 @@ import java.nio.file.*;
 import java.util.*;
 import java.util.logging.*;
 import java.util.regex.*;
+import org.fusesource.jansi.AnsiPrintStream;
 import picocli.CommandLine.Help.*;
 import picocli.CommandLine.Model.*;
 
@@ -29,6 +30,30 @@ public final class CliUtils {
 
   /// The terminal password acquisition seam (swappable by the tests).
   static java.util.function.Supplier<String> passwordSource = CliUtils::readPasswordFromTerminal;
+
+  /// Probe whether the console encoding can carry the unicode glyphs (the direction
+  /// arrows, the status marks). The Windows consoles always can (jansi routes the
+  /// output through the wide-char console API, code-page independently); the unix
+  /// consoles and the redirected streams follow the locale-derived encoding — the
+  /// same property jansi's print streams encode with (stdout.encoding), so the
+  /// decision matches the bytes actually emitted. The redirected streams default
+  /// to UTF-8 on the modern JDKs, allowing the unicode in the log files.
+  static boolean unicodeCapable() {
+    if (System.out instanceof AnsiPrintStream printStream) {
+      switch (printStream.getType()) {
+        case Native, VirtualTerminal -> { return true; }  // The Windows wide-char / VT console paths
+        case Unsupported -> { return false; }
+        default -> {} // Emulation (the unix tty) and Redirected (files, pipes): the encoding decides
+      }
+    }
+    String encoding = System.getProperty("stdout.encoding");
+    if (encoding == null || encoding.isBlank()) encoding = System.getProperty("file.encoding", "UTF-8");
+    try {
+      return java.nio.charset.Charset.forName(encoding).newEncoder().canEncode('\u2192');
+    } catch (java.nio.charset.IllegalCharsetNameException | java.nio.charset.UnsupportedCharsetException e) {
+      return false;
+    }
+  }
 
   /// Obtain the password by prompting from the terminal with hidden input and confirmation.
   /// The passwords are never accepted from the command line arguments or the piped standard

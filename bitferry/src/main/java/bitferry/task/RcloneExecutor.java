@@ -220,8 +220,14 @@ final class RcloneExecutor {
     // Common options
     cmd.add("--config");
     cmd.add(ExecutorSupport.isWindows() ? "NUL" : "/dev/null");
-    cmd.add("--color");
-    cmd.add("ALWAYS");
+    // The coloring follows the consumer type: the captured runs (the GUI log parser
+    // renders the escapes) force the colors on, the passthrough runs defer to the
+    // rclone's own tty detection (colors on the real terminal, plain bytes into the
+    // redirected files)
+    if (!passthrough) {
+      cmd.add("--color");
+      cmd.add("ALWAYS");
+    }
     // The verbosity applies to both execution modes; the interactive progress display
     // is requested only for the passthrough runs (stdout inherited, the real terminal):
     // over the captured pipes the rclone's own progress degrades to the periodic
@@ -265,7 +271,7 @@ final class RcloneExecutor {
     return ExecutorSupport.execute(commandExecutor, rclone.manager(), cmd, null, rclone.processEnvironment(), rclone.tag(), output);
   }
 
-  List<String> serveCommand(Rclone rclone) {
+  List<String> serveCommand(Rclone rclone, boolean passthrough) {
     Manager manager = rclone.manager();
     List<String> cmd = new ArrayList<>();
     cmd.add(ExecutorSupport.resolveExecutable("rclone"));
@@ -292,8 +298,12 @@ final class RcloneExecutor {
     // Common options
     cmd.add("--config");
     cmd.add(ExecutorSupport.isWindows() ? "NUL" : "/dev/null");
-    cmd.add("--color");
-    cmd.add("ALWAYS");
+    // The coloring follows the consumer type (mirroring the run commands): forced
+    // for the captured runs, the rclone's own tty detection for the passthrough
+    if (!passthrough) {
+      cmd.add("--color");
+      cmd.add("ALWAYS");
+    }
     if (manager.verbose()) {
       cmd.add("--verbose");
     }
@@ -311,12 +321,13 @@ final class RcloneExecutor {
   }
 
   List<List<String>> serveCommands(Rclone rclone) {
-    return List.of(ExecutorSupport.displayCommand(serveCommand(rclone)));
+    // The preview mirrors the passthrough execution form
+    return List.of(ExecutorSupport.displayCommand(serveCommand(rclone, true)));
   }
 
   /// Perform service (integrity checking) on the rclone-backed task. Return true on success.
   boolean serve(Rclone rclone, Consumer<String> output) {
-    List<String> cmd = serveCommand(rclone);
+    List<String> cmd = serveCommand(rclone, output == null);
     return ExecutorSupport.execute(commandExecutor, rclone.manager(), cmd, null, rclone.processEnvironment(), rclone.tag(), output);
   }
 }

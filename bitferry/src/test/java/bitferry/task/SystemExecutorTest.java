@@ -329,6 +329,62 @@ class SystemExecutorTest {
   }
 
   @Test
+  void rcloneColorFlagsFollowTheConsumerType() {
+    RecordingCommandExecutor recorder = new RecordingCommandExecutor();
+    SystemExecutor executor = new SystemExecutor(recorder);
+
+    Replicate task = new Replicate(manager, source(), destination(), null, List.of(), List.of());
+
+    // The passthrough runs (the CLI terminal): the backend's own tty detection
+    // rules — no forced color flag
+    executor.run(task, null);
+    assertFalse(recorder.invocations.get(0).command().contains("--color"));
+
+    // The captured runs (the GUI log parser renders the escapes): the colors are forced
+    executor.run(task, line -> {});
+    assertTrue(recorder.invocations.get(1).command().contains("--color"));
+    assertTrue(recorder.invocations.get(1).command().contains("ALWAYS"));
+  }
+
+  @Test
+  void serveColorFlagsFollowTheConsumerType() {
+    RecordingCommandExecutor recorder = new RecordingCommandExecutor();
+    SystemExecutor executor = new SystemExecutor(recorder);
+
+    Copy task = new Copy(manager, source(), destination(), null, List.of(), List.of());
+
+    executor.serve(task, null);
+    assertFalse(recorder.invocations.get(0).command().contains("--color"));
+
+    executor.serve(task, line -> {});
+    assertTrue(recorder.invocations.get(1).command().contains("--color"));
+    assertTrue(recorder.invocations.get(1).command().contains("ALWAYS"));
+  }
+
+  @Test
+  void capturedModeForcesColorsPassthroughLeavesEnvironmentUntouched() throws Exception {
+    Path envFile = Files.createTempFile("bitferry-env", ".txt");
+    try {
+      // The passthrough inherits the real environment: nothing is forced
+      int code = SystemCommandExecutor.INSTANCE.execute(
+        List.of("sh", "-c", "echo CLICOLOR_FORCE=${CLICOLOR_FORCE:-unset} > " + envFile),
+        null, null, null);
+      assertEquals(0, code);
+      assertEquals("CLICOLOR_FORCE=unset", Files.readString(envFile).trim());
+
+      // The captured mode forces the emulated capable terminal for the rendering consumer
+      List<String> lines = new ArrayList<>();
+      code = SystemCommandExecutor.INSTANCE.execute(
+        List.of("sh", "-c", "echo CLICOLOR_FORCE=$CLICOLOR_FORCE TERM=$TERM"),
+        null, null, lines::add);
+      assertEquals(0, code);
+      assertEquals("CLICOLOR_FORCE=1 TERM=xterm-256color", lines.getFirst());
+    } finally {
+      Files.deleteIfExists(envFile);
+    }
+  }
+
+  @Test
   void resticBackupSetsWorkingDirectoryAndRunsCheckAndForget() {
     RecordingCommandExecutor recorder = new RecordingCommandExecutor();
     SystemExecutor executor = new SystemExecutor(recorder);

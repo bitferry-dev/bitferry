@@ -82,9 +82,15 @@ public final class TaskBreakdown {
   }
 
   private static String formatStatus(Task task) {
-    return task.isIntact()
-      ? Ansi.AUTO.string("@|green ✓ intact|@")
-      : Ansi.AUTO.string("@|red ✗ stale|@");
+    // The ASCII approximations on the non-unicode consoles: the encoder would
+    // otherwise collapse the marks into the semantically lossy '?'
+    return Symbols.unicode()
+      ? (task.isIntact()
+        ? Ansi.AUTO.string("@|green ✓ intact|@")
+        : Ansi.AUTO.string("@|red ✗ stale|@"))
+      : (task.isIntact()
+        ? Ansi.AUTO.string("@|green ok intact|@")
+        : Ansi.AUTO.string("@|red x stale|@"));
   }
 
   private static String formatEndpoint(Endpoint endpoint) {

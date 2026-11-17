@@ -163,12 +163,15 @@ public abstract class Task {
   /// The arrow used in the task listings between the endpoints.
   public abstract String director();
 
-  /// Return the unicode-friendly display form of the direction marker: the → arrow
-  /// for the unidirectional and the ↔ arrow for the bidirectional flow. The canonical
-  /// ASCII markers (--> and <->) remain the storage and comparison form; unknown
-  /// markers pass through unchanged.
+  /// Return the display form of the direction marker: the → arrow for the
+  /// unidirectional and the ↔ arrow for the bidirectional flow when the unicode
+  /// glyphs are allowed ([Symbols]), the canonical ASCII markers (--> and <->)
+  /// otherwise — the encoding-level '?' degradation would lose the direction
+  /// semantics on the non-unicode consoles. The canonical markers remain the
+  /// storage and comparison form; unknown markers pass through unchanged.
   public static String displayDirector(String marker) {
     if (marker == null) return null;
+    if (!Symbols.unicode()) return marker;
     return switch (marker) {
       case "-->" -> "→";
       case "<->" -> "↔";
