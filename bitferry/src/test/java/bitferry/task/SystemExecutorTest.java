@@ -176,7 +176,7 @@ class SystemExecutorTest {
       manager.verbose(true);
 
       // Rclone task: commands() uses generic "rclone"
-      Synchronize sync = new Synchronize(manager, source(), destination(), null, List.of(), List.of());
+      Replicate sync = new Replicate(manager, source(), destination(), null, List.of(), List.of());
       List<List<String>> cmds = sync.commands();
       assertEquals(1, cmds.size());
       assertEquals("rclone", cmds.get(0).get(0));
@@ -245,7 +245,7 @@ class SystemExecutorTest {
     RecordingCommandExecutor recorder = new RecordingCommandExecutor();
     SystemExecutor executor = new SystemExecutor(recorder);
 
-    Synchronize task = new Synchronize(manager, source(), destination(), null, List.of("*.txt"), List.of("*.bak"));
+    Replicate task = new Replicate(manager, source(), destination(), null, List.of("*.txt"), List.of("*.bak"));
     boolean result = executor.run(task, null);
 
     assertTrue(result);
@@ -304,7 +304,7 @@ class SystemExecutorTest {
     manager.verbose(true);
     manager.simulate = true;
 
-    Synchronize task = new Synchronize(manager, source(), destination(), null, List.of(), List.of());
+    Replicate task = new Replicate(manager, source(), destination(), null, List.of(), List.of());
     executor.run(task, null);
 
     List<String> cmd = recorder.invocations.get(0).command();
@@ -399,7 +399,7 @@ class SystemExecutorTest {
     SystemExecutor executor = new SystemExecutor(recorder);
     manager.backendExecutor(executor);
 
-    Synchronize sync = new Synchronize(manager, source(), destination(), null, List.of("*.txt"), List.of("*.bak"));
+    Replicate sync = new Replicate(manager, source(), destination(), null, List.of("*.txt"), List.of("*.bak"));
     List<List<String>> syncCmds = sync.commands();
     assertEquals(1, syncCmds.size());
     List<String> cmd = syncCmds.get(0);
@@ -510,7 +510,7 @@ class SystemExecutorTest {
     SystemExecutor executor = new SystemExecutor(recorder);
 
     List<String> captured = new ArrayList<>();
-    Synchronize task = new Synchronize(manager, source(), destination(), null, List.of(), List.of());
+    Replicate task = new Replicate(manager, source(), destination(), null, List.of(), List.of());
     boolean result = executor.run(task, captured::add);
 
     assertTrue(result);
@@ -526,7 +526,7 @@ class SystemExecutorTest {
     SystemExecutor executor = new SystemExecutor(recorder);
 
     List<String> captured = new ArrayList<>();
-    Synchronize task = new Synchronize(manager, source(), destination(), null, List.of(), List.of());
+    Replicate task = new Replicate(manager, source(), destination(), null, List.of(), List.of());
     boolean result = executor.run(task, captured::add);
 
     assertFalse(result);
@@ -568,7 +568,7 @@ class SystemExecutorTest {
   }
 
   @Test
-  void realRcloneSynchronizeSyncsFilesSuccessfully() throws IOException {
+  void realRcloneReplicateSyncsFilesSuccessfully() throws IOException {
     Assumptions.assumeTrue(available("rclone"), "rclone not available for the integration check");
     Path srcDir = dir.resolve("real-src");
     Files.createDirectories(srcDir);
@@ -580,7 +580,7 @@ class SystemExecutorTest {
     Endpoint srcEndpoint = Endpoints.parse(manager, "local:" + srcDir);
     Endpoint dstEndpoint = Endpoints.parse(manager, ":" + dstVol.tag() + ":backup");
 
-    Synchronize task = new Synchronize(manager, srcEndpoint, dstEndpoint, null, List.of(), List.of());
+    Replicate task = new Replicate(manager, srcEndpoint, dstEndpoint, null, List.of(), List.of());
     List<String> outputLines = new ArrayList<>();
     boolean success = manager.process(outputLines::add, task.tag());
 
@@ -595,7 +595,7 @@ class SystemExecutorTest {
     RecordingCommandExecutor recorder = new RecordingCommandExecutor();
     SystemExecutor executor = new SystemExecutor(recorder);
 
-    Synchronize task = new Synchronize(manager, volumeSource(), destination(), null, List.of(), List.of());
+    Replicate task = new Replicate(manager, volumeSource(), destination(), null, List.of(), List.of());
     task.encrypt("secret", null, Rclone.Encryption.options("@default"));
     boolean result = executor.run(task, null);
 
@@ -653,7 +653,7 @@ class SystemExecutorTest {
     // The encrypt task replicates the volume contents in the encrypted form
     Endpoint source = Endpoints.parse(manager, ":" + volume.tag() + ":");
     Endpoint encrypted = Endpoints.parse(manager, "local:" + dir.resolve("crypt-enc"));
-    Synchronize encrypt = new Synchronize(manager, source, encrypted, null, List.of(), List.of());
+    Replicate encrypt = new Replicate(manager, source, encrypted, null, List.of(), List.of());
     encrypt.encrypt("crypt-pass", null, Rclone.Encryption.options("@default"));
     assertTrue(manager.process(encrypt.tag()));
 
@@ -797,7 +797,7 @@ class SystemExecutorTest {
     Files.createDirectories(dst);
     Files.writeString(dst.resolve("file.txt"), "hello");
 
-    Synchronize task = new Synchronize(manager, volumeSource(), Endpoints.parse(manager, "local:" + dst), null, List.of(), List.of());
+    Replicate task = new Replicate(manager, volumeSource(), Endpoints.parse(manager, "local:" + dst), null, List.of(), List.of());
     executor.conform(task);
 
     assertEquals(0, recorder.invocations.size());
@@ -809,7 +809,7 @@ class SystemExecutorTest {
     SystemExecutor executor = new SystemExecutor(recorder);
 
     Path dst = dir.resolve("dst-absent");
-    Synchronize task = new Synchronize(manager, volumeSource(), Endpoints.parse(manager, "local:" + dst), null, List.of(), List.of());
+    Replicate task = new Replicate(manager, volumeSource(), Endpoints.parse(manager, "local:" + dst), null, List.of(), List.of());
     task.encrypt("secret", null, Rclone.Encryption.options("@default"));
     executor.conform(task);
 
@@ -826,7 +826,7 @@ class SystemExecutorTest {
     Files.writeString(dst.resolve(Bitferry.STORAGE), "storage");
     Files.writeString(dst.resolve(Bitferry.STORAGE_IMAGE), "image");
 
-    Synchronize task = new Synchronize(manager, volumeSource(), Endpoints.parse(manager, "local:" + dst), null, List.of(), List.of());
+    Replicate task = new Replicate(manager, volumeSource(), Endpoints.parse(manager, "local:" + dst), null, List.of(), List.of());
     task.encrypt("secret", null, Rclone.Encryption.options("@default"));
     executor.conform(task);
 
@@ -843,7 +843,7 @@ class SystemExecutorTest {
     Files.createDirectories(dst);
     Files.writeString(dst.resolve("encrypted_name"), "encrypted-bytes");
 
-    Synchronize task = new Synchronize(manager, volumeSource(), Endpoints.parse(manager, "local:" + dst), null, List.of(), List.of());
+    Replicate task = new Replicate(manager, volumeSource(), Endpoints.parse(manager, "local:" + dst), null, List.of(), List.of());
     task.encrypt("secret", "secret2", Rclone.Encryption.options("@default"));
     executor.conform(task);
 
@@ -877,7 +877,7 @@ class SystemExecutorTest {
     Files.createDirectories(dst);
     Files.writeString(dst.resolve("enc1"), "bytes");
 
-    Synchronize task = new Synchronize(manager, volumeSource(), Endpoints.parse(manager, "local:" + dst), null, List.of(), List.of());
+    Replicate task = new Replicate(manager, volumeSource(), Endpoints.parse(manager, "local:" + dst), null, List.of(), List.of());
     task.encrypt("secret", null, Rclone.Encryption.options("@default"));
 
     BitferryError error = assertThrows(BitferryError.class, () -> executor.conform(task));
@@ -900,7 +900,7 @@ class SystemExecutorTest {
     Files.createDirectories(dst);
     Files.writeString(dst.resolve("enc1"), "bytes");
 
-    Synchronize task = new Synchronize(manager, volumeSource(), Endpoints.parse(manager, "local:" + dst), null, List.of(), List.of());
+    Replicate task = new Replicate(manager, volumeSource(), Endpoints.parse(manager, "local:" + dst), null, List.of(), List.of());
     task.encrypt("secret", null, Rclone.Encryption.options("@default"));
 
     BitferryError error = assertThrows(BitferryError.class, () -> executor.conform(task));
@@ -923,7 +923,7 @@ class SystemExecutorTest {
     Files.createDirectories(dst);
     Files.writeString(dst.resolve("raw-file.txt"), "plain-content");
 
-    Synchronize task = new Synchronize(manager, volumeSource(), Endpoints.parse(manager, "local:" + dst), null, List.of(), List.of());
+    Replicate task = new Replicate(manager, volumeSource(), Endpoints.parse(manager, "local:" + dst), null, List.of(), List.of());
     task.encrypt("secret", null, Rclone.Encryption.options("@default"));
 
     BitferryError error = assertThrows(BitferryError.class, () -> executor.conform(task));
@@ -1095,7 +1095,7 @@ class SystemExecutorTest {
     RecordingCommandExecutor recorder = new RecordingCommandExecutor();
     SystemExecutor executor = new SystemExecutor(recorder);
 
-    Synchronize sync = new Synchronize(manager, source(), destination(), null, List.of("*.txt"), List.of("*.bak"));
+    Replicate sync = new Replicate(manager, source(), destination(), null, List.of("*.txt"), List.of("*.bak"));
     boolean ok = executor.serve(sync, null);
     assertTrue(ok);
 

@@ -22,8 +22,8 @@ class VolumeTest {
     Path storage = dir.resolve("volume").resolve(Bitferry.STORAGE);
     assertTrue(Files.isRegularFile(storage));
     JsonNode data = Storage.readJson(storage);
-    // The storage format version is tagged 0.1
-    assertEquals("0.1", data.get("bitferry").asString());
+    // The storage format version is tagged 0
+    assertEquals("0", data.get("bitferry").asString());
     assertEquals(volume.tag(), data.get("volume").asString());
     assertTrue(data.has("modified"));
     // No tasks and no vault entries yet: the empty sections are omitted
@@ -149,6 +149,26 @@ class VolumeTest {
     Manager manager = new Manager();
     BitferryError error = assertThrows(BitferryError.class, () -> Volume.restore(manager, root));
     assertTrue(error.getMessage().contains("unsupported volume storage version 8"));
+  }
+
+  @Test
+  void missingStorageVersionIsReported() throws IOException {
+    Path root = dir.resolve("missing-ver");
+    Files.createDirectories(root);
+    Files.writeString(root.resolve(Bitferry.STORAGE), "{\"volume\": \"e42f2d8c\", \"modified\": \"2026-01-01T00:00:00+00:00\"}");
+    Manager manager = new Manager();
+    BitferryError error = assertThrows(BitferryError.class, () -> Volume.restore(manager, root));
+    assertTrue(error.getMessage().contains("missing volume storage version property 'bitferry'"));
+  }
+
+  @Test
+  void nonObjectStorageIsReported() throws IOException {
+    Path root = dir.resolve("non-object");
+    Files.createDirectories(root);
+    Files.writeString(root.resolve(Bitferry.STORAGE), "[\"not an object\"]");
+    Manager manager = new Manager();
+    BitferryError error = assertThrows(BitferryError.class, () -> Volume.restore(manager, root));
+    assertTrue(error.getMessage().contains("invalid volume storage descriptor: expected a JSON object"));
   }
 
   @Test

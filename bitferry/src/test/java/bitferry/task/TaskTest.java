@@ -47,35 +47,35 @@ class TaskTest {
   void rcloneOperationsCarryTheirDescriptors() {
     assertEquals("copy", new Copy(manager, source(), destination(), null, List.of(), List.of()).operation());
     assertEquals("update", new Update(manager, source(), destination(), null, List.of(), List.of()).operation());
-    assertEquals("synchronize", new Synchronize(manager, source(), destination(), null, List.of(), List.of()).operation());
+    assertEquals("replicate", new Replicate(manager, source(), destination(), null, List.of(), List.of()).operation());
     assertEquals("equalize", new Equalize(manager, source(), destination(), null, List.of(), List.of()).operation());
     assertEquals("backup", new Backup(manager, volumeSource(), destination(), "secret", null, null, null, null, List.of(), List.of()).operation());
     assertEquals("restore", new Restore(manager, destination(), volumeRestored(), "secret", null, List.of(), List.of()).operation());
     // The tasks own their backend operation arguments
     assertEquals(List.of("copy"), new Copy(manager, source(), destination(), null, List.of(), List.of()).operationArgs());
     assertEquals(List.of("copy", "--update"), new Update(manager, source(), destination(), null, List.of(), List.of()).operationArgs());
-    assertEquals(List.of("sync"), new Synchronize(manager, source(), destination(), null, List.of(), List.of()).operationArgs());
+    assertEquals(List.of("sync"), new Replicate(manager, source(), destination(), null, List.of(), List.of()).operationArgs());
     Equalize eqTask = new Equalize(manager, source(), destination(), null, List.of(), List.of());
     assertEquals(List.of("bisync", "--resync", "--workdir", eqTask.workdir().toString()), eqTask.operationArgs());
   }
 
   @Test
   void tasksAreRegisteredAndIntactUponCreation() {
-    Synchronize task = new Synchronize(manager, source(), destination(), null, List.of(), List.of());
+    Replicate task = new Replicate(manager, source(), destination(), null, List.of(), List.of());
     assertEquals(task, manager.task(task.tag()));
     assertTrue(task.isIntact());
     assertTrue(task.isLive());
-    assertEquals("synchronize " + source().describe() + " --> " + destination().describe(), task.describe());
+    assertEquals("replicate " + source().describe() + " --> " + destination().describe(), task.describe());
     assertTrue(task.refersVolume(volume.tag()));
     assertFalse(task.refersVolume("00000000"));
   }
 
   @Test
   void taskSerializationCarriesTheDescriptors() {
-    Synchronize task = new Synchronize(manager, source(), destination(), null, List.of(), List.of());
+    Replicate task = new Replicate(manager, source(), destination(), null, List.of(), List.of());
     JsonNode data = task.serialize();
     // The operation is the discriminator property; the tag travels in-band
-    assertEquals("synchronize", data.get("operation").asString());
+    assertEquals("replicate", data.get("operation").asString());
     assertEquals("rclone", data.get("backend").asString());
     assertEquals(task.tag(), data.get("task").asString());
     // The endpoint descriptors are discriminated by the 'endpoint' property
@@ -93,9 +93,9 @@ class TaskTest {
 
   @Test
   void taskRoundTripsThroughTheDescriptor() {
-    Synchronize task = new Synchronize(manager, source(), destination(), "-X,verbose", List.of("include/**"), List.of("exclude/**"));
+    Replicate task = new Replicate(manager, source(), destination(), "-X,verbose", List.of("include/**"), List.of("exclude/**"));
     Task restored = Task.restore(manager, task.serialize());
-    assertInstanceOf(Synchronize.class, restored);
+    assertInstanceOf(Replicate.class, restored);
     assertEquals(task.tag(), restored.tag());
     assertEquals(task.describe(), restored.describe());
     assertEquals(List.of("include/**"), toStringList(restored.serialize().get("include")));
@@ -131,7 +131,7 @@ class TaskTest {
       List.of("backend", "destination", "modified", "operation", "restic", "source", "task"),
       sortedNames(backup.serialize()));
 
-    Synchronize task = new Synchronize(manager, source(), destination(), null, List.of(), List.of());
+    Replicate task = new Replicate(manager, source(), destination(), null, List.of(), List.of());
     assertIterableEquals(
       List.of("backend", "destination", "modified", "operation", "rclone", "source", "task"),
       sortedNames(task.serialize()));
@@ -226,14 +226,14 @@ class TaskTest {
   @Test
   void processingIsDelegatedToTheStubExecutor() {
     manager.backendExecutor(Executor.stub());
-    Synchronize task = new Synchronize(manager, source(), destination(), null, List.of(), List.of());
+    Replicate task = new Replicate(manager, source(), destination(), null, List.of(), List.of());
     assertFalse(task.process(null));
     assertFalse(manager.process());
   }
 
   @Test
   void deletionFlagsTheTaskAndItsVolumes() {
-    Synchronize task = new Synchronize(manager, source(), destination(), null, List.of(), List.of());
+    Replicate task = new Replicate(manager, source(), destination(), null, List.of(), List.of());
     assertTrue(volume.isModified());
     task.delete();
     // The tombstone: the task stays live (the marker must persist) yet invisible
@@ -388,7 +388,7 @@ class TaskTest {
 
   @Test
   void massRunParticipationDefaultsAndPersists() {
-    var task = new Synchronize(manager, source(), destination(), null, List.of(), List.of());
+    var task = new Replicate(manager, source(), destination(), null, List.of(), List.of());
     // The default: every task participates in the mass runs (the descriptor omits the flag)
     assertTrue(task.isRunnable());
     assertFalse(task.isManual());
@@ -413,12 +413,12 @@ class TaskTest {
 
     // The descriptor round-trip: the restored execution status mirrors the persisted flag
     task.setManual(false);
-    var restored = (Synchronize) Task.restore(manager, task.serialize());
+    var restored = (Replicate) Task.restore(manager, task.serialize());
     assertFalse(restored.isManual());
     assertTrue(restored.isRunnable());
 
     task.setManual(true);
-    restored = (Synchronize) Task.restore(manager, task.serialize());
+    restored = (Replicate) Task.restore(manager, task.serialize());
     assertTrue(restored.isManual());
     assertFalse(restored.isRunnable());
     assertSame(task, manager.task(task.tag()));
@@ -460,8 +460,8 @@ class TaskTest {
     Files.writeString(workdir.resolve("test.lst"), "dummy content");
     assertTrue(Files.exists(workdir.resolve("test.lst")));
 
-    // 1. Morph to Synchronize cleans up old equalize workdir
-    Rclone morphed = task.morph("synchronize");
+    // 1. Morph to Replicate cleans up old equalize workdir
+    Rclone morphed = task.morph("replicate");
     assertFalse(Files.exists(workdir));
 
     // 2. Re-create workdir and test deleting a non-equalize Rclone task removes it

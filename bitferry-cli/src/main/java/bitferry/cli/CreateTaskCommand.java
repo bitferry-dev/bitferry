@@ -12,7 +12,7 @@ import picocli.CommandLine.Model.*;
   subcommands = {
     CreateCopyCommand.class,
     CreateUpdateCommand.class,
-    CreateSynchronizeCommand.class,
+    CreateReplicateCommand.class,
     CreateEqualizeCommand.class,
     CreateBackupCommand.class,
     CreateRestoreCommand.class

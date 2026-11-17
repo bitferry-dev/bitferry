@@ -2,7 +2,7 @@ package bitferry.gui;
 
 import bitferry.Manager;
 import bitferry.Volume;
-import bitferry.task.Synchronize;
+import bitferry.task.Replicate;
 import bitferry.task.Task;
 import javafx.application.Platform;
 import javafx.fxml.FXMLLoader;
@@ -54,7 +54,7 @@ class MassButtonsTest {
                 manager = context.manager();
                 Volume volume = new Volume(manager, Files.createTempDirectory("bitferry-mass-probe").resolve("volume"));
                 for (int i = 0; i < 2; i++) {
-                    Synchronize task = new Synchronize(manager,
+                    Replicate task = new Replicate(manager,
                         bitferry.endpoint.Endpoints.parse(manager, "local:" + Files.createTempDirectory("bitferry-mass-data-" + i)),
                         bitferry.endpoint.Endpoints.parse(manager, ":" + volume.tag() + ":t" + i),
                         null, List.of(), List.of());

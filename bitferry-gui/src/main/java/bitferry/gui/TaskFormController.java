@@ -4,10 +4,10 @@ import bitferry.*;
 import bitferry.task.Backup;
 import bitferry.task.Copy;
 import bitferry.task.Equalize;
+import bitferry.task.Replicate;
 import bitferry.task.Rclone;
 import bitferry.task.Restore;
 import bitferry.task.Restic;
-import bitferry.task.Synchronize;
 import bitferry.task.Task;
 import bitferry.task.Update;
 import bitferry.vault.KeyringVault;
@@ -75,7 +75,7 @@ public final class TaskFormController {
     Equalize.OPERATION, Equalize.PROCESS,
     Copy.OPERATION, Rclone.PROCESS,
     Update.OPERATION, Rclone.PROCESS,
-    Synchronize.OPERATION, Rclone.PROCESS
+    Replicate.OPERATION, Rclone.PROCESS
   );
 
   /// The volume selector entry carrying the display form.
@@ -333,14 +333,14 @@ public final class TaskFormController {
       String existingType = switch (existing) {
         case Copy ignored -> "copy";
         case Update ignored -> "update";
-        case Synchronize ignored -> "synchronize";
+        case Replicate ignored -> "replicate";
         case Equalize ignored -> "equalize";
         case Backup ignored -> "backup";
         case Restore ignored -> "restore";
         default -> "";
       };
       if (existing.supportsOperationChange()) {
-        type.getItems().setAll("copy", "update", "synchronize", "equalize");
+        type.getItems().setAll("copy", "update", "replicate", "equalize");
         type.setValue(existingType);
         type.setDisable(false);
       } else {

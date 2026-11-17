@@ -1,7 +1,6 @@
 package bitferry;
 
 import bitferry.endpoint.*;
-import bitferry.migration.*;
 import bitferry.task.*;
 import com.fasterxml.jackson.annotation.*;
 import java.io.*;
@@ -81,6 +80,7 @@ public final class Volume {
     @JsonProperty("tasks") List<JsonNode> tasks,
     @JsonProperty("vault") Map<String, String> vault
   ) {
+    if (version == null) throw new BitferryError("missing volume storage version property 'bitferry'");
     if (!Bitferry.STORAGE_VERSION.equals(version)) throw new BitferryError("unsupported volume storage version " + version);
     if (tag == null) throw new IllegalArgumentException("missing volume field 'volume'");
     if (modified == null) throw new IllegalArgumentException("missing volume field 'modified'");
@@ -110,10 +110,12 @@ public final class Volume {
     Path storage = root.resolve(Bitferry.STORAGE);
     try {
       JsonNode node = Storage.readJson(storage);
-      JsonNode migrated = bitferry.migration.Migrations.migrate(node);
+      if (node == null || !node.isObject()) {
+        throw new BitferryError("invalid volume storage descriptor: expected a JSON object");
+      }
       return Storage.mapper().readerFor(Volume.class)
         .with(new InjectableValues.Std(Map.of("manager", manager, "root", root)))
-        .readValue(migrated);
+        .readValue(node);
     } catch (BitferryError e) {
       throw e;
     } catch (RuntimeException e) {

@@ -8,7 +8,7 @@ import java.util.concurrent.*;
 import picocli.CommandLine.*;
 import picocli.CommandLine.Model.*;
 
-/// Base command for creating Rclone tasks (copy, update, synchronize, equalize).
+/// Base command for creating Rclone tasks (copy, update, replicate, equalize).
 public abstract class RcloneTaskCommand implements Callable<Integer>, HasCommonOptions {
 
   // Explicit no-arg constructor: the command classes are instantiated

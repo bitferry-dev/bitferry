@@ -24,9 +24,9 @@ class ManagerTest {
     second = new Volume(manager, dir.resolve("second"));
   }
 
-  private Task synchronizeTask() {
+  private Task replicateTask() {
     // Local source directory into the second volume's backup path
-    return new Synchronize(manager,
+    return new Replicate(manager,
       Endpoints.parse(manager, "local:" + dir.resolve("first").resolve("data")),
       Endpoints.parse(manager, ":" + second.tag() + ":backup"),
       null, List.of(), List.of());
@@ -34,7 +34,7 @@ class ManagerTest {
 
   @Test
   void findTaskMatchesTheEndpointPairDirectionSensitively() {
-    Task task = synchronizeTask();
+    Task task = replicateTask();
     assertNotNull(manager.findTask(task.source(), task.destination()));
     // The reversed pair is a different task
     assertNull(manager.findTask(task.destination(), task.source()));
@@ -47,7 +47,7 @@ class ManagerTest {
   @Test
   void deletingTaskSucceedsWhenThePeerVolumeIsAbsent() {
     // A task bound to both volumes; its descriptor is stored redundantly in both storages
-    Task task = new Synchronize(manager,
+    Task task = new Replicate(manager,
       Endpoints.parse(manager, ":" + first.tag() + ":"),
       Endpoints.parse(manager, ":" + second.tag() + ":backup"),
       null, List.of(), List.of());
@@ -76,7 +76,7 @@ class ManagerTest {
 
   @Test
   void volumesAndTasksRoundTripThroughTheManager() {
-    Task task = synchronizeTask();
+    Task task = replicateTask();
     manager.commit();
 
     Manager restored = new Manager();
@@ -100,7 +100,7 @@ class ManagerTest {
 
   @Test
   void commitIsIdempotentForTheUpToDateVolumes() throws Exception {
-    synchronizeTask();
+    replicateTask();
     manager.commit();
     Path storage = dir.resolve("first").resolve(Bitferry.STORAGE);
     long stamp = java.nio.file.Files.getLastModifiedTime(storage).toMillis();
@@ -130,7 +130,7 @@ class ManagerTest {
   @Test
   void processingFailsGracefullyWithTheStubExecutor() {
     manager.backendExecutor(bitferry.task.Executor.stub());
-    synchronizeTask();
+    replicateTask();
     // The foundational-port stub executor fails the processing without exceptions
     assertFalse(manager.process());
     // The intact task selection still works

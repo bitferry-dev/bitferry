@@ -13,7 +13,7 @@ public final class Bitferry {
   public static final String VERSION = loadVersion();
 
   /// Current storage schema format version.
-  public static final String STORAGE_VERSION = "0.1";
+  public static final String STORAGE_VERSION = "0";
 
   /// Name of the volume storage file keeping the volume state as JSON.
   public static final String STORAGE = ".bitferry";

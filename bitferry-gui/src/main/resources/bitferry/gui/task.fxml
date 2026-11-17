@@ -46,7 +46,7 @@
             <FXCollections fx:factory="observableArrayList">
               <String fx:value="copy"/>
               <String fx:value="update"/>
-              <String fx:value="synchronize"/>
+              <String fx:value="replicate"/>
               <String fx:value="equalize"/>
               <String fx:value="backup"/>
               <String fx:value="restore"/>

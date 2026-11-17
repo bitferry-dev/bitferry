@@ -14,7 +14,7 @@ import picocli.CommandLine.Model.*;
     CreateTaskCommand.class,
     CreateCopyCommand.class,
     CreateUpdateCommand.class,
-    CreateSynchronizeCommand.class,
+    CreateReplicateCommand.class,
     CreateEqualizeCommand.class,
     CreateBackupCommand.class,
     CreateRestoreCommand.class

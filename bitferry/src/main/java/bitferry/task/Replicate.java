@@ -6,20 +6,20 @@ import com.fasterxml.jackson.annotation.*;
 import java.time.*;
 import java.util.*;
 
-/// One way synchronization with deletions.
-public class Synchronize extends Rclone {
+/// One way replication with deletions.
+public class Replicate extends Rclone {
 
-  public static final String OPERATION = "synchronize";
+  public static final String OPERATION = "replicate";
 
   /// Constructor for a new task instance.
-  public Synchronize(Manager manager, Endpoint source, Endpoint destination, String process, Collection<String> include, Collection<String> exclude) {
+  public Replicate(Manager manager, Endpoint source, Endpoint destination, String process, Collection<String> include, Collection<String> exclude) {
     super(manager, source, destination, process, include, exclude);
   }
 
   /// Jackson creator restoring an existing task from the storage descriptor;
   /// the manager is injected as it is not a part of the descriptor.
   @JsonCreator
-  Synchronize(
+  Replicate(
     @JacksonInject("manager") Manager manager,
     @JsonProperty("source") Endpoint source,
     @JsonProperty("destination") Endpoint destination,

@@ -18,7 +18,6 @@ module bitferry {
 
   exports bitferry;
   exports bitferry.endpoint;
-  exports bitferry.migration;
   exports bitferry.task;
   exports bitferry.vault;
 

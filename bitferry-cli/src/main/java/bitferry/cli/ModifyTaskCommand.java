@@ -29,7 +29,7 @@ public class ModifyTaskCommand implements Callable<Integer>, HasCommonOptions {
   @Option(names = {"-p", "--password"}, description = "Update the repository password.")
   boolean password;
 
-  @Option(names = {"-t", "--type"}, description = "Operation type for rclone tasks (copy, update, synchronize, equalize).", paramLabel = "TYPE")
+  @Option(names = {"-t", "--type"}, description = "Operation type for rclone tasks (copy, update, replicate, equalize).", paramLabel = "TYPE")
   String type;
 
   @Option(names = "-f", description = "Apply default snapshot retention policy options.")

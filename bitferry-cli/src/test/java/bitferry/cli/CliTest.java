@@ -119,11 +119,11 @@ class CliTest {
     assertTrue(backupParentVerboseOut.toString().contains("@default: --prune"));
     assertFalse(backupParentVerboseOut.toString().contains("--no-cache"));
 
-    // Synchronize help: non-verbose vs verbose
+    // Replicate help: non-verbose vs verbose
     CommandLine syncCmd = Main.createCommandLine();
     StringWriter syncOut = new StringWriter();
     syncCmd.setOut(new PrintWriter(syncOut));
-    assertEquals(0, syncCmd.execute("create", "task", "synchronize", "--help"));
+    assertEquals(0, syncCmd.execute("create", "task", "replicate", "--help"));
     String sHelp = syncOut.toString();
     assertTrue(sHelp.contains("profile (@default, @extended)"));
     assertFalse(sHelp.contains("@default:  --crypt-filename-encoding"));
@@ -131,11 +131,21 @@ class CliTest {
     CommandLine syncVerboseCmd = Main.createCommandLine();
     StringWriter syncVerboseOut = new StringWriter();
     syncVerboseCmd.setOut(new PrintWriter(syncVerboseOut));
-    assertEquals(0, syncVerboseCmd.execute("create", "task", "synchronize", "--help", "--verbose"));
+    assertEquals(0, syncVerboseCmd.execute("create", "task", "replicate", "--help", "--verbose"));
     String sVerboseHelp = syncVerboseOut.toString();
     assertTrue(sVerboseHelp.contains("@default:  --crypt-filename-encoding base32"));
     assertTrue(sVerboseHelp.contains("@extended: --crypt-filename-encoding base32768"));
     assertTrue(sVerboseHelp.contains("@default: --metadata"));
+
+    // Legacy aliases 'mirror' and 'synchronize' produce identical help
+    CommandLine legacySyncCmd = Main.createCommandLine();
+    StringWriter legacySyncOut = new StringWriter();
+    legacySyncCmd.setOut(new PrintWriter(legacySyncOut));
+    assertEquals(0, legacySyncCmd.execute("create", "task", "mirror", "--help"));
+    assertEquals(sHelp, legacySyncOut.toString());
+    legacySyncOut.getBuffer().setLength(0);
+    assertEquals(0, legacySyncCmd.execute("create", "task", "synchronize", "--help"));
+    assertEquals(sHelp, legacySyncOut.toString());
 
     // Restore help: non-verbose vs verbose
     CommandLine restoreCmd = Main.createCommandLine();
@@ -227,7 +237,7 @@ class CliTest {
     err = new StringWriter();
     cmd.setOut(new PrintWriter(out));
     cmd.setErr(new PrintWriter(err));
-    assertEquals(0, cmd.execute("--path", firstDir + "," + secondDir, "create", "task", "synchronize", ":" + ftag + ":", ":" + stag + ":backup"),
+    assertEquals(0, cmd.execute("--path", firstDir + "," + secondDir, "create", "task", "replicate", ":" + ftag + ":", ":" + stag + ":backup"),
       () -> "stderr: " + err.toString());
 
     // The absent peer volume makes the task stale: in normal mode nothing is printed to stderr;
@@ -417,13 +427,13 @@ class CliTest {
     err = new StringWriter();
     cmd.setOut(new PrintWriter(out));
     cmd.setErr(new PrintWriter(err));
-    int code = executeWithPassword("crypt-secret", "--path", volDir.toString(), "create", "task", "synchronize", ":" + vtag + ":", "local:" + encDir, "-e");
+    int code = executeWithPassword("crypt-secret", "--path", volDir.toString(), "create", "task", "replicate", ":" + vtag + ":", "local:" + encDir, "-e");
     assertEquals(0, code, () -> "stderr: " + err.toString());
 
     // The descriptor carries the encrypt section while the vault holds the obscured token
     JsonNode storage = Storage.readJson(volDir.resolve(Bitferry.STORAGE));
     JsonNode taskData = storage.get("tasks").get(0);
-    assertEquals("synchronize", taskData.get("operation").asString());
+    assertEquals("replicate", taskData.get("operation").asString());
     assertTrue(taskData.get("rclone").has("encrypt"));
     assertNotNull(storage.get("vault"));
 
@@ -434,14 +444,14 @@ class CliTest {
       .findFirst().orElseThrow();
     assertInstanceOf(Rclone.Encrypt.class, task.encryption());
     assertEquals("crypt-secret", task.encryption().password());
-    assertEquals("encrypt+synchronize", task.displayOperation());
+    assertEquals("encrypt+replicate", task.displayOperation());
 
-    // Printing task info surfaces the encrypt+synchronize operation status
+    // Printing task info surfaces the encrypt+replicate operation status
     cmd = Main.createCommandLine();
     out = new StringWriter();
     cmd.setOut(new PrintWriter(out));
     assertEquals(0, cmd.execute("--path", volDir.toString(), "info"));
-    assertTrue(out.toString().contains("encrypt+synchronize"));
+    assertTrue(out.toString().contains("encrypt+replicate"));
   }
 
   @Test
@@ -459,7 +469,7 @@ class CliTest {
     err = new StringWriter();
     cmd.setOut(new PrintWriter(out));
     cmd.setErr(new PrintWriter(err));
-    int code = executeWithPassword("crypt-secret", "--path", volDir.toString(), "create", "task", "synchronize", "local:" + plainDir, ":" + vtag + ":backup", "-e");
+    int code = executeWithPassword("crypt-secret", "--path", volDir.toString(), "create", "task", "replicate", "local:" + plainDir, ":" + vtag + ":backup", "-e");
     assertNotEquals(0, code);
     assertTrue(err.toString().contains("encryption requires the unencrypted endpoint to reside within a Bitferry volume"));
   }
@@ -706,7 +716,7 @@ class CliTest {
     err = new StringWriter();
     cmd.setOut(new PrintWriter(out));
     cmd.setErr(new PrintWriter(err));
-    int code = executeWithPassword("wrongPassword", "--path", volDir.toString(), "create", "task", "synchronize", ":" + vtag + ":", "local:" + encDir, "-e");
+    int code = executeWithPassword("wrongPassword", "--path", volDir.toString(), "create", "task", "replicate", ":" + vtag + ":", "local:" + encDir, "-e");
     assertEquals(1, code);
     assertTrue(err.toString().contains("the existing encrypted content in '" + encDir + "' is not compatible with the provided encryption options (wrong password or filename encryption mode)"));
 
@@ -719,7 +729,7 @@ class CliTest {
     err = new StringWriter();
     cmd.setOut(new PrintWriter(out));
     cmd.setErr(new PrintWriter(err));
-    code = executeWithPassword("passwordA", "--path", volDir.toString(), "create", "task", "synchronize", ":" + vtag + ":", "local:" + encDir, "-e");
+    code = executeWithPassword("passwordA", "--path", volDir.toString(), "create", "task", "replicate", ":" + vtag + ":", "local:" + encDir, "-e");
     assertEquals(0, code, () -> "stderr: " + err.toString());
 
     reloaded = managerFor(volDir);
@@ -820,13 +830,13 @@ class CliTest {
     assertEquals(0, cmd.execute("c", "v", volDir.toString()));
     String vtag = volumeTag(managerFor(volDir), volDir);
 
-    // Create synchronize task
+    // Create replicate task
     cmd = Main.createCommandLine();
     StringWriter out = new StringWriter();
     StringWriter err = new StringWriter();
     cmd.setOut(new PrintWriter(out));
     cmd.setErr(new PrintWriter(err));
-    assertEquals(0, cmd.execute("--path", volDir.toString(), "create", "task", "synchronize", ":" + vtag + ":", "local:" + dataDir, "--include", "*.txt"));
+    assertEquals(0, cmd.execute("--path", volDir.toString(), "create", "task", "replicate", ":" + vtag + ":", "local:" + dataDir, "--include", "*.txt"));
 
     Manager m = managerFor(volDir);
     Task task = m.tasks().values().iterator().next();
@@ -844,10 +854,10 @@ class CliTest {
     assertTrue(output.contains("rclone sync"), () -> "expected rclone sync in: " + output);
     assertTrue(output.contains("+ *.txt"), () -> "expected + *.txt in: " + output);
     assertTrue(output.contains("- " + Bitferry.STORAGE), () -> "expected storage exclude in: " + output);
-    assertTrue(output.contains("# Task " + ttag + ": synchronize"));
+    assertTrue(output.contains("# Task " + ttag + ": replicate"));
     assertTrue(output.contains("Status:        ✓ intact"));
     assertTrue(output.contains("Backend:       rclone"));
-    assertTrue(output.contains("Operation:     synchronize"));
+    assertTrue(output.contains("Operation:     replicate"));
     assertTrue(output.contains("Encryption:    none"));
     assertTrue(output.contains("# Filters"));
     assertTrue(output.contains("Include:       *.txt"));
@@ -943,7 +953,7 @@ class CliTest {
     StringWriter err1 = new StringWriter();
     cmd.setOut(new PrintWriter(out));
     cmd.setErr(new PrintWriter(err1));
-    assertEquals(0, cmd.execute("--path", volDir.toString(), "create", "task", "synchronize", ":" + vtag + ":", "local:" + dataDir, "--execute", "--transfers,4"),
+    assertEquals(0, cmd.execute("--path", volDir.toString(), "create", "task", "replicate", ":" + vtag + ":", "local:" + dataDir, "--execute", "--transfers,4"),
       () -> "stderr: " + err1.toString());
 
     Manager m = managerFor(volDir);
@@ -1033,7 +1043,7 @@ class CliTest {
 
     // 1. Explicit profile @extended and @default execute
     int code = executeWithPassword("cryptpass", "--path", volDir.toString(),
-      "create", "task", "synchronize", ":" + vtag + ":", "local:" + dataDir,
+      "create", "task", "replicate", ":" + vtag + ":", "local:" + dataDir,
       "-E", "@extended", "-X", "@default");
     assertEquals(0, code, () -> "stderr: " + err.toString());
 
@@ -1047,7 +1057,7 @@ class CliTest {
 
     // 2. Shorthand -e -u (extended encryption)
     code = executeWithPassword("cryptpass", "--path", volDir.toString(),
-      "create", "task", "synchronize", ":" + vtag + ":", "local:" + dataDir, "-e", "-u");
+      "create", "task", "replicate", ":" + vtag + ":", "local:" + dataDir, "-e", "-u");
     assertEquals(0, code, () -> "stderr: " + err.toString());
 
     m = managerFor(volDir);
@@ -1059,7 +1069,7 @@ class CliTest {
 
     // 3. Shorthand -e (default encryption) with directly specified -X --fast-list
     code = executeWithPassword("cryptpass", "--path", volDir.toString(),
-      "create", "task", "synchronize", ":" + vtag + ":", "local:" + dataDir, "-e", "-X", "--fast-list");
+      "create", "task", "replicate", ":" + vtag + ":", "local:" + dataDir, "-e", "-X", "--fast-list");
     assertEquals(0, code, () -> "stderr: " + err.toString());
 
     m = managerFor(volDir);
@@ -1153,9 +1163,9 @@ class CliTest {
     assertEquals(0, cmd.execute("create", "volume", volDir.toString()));
     String vtag = volumeTag(managerFor(volDir), volDir);
 
-    // Create a synchronize task
+    // Create a replicate task
     assertEquals(0, cmd.execute("--path", volDir.toString(),
-      "create", "task", "synchronize", ":" + vtag + ":", "local:" + dataDir));
+      "create", "task", "replicate", ":" + vtag + ":", "local:" + dataDir));
 
     Task task = managerFor(volDir).selectTasks().values().iterator().next();
 
@@ -1188,9 +1198,9 @@ class CliTest {
     assertEquals(0, cmd.execute("create", "volume", volDir.toString()));
     String vtag = volumeTag(managerFor(volDir), volDir);
 
-    // 1. Create an encrypt synchronize task: :vtag: -> local:enc
+    // 1. Create an encrypt replicate task: :vtag: -> local:enc
     int code = executeWithPassword("pass1", "--path", volDir.toString(),
-      "create", "task", "synchronize", ":" + vtag + ":", "local:" + encDir, "-e");
+      "create", "task", "replicate", ":" + vtag + ":", "local:" + encDir, "-e");
     assertEquals(0, code, () -> "stderr: " + err.toString());
 
     // 2. Create a decrypt copy task: local:enc -> :vtag:dec
@@ -1198,22 +1208,22 @@ class CliTest {
       "create", "task", "copy", "local:" + encDir, ":" + vtag + ":dec", "-d");
     assertEquals(0, code, () -> "stderr: " + err.toString());
 
-    // 3. Verify 'info' command prints encrypt+synchronize and decrypt+copy
+    // 3. Verify 'info' command prints encrypt+replicate and decrypt+copy
     cmd = Main.createCommandLine();
     out = new StringWriter();
     cmd.setOut(new PrintWriter(out));
     assertEquals(0, cmd.execute("--path", volDir.toString(), "info"));
     String infoOutput = out.toString();
-    assertTrue(infoOutput.contains("encrypt+synchronize"), () -> "Expected 'encrypt+synchronize' in info output:\n" + infoOutput);
+    assertTrue(infoOutput.contains("encrypt+replicate"), () -> "Expected 'encrypt+replicate' in info output:\n" + infoOutput);
     assertTrue(infoOutput.contains("decrypt+copy"), () -> "Expected 'decrypt+copy' in info output:\n" + infoOutput);
 
-    // 4. Verify 'execute' command banner prints encrypt+synchronize and decrypt+copy
+    // 4. Verify 'execute' command banner prints encrypt+replicate and decrypt+copy
     cmd = Main.createCommandLine();
     out = new StringWriter();
     cmd.setOut(new PrintWriter(out));
     assertEquals(0, cmd.execute("--path", volDir.toString(), "-n", "execute"));
     String execOutput = out.toString();
-    assertTrue(execOutput.contains("encrypt+synchronize"), () -> "Expected 'encrypt+synchronize' in execute output:\n" + execOutput);
+    assertTrue(execOutput.contains("encrypt+replicate"), () -> "Expected 'encrypt+replicate' in execute output:\n" + execOutput);
     assertTrue(execOutput.contains("decrypt+copy"), () -> "Expected 'decrypt+copy' in execute output:\n" + execOutput);
   }
 
@@ -1228,7 +1238,7 @@ class CliTest {
     String vtag = volumeTag(managerFor(volDir), volDir);
 
     int code = executeWithPassword("secret123", "--path", volDir.toString(),
-      "create", "task", "synchronize", ":" + vtag + ":", "local:" + encDir, "-e");
+      "create", "task", "replicate", ":" + vtag + ":", "local:" + encDir, "-e");
     assertEquals(0, code, () -> "stderr: " + err.toString());
 
     Manager m = managerFor(volDir);
@@ -1241,10 +1251,10 @@ class CliTest {
     assertEquals(0, cmd.execute("--path", volDir.toString(), "info", "task", ttag));
     String breakdown = out.toString();
 
-    assertTrue(breakdown.contains("# Task " + ttag + ": encrypt+synchronize"));
+    assertTrue(breakdown.contains("# Task " + ttag + ": encrypt+replicate"));
     assertTrue(breakdown.contains("Status:        ✓ intact"));
     assertTrue(breakdown.contains("Backend:       rclone"));
-    assertTrue(breakdown.contains("Operation:     synchronize"));
+    assertTrue(breakdown.contains("Operation:     replicate"));
     assertTrue(breakdown.contains("Encryption:    encrypt"));
     assertTrue(breakdown.contains("Vault Volume:  " + vtag));
     assertTrue(breakdown.contains("# Commands"));
@@ -1553,10 +1563,10 @@ class CliTest {
     String vtag = volumeTag(managerFor(volDir), volDir);
 
     int code = cmd.execute("--path", volDir.toString(),
-      "create", "task", "synchronize", ":" + vtag + ":", "local:" + dataDir);
+      "create", "task", "replicate", ":" + vtag + ":", "local:" + dataDir);
     assertEquals(0, code);
 
-    Synchronize task = (Synchronize) managerFor(volDir).selectTasks().values().iterator().next();
+    Replicate task = (Replicate) managerFor(volDir).selectTasks().values().iterator().next();
 
     // 1. Modifying execute and filters succeeds
     cmd = Main.createCommandLine();
@@ -1568,7 +1578,7 @@ class CliTest {
     assertEquals(0, code, () -> "stderr: " + err);
 
     Manager m = managerFor(volDir);
-    Synchronize updated = (Synchronize) m.selectTasks().get(task.tag());
+    Replicate updated = (Replicate) m.selectTasks().get(task.tag());
     assertEquals(Rclone.PROCESS.get("default"), updated.processOptions());
     assertEquals(List.of("docs/**"), updated.include());
 
@@ -1618,7 +1628,7 @@ class CliTest {
     String vtag = volumeTag(managerFor(volDir), volDir);
 
     int code = cmd.execute("--path", volDir.toString(),
-      "create", "task", "synchronize", ":" + vtag + ":", "local:" + dataDir);
+      "create", "task", "replicate", ":" + vtag + ":", "local:" + dataDir);
     assertEquals(0, code);
 
     Task task = managerFor(volDir).selectTasks().values().iterator().next();

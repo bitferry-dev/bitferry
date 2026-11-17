@@ -18,7 +18,9 @@ import tools.jackson.databind.node.*;
 @JsonSubTypes({
   @JsonSubTypes.Type(value = Copy.class, name = "copy"),
   @JsonSubTypes.Type(value = Update.class, name = "update"),
-  @JsonSubTypes.Type(value = Synchronize.class, name = "synchronize"),
+  @JsonSubTypes.Type(value = Replicate.class, name = "replicate"),
+  @JsonSubTypes.Type(value = Replicate.class, name = "mirror"),
+  @JsonSubTypes.Type(value = Replicate.class, name = "synchronize"),
   @JsonSubTypes.Type(value = Equalize.class, name = "equalize"),
   @JsonSubTypes.Type(value = Backup.class, name = "backup"),
   @JsonSubTypes.Type(value = Restore.class, name = "restore")

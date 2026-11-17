@@ -5,7 +5,7 @@ import bitferry.Volume;
 import bitferry.endpoint.Endpoints;
 import bitferry.task.Backup;
 import bitferry.task.Copy;
-import bitferry.task.Synchronize;
+import bitferry.task.Replicate;
 import bitferry.task.Task;
 import javafx.application.Platform;
 import javafx.scene.Node;
@@ -101,20 +101,20 @@ class TaskFormControllerTest {
 
     @Test
     void modifyFormPopulatesAndDisablesTheImmutableFields() throws Exception {
-        Task task = new Synchronize(manager,
+        Task task = new Replicate(manager,
             Endpoints.parse(manager, "local:" + Files.createTempDirectory("bitferry-form-data")),
             Endpoints.parse(manager, ":" + volume.tag() + ":backup"),
             null, List.of("keep/**"), List.of("skip/**"));
         TaskFormController form = load(task);
 
-        assertEquals("synchronize", form.type());
+        assertEquals("replicate", form.type());
         ComboBox<String> type = field(form, "type");
         TextField source = field(form, "source");
         TextField destination = field(form, "destination");
         TextField include = field(form, "include");
         TextField exclude = field(form, "exclude");
         assertFalse(type.isDisable());
-        assertEquals(List.of("copy", "update", "synchronize", "equalize"), type.getItems());
+        assertEquals(List.of("copy", "update", "replicate", "equalize"), type.getItems());
         assertTrue(source.isDisable());
         assertTrue(destination.isDisable());
         Button browseSourceSmart = field(form, "browseSourceSmart");
@@ -246,13 +246,13 @@ class TaskFormControllerTest {
             assertFalse(type.isDisable());
             assertEquals("copy", form.type());
 
-            // Alter operation type to synchronize
-            runFx(() -> type.setValue("synchronize"));
-            assertEquals("synchronize", form.type());
+            // Alter operation type to replicate
+            runFx(() -> type.setValue("replicate"));
+            assertEquals("replicate", form.type());
 
             // Morph the task
             morphed = task.morph(form.type());
-            assertInstanceOf(Synchronize.class, morphed);
+            assertInstanceOf(Replicate.class, morphed);
             assertEquals(task.tag(), morphed.tag());
             assertEquals(task.source().describe(), morphed.source().describe());
             assertEquals(task.destination().describe(), morphed.destination().describe());
@@ -264,8 +264,8 @@ class TaskFormControllerTest {
             Manager reloaded = new Manager().restore(volume.root());
             Task restored = reloaded.tasks().get(task.tag());
             assertNotNull(restored);
-            assertInstanceOf(Synchronize.class, restored);
-            assertEquals("synchronize", restored.operation());
+            assertInstanceOf(Replicate.class, restored);
+            assertEquals("replicate", restored.operation());
             assertEquals(List.of("data/**"), restored.include());
             assertEquals(List.of("*.tmp"), restored.exclude());
         } finally {

@@ -201,7 +201,7 @@ public abstract class Rclone extends Task {
     return true;
   }
 
-  /// Morph this rclone task into another rclone operation type (copy, update, synchronize, equalize).
+  /// Morph this rclone task into another rclone operation type (copy, update, replicate, equalize).
   @Override
   public Rclone morph(String newOperation) {
     if (operation().equals(newOperation)) return this;
@@ -211,7 +211,7 @@ public abstract class Rclone extends Task {
     Rclone morphed = switch (newOperation) {
       case Copy.OPERATION -> new Copy(manager, source, destination, tag, BACKEND, mtime, include, exclude, storeBackend());
       case Update.OPERATION -> new Update(manager, source, destination, tag, BACKEND, mtime, include, exclude, storeBackend());
-      case Synchronize.OPERATION -> new Synchronize(manager, source, destination, tag, BACKEND, mtime, include, exclude, storeBackend());
+      case Replicate.OPERATION, "mirror", "synchronize" -> new Replicate(manager, source, destination, tag, BACKEND, mtime, include, exclude, storeBackend());
       case Equalize.OPERATION -> new Equalize(manager, source, destination, tag, BACKEND, mtime, include, exclude, storeBackend());
       default -> throw new BitferryError("invalid rclone operation '" + newOperation + "'");
     };

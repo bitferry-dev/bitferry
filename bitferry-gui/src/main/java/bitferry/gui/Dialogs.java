@@ -164,7 +164,7 @@ final class Dialogs {
         task = switch (form.type()) {
           case "copy" -> new Copy(manager, source, destination, execute, include, exclude);
           case "update" -> new Update(manager, source, destination, execute, include, exclude);
-          case "synchronize" -> new Synchronize(manager, source, destination, execute, include, exclude);
+          case "replicate", "mirror", "synchronize" -> new Replicate(manager, source, destination, execute, include, exclude);
           case "equalize" -> new Equalize(manager, source, destination, execute, include, exclude);
           case "backup" -> new Backup(manager, source, destination, form.password(), form.format(),
             execute, form.forget(), form.check(), form.serve(), include, exclude, keyring);

@@ -32,7 +32,7 @@ class TombstoneTest {
   }
 
   private Task bindTask() {
-    return new Synchronize(manager,
+    return new Replicate(manager,
       Endpoints.parse(manager, ":" + first.tag() + ":"),
       Endpoints.parse(manager, ":" + second.tag() + ":backup"),
       null, List.of(), List.of());
