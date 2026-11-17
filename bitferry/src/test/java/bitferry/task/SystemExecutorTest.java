@@ -748,6 +748,198 @@ class SystemExecutorTest {
     assertFalse(Files.isRegularFile(dir.resolve("volume").resolve(Bitferry.STORAGE)), "The simulated run must not persist anything");
   }
 
+  // The two backup tasks sharing one repository: the same destination endpoint, the
+  // distinct sources. Task a holds the default retention policy, task b optionally
+  // overrides it via the arguments.
+  private Backup sharedRepoTask(String sourcePath, String forget, String serve) {
+    Endpoint source = sourcePath == null ? volumeSource() : Endpoints.parse(manager, ":" + volume.tag() + ":" + sourcePath);
+    return new Backup(manager, source, destination(), "secret", null, null, forget, null, serve, List.of(), List.of());
+  }
+
+  // Seed the per-task repository state file: fresh for task a, due for task b when
+  // requested
+  private void seedRepoState(Backup a, Backup b, boolean bDue) throws IOException {
+    Path repoDir = Path.of(destination().processOpts());
+    Files.createDirectories(repoDir);
+    String stateJson = """
+      {"tasks": {
+        "%s": {"maintenance": "%s", "backups_since_maintenance": 0},
+        "%s": %s
+      }}""".formatted(a.tag(), Instant.now(), b.tag(), bDue ? "{}" : "{\"maintenance\": \"" + Instant.now() + "\", \"backups_since_maintenance\": 0}");
+    Files.writeString(repoDir.resolve(ResticRepositoryState.FILENAME), stateJson);
+  }
+
+  @Test
+  void sharedRepoServiceAppliesEveryRetentionPolicy() throws IOException {
+    RecordingCommandExecutor recorder = new RecordingCommandExecutor();
+    SystemExecutor executor = new SystemExecutor(recorder);
+
+    Backup a = sharedRepoTask(null, "@default", "@default");
+    Backup b = sharedRepoTask("other", "@default", "@default");
+    seedRepoState(a, b, true); // b is due: the service must fire and cover both tasks
+
+    assertTrue(executor.run(a, null));
+    List<String> subcommands = recorder.invocations.stream()
+      .map(inv -> inv.command().get(1))
+      .toList();
+    // The service covers the whole repository: one check, one forget per co-repository
+    // task, one prune - then the backup itself
+    assertEquals(List.of("check", "forget", "forget", "prune", "backup"), subcommands);
+    List<String> forgetA = recorder.invocations.get(1).command();
+    List<String> forgetB = recorder.invocations.get(2).command();
+    assertTrue(forgetA.contains("bitferry," + a.tag()), "the first forget scopes to task a");
+    assertTrue(forgetB.contains("bitferry," + b.tag()), "the second forget scopes to task b - no policy starves");
+
+    // Both entries reset by the service; task a's own backup recorded afterwards
+    ResticRepositoryState state = ResticRepositoryState.load(Path.of(destination().processOpts()));
+    assertFalse(state.isDue(b.tag(), b.cadence()), "task b's entry must be reset by the service");
+    assertNotNull(state.entry(b.tag()).maintenance());
+    assertEquals(0, state.entry(b.tag()).backups());
+    assertNotNull(state.entry(a.tag()).maintenance());
+  }
+
+  @Test
+  void sharedRepoServiceSkipsTasksWithoutRetentionPolicy() throws IOException {
+    RecordingCommandExecutor recorder = new RecordingCommandExecutor();
+    SystemExecutor executor = new SystemExecutor(recorder);
+
+    Backup a = sharedRepoTask(null, "@default", "@default");
+    Backup b = sharedRepoTask("other", null, "@default"); // b holds no retention policy
+    seedRepoState(a, b, true);
+
+    assertTrue(executor.run(a, null));
+    List<String> subcommands = recorder.invocations.stream()
+      .map(inv -> inv.command().get(1))
+      .toList();
+    // b's forget is skipped (no policy), but its entry is still reset: the repository
+    // service (check + prune) covers it too
+    assertEquals(List.of("check", "forget", "prune", "backup"), subcommands);
+
+    ResticRepositoryState state = ResticRepositoryState.load(Path.of(destination().processOpts()));
+    assertNotNull(state.entry(b.tag()).maintenance());
+    assertEquals(0, state.entry(b.tag()).backups());
+  }
+
+  @Test
+  void siblingCadenceTriggersServiceBeforeOwnBackup() throws IOException {
+    RecordingCommandExecutor recorder = new RecordingCommandExecutor();
+    SystemExecutor executor = new SystemExecutor(recorder);
+
+    Backup a = sharedRepoTask(null, "@default", "@default");
+    Backup b = sharedRepoTask("other", "@default", "@default");
+    seedRepoState(a, b, true); // a is fresh, b is due
+
+    assertTrue(executor.run(a, null));
+    List<String> subcommands = recorder.invocations.stream()
+      .map(inv -> inv.command().get(1))
+      .toList();
+    // The service runs before the backup although task a's own entry is fresh: the
+    // cadence check inspects all the co-repository entries
+    assertEquals(List.of("check", "forget", "forget", "prune", "backup"), subcommands);
+  }
+
+  @Test
+  void recordBackupTouchesOwnEntryOnly() throws IOException {
+    RecordingCommandExecutor recorder = new RecordingCommandExecutor();
+    SystemExecutor executor = new SystemExecutor(recorder);
+
+    Backup a = sharedRepoTask(null, "@default", "@default");
+    Backup b = sharedRepoTask("other", "@default", "@default");
+    seedRepoState(a, b, false); // both fresh: no service
+
+    assertTrue(executor.run(a, null));
+    List<String> subcommands = recorder.invocations.stream()
+      .map(inv -> inv.command().get(1))
+      .toList();
+    assertEquals(List.of("backup"), subcommands, "no service must run while every entry is fresh");
+
+    ResticRepositoryState state = ResticRepositoryState.load(Path.of(destination().processOpts()));
+    assertEquals(1, state.entry(a.tag()).backups());
+    assertEquals(0, state.entry(b.tag()).backups(), "the sibling entry must stay untouched");
+  }
+
+  @Test
+  void legacyRepoStateMigratesUponFirstRun() throws IOException {
+    RecordingCommandExecutor recorder = new RecordingCommandExecutor();
+    SystemExecutor executor = new SystemExecutor(recorder);
+
+    Backup a = sharedRepoTask(null, "@default", "@default");
+    Backup b = sharedRepoTask("other", "@default", "@default");
+
+    // The pre-envelope single entry under the pre-rename plain name: both tasks share
+    // a fresh baseline (no service due)
+    Path repoDir = Path.of(destination().processOpts());
+    Files.createDirectories(repoDir);
+    String legacyJson = """
+      {"backup": null, "maintenance": "%s", "backups_since_maintenance": 0}""".formatted(Instant.now());
+    Files.writeString(repoDir.resolve(ResticRepositoryState.LEGACY_FILENAME), legacyJson);
+
+    assertTrue(executor.run(a, null));
+
+    // The envelope file replaced the legacy one; both tasks seeded from the baseline
+    assertTrue(Files.isRegularFile(repoDir.resolve(ResticRepositoryState.FILENAME)));
+    assertFalse(Files.isRegularFile(repoDir.resolve(ResticRepositoryState.LEGACY_FILENAME)));
+    ResticRepositoryState state = ResticRepositoryState.load(repoDir);
+    assertNotNull(state.entry(a.tag()).maintenance());
+    assertNotNull(state.entry(b.tag()).maintenance());
+    assertEquals(1, state.entry(a.tag()).backups());
+  }
+
+  @Test
+  void passwordRotationWarnsAboutInvisibleCoRepositoryTasks() throws IOException {
+    RecordingCommandExecutor recorder = new RecordingCommandExecutor();
+    new SystemExecutor(recorder);
+    manager.backendExecutor(new SystemExecutor(recorder));
+
+    Backup a = sharedRepoTask(null, "@default", "@default");
+    Backup b = sharedRepoTask("other", "@default", "@default");
+
+    // A repository state recording an invisible sibling: a task that once touched the
+    // repository but whose volume is not restored in this session
+    Path repoDir = Path.of(destination().processOpts());
+    Files.createDirectories(repoDir);
+    Files.writeString(repoDir.resolve("config"), "restic config stub");
+    Files.writeString(repoDir.resolve(ResticRepositoryState.FILENAME),
+      """
+      {"tasks": {"%s": {}, "%s": {}, "ghost": {}}}""".formatted(a.tag(), b.tag()));
+
+    List<String> stale = manager.passwd(a, "newpass");
+
+    assertEquals(List.of("ghost"), stale, "only the invisible sibling must be reported stale");
+    assertEquals("newpass", a.password());
+    assertEquals("newpass", b.password(), "the registered sibling must receive the propagated token");
+  }
+
+  @Test
+  void staleTokenAutoHealsFromCoRepositorySiblingAndRetries() throws IOException {
+    // The auth seam: the invocations carrying the stale password fail (the restic
+    // authentication failure shape), the fresh ones succeed
+    List<List<String>> commands = new ArrayList<>();
+    CommandExecutor auth = (command, workingDirectory, environment, output) -> {
+      commands.add(command);
+      return "stale".equals(environment.get("RESTIC_PASSWORD")) ? 1 : 0;
+    };
+    SystemExecutor executor = new SystemExecutor(auth);
+
+    // Task a holds the stale token (the password was rotated by task b's session
+    // while a's volume was absent); b holds the current one
+    Backup a = sharedRepoTask(null, "@default", "@default");
+    // Re-store a's token as stale (the constructor has stored it into the vault)
+    a.updatePassword("stale");
+    Backup b = sharedRepoTask("other", "@default", "@default");
+    b.updatePassword("fresh");
+    seedRepoState(a, b, false); // both entries fresh: the service must not run
+
+    assertTrue(executor.run(a, null), "the run must succeed after the auto-heal");
+
+    long backupRuns = commands.stream().filter(cmd -> cmd.size() > 1 && "backup".equals(cmd.get(1))).count();
+    assertEquals(2, backupRuns, "the failed attempt plus the single retry after the re-sync");
+    assertEquals("fresh", a.password(), "the stale token must be re-synced from the sibling");
+    ResticRepositoryState state = ResticRepositoryState.load(Path.of(destination().processOpts()));
+    assertEquals(1, state.entry(a.tag()).backups(), "the completed retry must be recorded");
+    assertEquals(0, state.entry(b.tag()).backups());
+  }
+
   @Test
   void realRcloneReplicateSyncsFilesSuccessfully() throws IOException {
     Assumptions.assumeTrue(available("rclone"), "rclone not available for the integration check");
@@ -1172,13 +1364,15 @@ class SystemExecutorTest {
     Files.createDirectories(repoDir);
     Endpoint repo = Endpoints.parse(manager, "local:" + repoDir);
 
+    Backup backup = new Backup(manager, volumeSource(), repo, "secret", null, null, "@default", "@default", "7d,5", List.of(), List.of());
+
     // Baseline state: service done recently, count low
     ResticRepositoryState state = new ResticRepositoryState();
-    state.recordServe();
-    state.recordBackup();
+    state.normalize(List.of(backup.tag()));
+    state.recordServe(List.of(backup.tag()));
+    state.recordBackup(backup.tag());
     state.save(repoDir);
 
-    Backup backup = new Backup(manager, volumeSource(), repo, "secret", null, null, "@default", "@default", "7d,5", List.of(), List.of());
     boolean ok = executor.run(backup, null);
     assertTrue(ok);
 
@@ -1188,7 +1382,7 @@ class SystemExecutorTest {
 
     // Backups count incremented
     ResticRepositoryState updated = ResticRepositoryState.load(repoDir);
-    assertEquals(2, updated.backups());
+    assertEquals(2, updated.entry(backup.tag()).backups());
   }
 
   @Test
@@ -1200,11 +1394,15 @@ class SystemExecutorTest {
     Files.createDirectories(repoDir);
     Endpoint repo = Endpoints.parse(manager, "local:" + repoDir);
 
+    Backup backup = new Backup(manager, volumeSource(), repo, "secret", null, null, "@default", "@default", "7d,5", List.of(), List.of());
+
     // Threshold crossed: 5 backups done since service
-    ResticRepositoryState state = new ResticRepositoryState(Instant.now(), Instant.now(), 5, false);
+    ResticRepositoryState state = new ResticRepositoryState();
+    state.normalize(List.of(backup.tag()));
+    state.recordServe(List.of(backup.tag()));
+    for (int i = 0; i < 5; i++) state.recordBackup(backup.tag());
     state.save(repoDir);
 
-    Backup backup = new Backup(manager, volumeSource(), repo, "secret", null, null, "@default", "@default", "7d,5", List.of(), List.of());
     boolean ok = executor.run(backup, null);
     assertTrue(ok);
 
@@ -1217,7 +1415,7 @@ class SystemExecutorTest {
 
     // Count was reset to 0 by service, then incremented to 1 by the completed backup
     ResticRepositoryState updated = ResticRepositoryState.load(repoDir);
-    assertEquals(1, updated.backups());
+    assertEquals(1, updated.entry(backup.tag()).backups());
   }
 
   @Test
@@ -1234,9 +1432,14 @@ class SystemExecutorTest {
     boolean ok = executor.serve(backup, null);
     assertFalse(ok);
 
-    // Halted immediately after failed check: forget and prune never executed
-    assertEquals(1, recorder.invocations.size());
-    assertEquals("check", recorder.invocations.get(0).command().get(1));
+    // Halted immediately after failed check: forget and prune never executed (the
+    // extra invocation is the auto-heal diagnostic probe - no sibling exists here,
+    // so the heal declines and the check is not retried)
+    List<String> subcommands = recorder.invocations.stream()
+      .map(inv -> inv.command().get(1))
+      .toList();
+    assertEquals(List.of("check", "cat"), subcommands);
+    assertEquals(1, subcommands.stream().filter("check"::equals).count(), "the check must not be retried without a healing sibling");
   }
 
   @Test

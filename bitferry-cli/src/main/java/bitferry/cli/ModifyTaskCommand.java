@@ -124,7 +124,12 @@ public class ModifyTaskCommand implements Callable<Integer>, HasCommonOptions {
         throw new BitferryError("Rclone crypt parameters and passwords cannot be modified on an existing task; create a new task");
       }
       String newPassword = CliUtils.obtainPassword();
-      m.passwd((Restic) task, newPassword);
+      List<String> stale = m.passwd((Restic) task, newPassword);
+      if (!stale.isEmpty()) {
+        spec.commandLine().getErr().println(Ansi.AUTO.string("@|bold,yellow Warning:|@ the co-repository task(s) " + String.join(", ", stale)
+          + " were not reachable - their stored passwords were not updated (their volumes are not restored)."
+          + " Their runs will fail the authentication until re-synced; re-run the password change when they are restored"));
+      }
     }
 
     if (hasExecute) {

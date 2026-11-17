@@ -1,4 +1,4 @@
-- check creation/operation of multiple backups  sharing a repo
+- multiple backups sharing a repo: retention-policy starvation resolved (per-task maintenance entries); remains: warn on --force re-init of a co-repository task (destroys the siblings' snapshots), verify restic lock contention (concurrent backup vs prune)
 
 - maintain a site-local list of volume lookup directories
 

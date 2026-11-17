@@ -97,8 +97,8 @@ public class SystemExecutor implements Executor {
   }
 
   @Override
-  public void passwd(Restic restic, String newPassword) {
-    resticExecutor.passwd(restic, newPassword);
+  public List<String> passwd(Restic restic, String newPassword) {
+    return resticExecutor.passwd(restic, newPassword);
   }
 
   @Override

@@ -123,7 +123,14 @@ final class ResticExecutor {
     return Files.isRegularFile(Path.of(repo).resolve("config"));
   }
 
-  void passwd(Restic restic, String newPassword) {
+  /// Change or update the repository password of a restic task, propagating the new
+  /// token to every registered co-repository task. Return the tags of the invisible
+  /// co-repository tasks whose stored tokens could NOT be updated: the maintenance
+  /// state records the tag of every task that ever touched the repository, so the
+  /// recorded tags missing from the registry are the siblings (their hosting volumes
+  /// are absent) left holding the stale token - their runs fail the authentication
+  /// until the token is re-synced (by the auto-heal or by re-entering the password).
+  List<String> passwd(Restic restic, String newPassword) {
     if (newPassword == null || newPassword.isEmpty()) {
       throw new BitferryError("New password must be specified");
     }
@@ -135,7 +142,7 @@ final class ResticExecutor {
     Manager manager = restic.manager();
     if (manager.simulate) {
       LOG.log(Level.INFO, () -> "Simulated password change for task " + restic.tag());
-      return;
+      return List.of();
     }
     boolean alreadyMatches = testPassword(manager, repo, newPassword);
     if (!alreadyMatches) {
@@ -150,34 +157,64 @@ final class ResticExecutor {
     }
     restic.updatePassword(newPassword);
 
+    List<String> registered = new ArrayList<>();
+    registered.add(restic.tag());
     for (Task t : manager.tasks().values()) {
       if (t != restic && t.isIntact() && t instanceof Restic otherRestic) {
-        if (sameRepository(repo, repoPath(otherRestic))) {
+        if (Restic.sameRepository(repo, repoPath(otherRestic))) {
           otherRestic.updatePassword(newPassword);
+          registered.add(otherRestic.tag());
         }
       }
     }
-  }
 
-  /// Whether the two repo path strings denote the same repository: the paths are
-  /// compared in the normalized absolute form, folding the case on the case-insensitive
-  /// file systems (the trailing separators, the relative segments and the letter case
-  /// must not defeat the paired-task password propagation). The non-parseable forms
-  /// (the remote protocol specs) fall back to the exact string equality.
-  private static boolean sameRepository(String a, String b) {
-    String na = normalizeRepoPath(a);
-    String nb = normalizeRepoPath(b);
-    if (na == null || nb == null) return a.equals(b);
-    boolean windows = System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT).contains("windows");
-    return windows ? na.equalsIgnoreCase(nb) : na.equals(nb);
-  }
-
-  private static String normalizeRepoPath(String path) {
-    try {
-      return Path.of(path).toAbsolutePath().normalize().toString();
-    } catch (InvalidPathException e) {
-      return null;
+    // The invisible co-repository tasks: the state tags not registered in this session
+    ResticRepositoryState state = ResticRepositoryState.load(repoDir);
+    if (state.normalize(registered)) state.save(repoDir);
+    List<String> stale = state.tags().stream()
+      .filter(tag -> !registered.contains(tag))
+      .toList();
+    if (!stale.isEmpty()) {
+      LOG.log(Level.WARNING, () -> "The stored passwords of the co-repository task(s) " + String.join(", ", stale)
+        + " were not updated (their volumes are not restored); their runs will fail the authentication until the token is re-synced");
     }
+    return stale;
+  }
+
+  /// Re-sync the stored repository token of a task when it went stale: the repository
+  /// password may have been rotated by a co-repository task while this task's volume
+  /// was absent. The adoption is conservative: the task's own password must fail the
+  /// repository first, and another registered co-repository task's password must
+  /// verifiably open it. Return true when the token was replaced (the caller retries
+  /// the failed invocation).
+  private boolean healStaleToken(Restic task, String repo) {
+    Manager manager = task.manager();
+    String own;
+    try {
+      own = task.password();
+    } catch (BitferryError e) {
+      return false; // No token at all: the adoption cannot diagnose, let the failure stand
+    }
+    if (testPassword(manager, repo, own)) {
+      return false; // The own token opens the repository: the failure is not an authentication one
+    }
+    for (Task t : manager.tasks().values()) {
+      if (t == task || !(t.isIntact() && t instanceof Restic sibling)) continue;
+      if (!Restic.sameRepository(repo, repoPath(sibling))) continue;
+      String candidate;
+      try {
+        candidate = sibling.password();
+      } catch (BitferryError e) {
+        continue; // The sibling holds no token: skip it
+      }
+      if (testPassword(manager, repo, candidate)) {
+        task.updatePassword(candidate);
+        LOG.log(Level.WARNING, () -> "Task " + task.tag() + " stored a stale repository password (rotated by the co-repository task "
+          + sibling.tag() + "); the token was re-synced automatically");
+        return true;
+      }
+    }
+    return false;
   }
 
   private boolean testPassword(Manager manager, String repo, String password) {
@@ -277,7 +314,11 @@ final class ResticExecutor {
   // layer the new repository config over the orphaned data of the old one.
   private void wipeRepository(Path repo) {
     List<String> failures = new ArrayList<>();
-    for (String sub : List.of("config", "data", "index", "keys", "locks", "snapshots")) {
+    // The maintenance state files travel with the wipe too: the stale cadence
+    // entries over the freshly recreated repository would trigger an immediate
+    // spurious service
+    for (String sub : List.of("config", "data", "index", "keys", "locks", "snapshots",
+      ResticRepositoryState.FILENAME, ResticRepositoryState.LEGACY_FILENAME)) {
       Path subDir = repo.resolve(sub);
       if (Files.exists(subDir)) {
         try (Stream<Path> stream = Files.walk(subDir)) {
@@ -452,16 +493,41 @@ final class ResticExecutor {
     return List.of(ExecutorSupport.displayCommand(restoreCommand(restore)));
   }
 
+  /// The backup tasks sharing this task's repository (per [Restic#sameRepository]),
+  /// this task included. The restore tasks do not participate: they hold neither
+  /// a cadence nor a retention policy.
+  private List<Backup> coRepoTasks(Backup backup) {
+    String repo = repoPath(backup);
+    List<Backup> sharing = new ArrayList<>();
+    for (Task t : backup.manager().tasks().values()) {
+      if (t.isIntact() && t instanceof Backup other && Restic.sameRepository(repo, repoPath(other))) {
+        sharing.add(other);
+      }
+    }
+    return sharing;
+  }
+
   boolean runBackup(Backup backup, Consumer<String> output) {
     Manager manager = backup.manager();
     String repo = backup.destination().processOpts();
     Path repoDir = Path.of(repo);
     Path cwd = Path.of(backup.source().processOpts());
 
-    // Service check before backup: if due or state missing/corrupt, run service first
+    // Normalize the repository state upon the first touch: the legacy single-entry
+    // shape (and the legacy file name) migrates into the per-task entries of the
+    // co-repository tasks
+    List<Backup> coRepo = coRepoTasks(backup);
+    ResticRepositoryState state = ResticRepositoryState.load(repoDir);
+    if (!manager.simulate && state.normalize(coRepo.stream().map(Task::tag).toList())) {
+      state.save(repoDir);
+    }
+
+    // Service check before backup: the service covers the whole repository (every
+    // co-repository retention policy), so it runs when any co-repository task's
+    // cadence is due - not only this task's own one
     if (backup.cadence() != null) {
-      ResticRepositoryState state = ResticRepositoryState.load(repoDir);
-      if (state.isDue(backup.cadence())) {
+      boolean due = coRepo.stream().anyMatch(t -> state.isDue(t.tag(), t.cadence()));
+      if (due) {
         LOG.log(Level.INFO, () -> "Serve cadence triggered for task " + backup.tag() + "; running service before backup");
         if (output != null) {
           output.accept("Serve cadence triggered for task " + backup.tag() + "; running service before backup");
@@ -481,15 +547,22 @@ final class ResticExecutor {
     }
 
     List<String> cmd = backupCommand(backup);
-    Map<String, String> environment = backup.processEnvironment();
-    boolean success = ExecutorSupport.execute(commandExecutor, manager, cmd, cwd, environment, backup.tag(), output);
-    if (!success) return false;
+    boolean success = ExecutorSupport.execute(commandExecutor, manager, cmd, cwd, backup.processEnvironment(), backup.tag(), output);
+    if (!success) {
+      // The stored token may have gone stale (the password rotated by a co-repository
+      // task while this volume was absent): re-sync from a sibling and retry once
+      if (!healStaleToken(backup, repo)) return false;
+      if (output != null) output.accept("Retrying the backup after the stale token re-sync");
+      success = ExecutorSupport.execute(commandExecutor, manager, cmd, cwd, backup.processEnvironment(), backup.tag(), output);
+      if (!success) return false;
+    }
 
-    // Record completed backup in repository state
+    // Record completed backup in the task's own repository state entry (reloaded
+    // fresh: the service pass above may have reset the co-repository entries)
     if (!manager.simulate) {
-      ResticRepositoryState state = ResticRepositoryState.load(repoDir);
-      state.recordBackup();
-      state.save(repoDir);
+      ResticRepositoryState fresh = ResticRepositoryState.load(repoDir);
+      fresh.recordBackup(backup.tag());
+      fresh.save(repoDir);
     }
 
     return true;
@@ -504,12 +577,33 @@ final class ResticExecutor {
       output.accept("Servicing repository " + repo);
     }
 
+    // The co-repository tasks: the service applies every sharing task's retention
+    // policy (the per-task forget) and resets every sharing task's entry - whichever
+    // task triggered the service, no policy starves
+    List<Backup> coRepo = coRepoTasks(backup);
+    List<String> tags = coRepo.stream().map(Task::tag).toList();
+
+    // Normalize the repository state upon the first touch: the legacy single-entry
+    // shape (and the legacy file name) migrates into the per-task entries
+    Path repoDir = Path.of(repo);
+    ResticRepositoryState state = ResticRepositoryState.load(repoDir);
+    if (!manager.simulate && state.normalize(tags)) {
+      state.save(repoDir);
+    }
+
     // Step 1: Structural check (gatekeeper before any retention/prune)
     List<String> checkCmd = serveCheckCommand(backup);
     if (output != null) {
       output.accept("Checking repository " + repo);
     }
     boolean checkOk = ExecutorSupport.execute(commandExecutor, manager, checkCmd, null, environment, backup.tag(), output);
+    if (!checkOk && healStaleToken(backup, repo)) {
+      // The stored token went stale (rotated by a co-repository task while this volume
+      // was absent): the re-synced token carries the rest of the service pass too
+      environment = backup.processEnvironment();
+      if (output != null) output.accept("Retrying the check after the stale token re-sync");
+      checkOk = ExecutorSupport.execute(commandExecutor, manager, checkCmd, null, environment, backup.tag(), output);
+    }
     if (!checkOk) {
       String msg = "Service aborted for task " + backup.tag() + ": repository check failed";
       LOG.log(Level.ERROR, () -> msg);
@@ -517,11 +611,12 @@ final class ResticExecutor {
       return false;
     }
 
-    // Step 2: Forget (retention)
-    List<String> forgetCmd = serveForgetCommand(backup);
-    if (forgetCmd != null) {
+    // Step 2: Retention per co-repository task (each forget scopes to its own tag)
+    for (Backup task : coRepo) {
+      List<String> forgetCmd = serveForgetCommand(task);
+      if (forgetCmd == null) continue; // The task holds no retention policy
       if (output != null) {
-        output.accept("Applying retention policy to repository " + repo);
+        output.accept("Applying retention policy of task " + task.tag() + " to repository " + repo);
       }
       boolean forgetOk = ExecutorSupport.execute(commandExecutor, manager, forgetCmd, null, environment, backup.tag(), output);
       if (!forgetOk) {
@@ -539,12 +634,11 @@ final class ResticExecutor {
       return false;
     }
 
-    // Step 4: Record serve in repository state
+    // Step 4: Reset every co-repository task's maintenance entry (reloaded fresh)
     if (!manager.simulate) {
-      Path repoDir = Path.of(repo);
-      ResticRepositoryState state = ResticRepositoryState.load(repoDir);
-      state.recordServe();
-      state.save(repoDir);
+      ResticRepositoryState fresh = ResticRepositoryState.load(repoDir);
+      fresh.recordServe(tags);
+      fresh.save(repoDir);
     }
     return true;
   }
@@ -559,7 +653,12 @@ final class ResticExecutor {
     }
 
     List<String> checkCmd = serveCheckCommand(restore);
-    return ExecutorSupport.execute(commandExecutor, manager, checkCmd, null, environment, restore.tag(), output);
+    boolean ok = ExecutorSupport.execute(commandExecutor, manager, checkCmd, null, environment, restore.tag(), output);
+    if (!ok && healStaleToken(restore, repo)) {
+      environment = restore.processEnvironment();
+      ok = ExecutorSupport.execute(commandExecutor, manager, checkCmd, null, environment, restore.tag(), output);
+    }
+    return ok;
   }
 
   boolean runRestore(Restore restore, Consumer<String> output) {
@@ -572,7 +671,11 @@ final class ResticExecutor {
     }
 
     List<String> cmd = restoreCommand(restore);
-    return ExecutorSupport.execute(commandExecutor, manager, cmd, null, restore.processEnvironment(), restore.tag(), output);
+    boolean success = ExecutorSupport.execute(commandExecutor, manager, cmd, null, restore.processEnvironment(), restore.tag(), output);
+    if (!success && healStaleToken(restore, repo)) {
+      success = ExecutorSupport.execute(commandExecutor, manager, cmd, null, restore.processEnvironment(), restore.tag(), output);
+    }
+    return success;
   }
 
   private static String resolveExecutable() {

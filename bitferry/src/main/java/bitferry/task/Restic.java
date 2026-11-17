@@ -191,4 +191,26 @@ public abstract class Restic extends Task {
   /// The endpoint holding the restic repository (the destination of the backup tasks,
   /// the source of the restore ones).
   public abstract Endpoint repoEndpoint();
+
+  /// Whether the two repo path strings denote the same repository: the paths are
+  /// compared in the normalized absolute form, folding the case on the case-insensitive
+  /// file systems (the trailing separators, the relative segments and the letter case
+  /// must not defeat the paired-task password propagation nor the co-repository task
+  /// discovery). The non-parseable forms (the remote protocol specs) fall back to the
+  /// exact string equality.
+  public static boolean sameRepository(String a, String b) {
+    String na = normalizeRepoPath(a);
+    String nb = normalizeRepoPath(b);
+    if (na == null || nb == null) return a.equals(b);
+    boolean windows = System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT).contains("windows");
+    return windows ? na.equalsIgnoreCase(nb) : na.equals(nb);
+  }
+
+  private static String normalizeRepoPath(String path) {
+    try {
+      return java.nio.file.Path.of(path).toAbsolutePath().normalize().toString();
+    } catch (java.nio.file.InvalidPathException e) {
+      return null;
+    }
+  }
 }

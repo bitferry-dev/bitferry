@@ -260,10 +260,18 @@ final class Dialogs {
           current = current.morph(form.type());
         }
 
-        // Rotate repository password if entered (restic only)
+        // Rotate repository password if entered (restic only); the invisible
+        // co-repository tasks (their volumes are absent) keep the stale token:
+        // their runs fail the authentication until re-synced (by the auto-heal
+        // upon the next run, or by re-entering the password)
         if (form.resticMode() && !form.password().isEmpty()) {
-          manager.passwd((Restic) current, form.password());
+          List<String> stale = manager.passwd((Restic) current, form.password());
           logs.log("Password updated for task " + AnsiFormat.tag(current.tag()));
+          if (!stale.isEmpty()) {
+            logs.log(AnsiFormat.error("Warning: the co-repository task(s) " + String.join(", ", stale)
+              + " were not reachable - their stored passwords were not updated (their volumes are not restored)."
+              + " Their runs will fail the authentication until re-synced; re-run the password change when they are restored"));
+          }
         }
 
         // Backend execution options (the resolution rides the task's profile route)

@@ -436,9 +436,13 @@ public class Manager {
     return process(Arrays.asList(tags), output);
   }
 
-  /// Change or update the repository password for a restic task.
-  public void passwd(Restic restic, String newPassword) {
-    backendExecutor().passwd(restic, newPassword);
+  /// Change or update the repository password for a restic task, propagating the new
+  /// token to the registered co-repository tasks. Return the tags of the invisible
+  /// co-repository tasks whose stored tokens could not be updated (their volumes are
+  /// absent) - those tasks hold the stale token until it is re-synced (by the
+  /// auto-heal upon their next run, or by re-entering the password).
+  public List<String> passwd(Restic restic, String newPassword) {
+    return backendExecutor().passwd(restic, newPassword);
   }
 
   /// Process the intact tasks matched by the specified (partial) tags or all intact tasks with CLI pass-through.

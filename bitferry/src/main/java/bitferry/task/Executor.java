@@ -72,8 +72,13 @@ public interface Executor {
     conform((Restic) task);
   }
 
-  /// Change or update the repository password for a restic task.
-  default void passwd(Restic task, String newPassword) {}
+  /// Change or update the repository password for a restic task, propagating the new
+  /// token to the registered co-repository tasks. Return the tags of the invisible
+  /// co-repository tasks whose stored tokens could not be updated (their volumes are
+  /// absent) - the tokens those tasks hold are stale until re-synced.
+  default List<String> passwd(Restic task, String newPassword) {
+    return List.of();
+  }
 
   /// Return the command lines about to execute for the task.
   default List<List<String>> commands(Task task) {

@@ -191,11 +191,28 @@ public final class TaskBreakdown {
       try {
         repoDir = Path.of(backup.destination().processOpts());
         state = ResticRepositoryState.load(repoDir);
-        stateFileExists = Files.isRegularFile(repoDir.resolve(ResticRepositoryState.FILENAME));
+        stateFileExists = Files.isRegularFile(repoDir.resolve(ResticRepositoryState.FILENAME))
+          || Files.isRegularFile(repoDir.resolve(ResticRepositoryState.LEGACY_FILENAME));
       } catch (Exception e) {
         // The load failure is reported verbatim: collapsing it into the
         // volume-missing status would misdirect the diagnosis
         loadFailure = e.getMessage();
+      }
+    }
+
+    // The repository-wide due evaluation: the service covers the whole repository,
+    // so it triggers when any co-repository task's cadence is due - not only this
+    // task's own one (mirrors the executor's pre-backup gate)
+    Backup dueTask = null;
+    if (state != null && !state.isCorruptOrMissing() && repoDir != null) {
+      String repo = repoDir.toString();
+      for (Task t : backup.manager().tasks().values()) {
+        if (t.isIntact() && t instanceof Backup other && other.cadence() != null
+          && Restic.sameRepository(repo, other.destination().processOpts())
+          && state.isDue(other.tag(), other.cadence())) {
+          dueTask = other;
+          break;
+        }
       }
     }
 
@@ -207,29 +224,33 @@ public final class TaskBreakdown {
       appendProperty(sb, "Status:", Ansi.AUTO.string("@|yellow due (initial service pending)|@"));
     } else if (state.isCorruptOrMissing()) {
       appendProperty(sb, "Status:", Ansi.AUTO.string("@|yellow due (corrupted state file)|@"));
-    } else if (cadence != null && state.isDue(cadence)) {
-      if (cadence.count() < Integer.MAX_VALUE && state.backups() >= cadence.count()) {
-        appendProperty(sb, "Status:", Ansi.AUTO.string(String.format("@|yellow due (threshold reached: %d backups since service)|@", state.backups())));
-      } else if (cadence.duration() != null && state.maintenance() != null && Duration.between(state.maintenance(), Instant.now()).compareTo(cadence.duration()) >= 0) {
-        appendProperty(sb, "Status:", Ansi.AUTO.string("@|yellow due (cadence duration elapsed)|@"));
+    } else if (dueTask != null) {
+      ResticRepositoryState.Entry due = state.entry(dueTask.tag());
+      Cadence dueCadence = dueTask.cadence();
+      String attribution = dueTask == backup ? "" : " (co-repository task " + dueTask.tag() + ")";
+      if (dueCadence.count() < Integer.MAX_VALUE && due.backups() >= dueCadence.count()) {
+        appendProperty(sb, "Status:", Ansi.AUTO.string(String.format("@|yellow due (threshold reached: %d backups since service)%s|@", due.backups(), attribution)));
+      } else if (dueCadence.duration() != null && due.maintenance() != null && Duration.between(due.maintenance(), Instant.now()).compareTo(dueCadence.duration()) >= 0) {
+        appendProperty(sb, "Status:", Ansi.AUTO.string("@|yellow due (cadence duration elapsed)" + attribution + "|@"));
       } else {
-        appendProperty(sb, "Status:", Ansi.AUTO.string("@|yellow due|@"));
+        appendProperty(sb, "Status:", Ansi.AUTO.string("@|yellow due" + attribution + "|@"));
       }
     } else {
       appendProperty(sb, "Status:", Ansi.AUTO.string("@|green ok|@"));
     }
 
-    if (state != null && state.backup() != null) {
-      appendProperty(sb, "Last Backup:", formatInstant(state.backup()) + " (" + formatElapsed(state.backup(), Instant.now()) + ")");
+    ResticRepositoryState.Entry entry = state == null ? null : state.entry(backup.tag());
+    if (entry != null && entry.backup() != null) {
+      appendProperty(sb, "Last Backup:", formatInstant(entry.backup()) + " (" + formatElapsed(entry.backup(), Instant.now()) + ")");
     } else {
       appendProperty(sb, "Last Backup:", "never");
     }
 
-    if (state != null && state.maintenance() != null) {
+    if (entry != null && entry.maintenance() != null) {
       String countInfo = cadence != null && cadence.count() < Integer.MAX_VALUE
-        ? String.format(" (%d of %d backups)", state.backups(), cadence.count())
-        : String.format(" (%d backups)", state.backups());
-      appendProperty(sb, "Last Service:", formatInstant(state.maintenance()) + " (" + formatElapsed(state.maintenance(), Instant.now()) + ")" + countInfo);
+        ? String.format(" (%d of %d backups)", entry.backups(), cadence.count())
+        : String.format(" (%d backups)", entry.backups());
+      appendProperty(sb, "Last Service:", formatInstant(entry.maintenance()) + " (" + formatElapsed(entry.maintenance(), Instant.now()) + ")" + countInfo);
     } else {
       appendProperty(sb, "Last Service:", "never");
     }
