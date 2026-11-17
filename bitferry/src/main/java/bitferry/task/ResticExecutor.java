@@ -460,7 +460,7 @@ final class ResticExecutor {
 
     // Service check before backup: if due or state missing/corrupt, run service first
     if (backup.cadence() != null) {
-      RepoState state = RepoState.load(repoDir);
+      ResticRepositoryState state = ResticRepositoryState.load(repoDir);
       if (state.isDue(backup.cadence())) {
         LOG.log(Level.INFO, () -> "Serve cadence triggered for task " + backup.tag() + "; running service before backup");
         if (output != null) {
@@ -487,7 +487,7 @@ final class ResticExecutor {
 
     // Record completed backup in repository state
     if (!manager.simulate) {
-      RepoState state = RepoState.load(repoDir);
+      ResticRepositoryState state = ResticRepositoryState.load(repoDir);
       state.recordBackup();
       state.save(repoDir);
     }
@@ -542,7 +542,7 @@ final class ResticExecutor {
     // Step 4: Record serve in repository state
     if (!manager.simulate) {
       Path repoDir = Path.of(repo);
-      RepoState state = RepoState.load(repoDir);
+      ResticRepositoryState state = ResticRepositoryState.load(repoDir);
       state.recordServe();
       state.save(repoDir);
     }

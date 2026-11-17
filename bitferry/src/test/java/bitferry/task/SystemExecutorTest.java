@@ -639,6 +639,116 @@ class SystemExecutorTest {
   }
 
   @Test
+  void backupCreationThroughCommitInitializesRepository() {
+    RecordingCommandExecutor recorder = new RecordingCommandExecutor();
+    manager.backendExecutor(new SystemExecutor(recorder));
+
+    Backup backup = new Backup(manager, volumeSource(), destination(), "secret", null, null, null, null, List.of(), List.of());
+    manager.commit();
+
+    List<List<String>> initInvocations = recorder.invocations.stream()
+      .map(RecordingCommandExecutor.Invocation::command)
+      .filter(cmd -> cmd.size() > 1 && "init".equals(cmd.get(1)))
+      .toList();
+    assertEquals(1, initInvocations.size(), "restic init must run exactly once upon the backup task creation");
+    assertTrue(manager.task(backup.tag()) != null, "The successfully initialized task must stay registered");
+  }
+
+  @Test
+  void backupCreationWithLocalDestinationInitializesRepository() {
+    RecordingCommandExecutor recorder = new RecordingCommandExecutor();
+    manager.backendExecutor(new SystemExecutor(recorder));
+
+    Path repoDir = dir.resolve("outside-repo");
+    Endpoint repo = Endpoints.parse(manager, "local:" + repoDir);
+    Backup backup = new Backup(manager, volumeSource(), repo, "secret", null, null, null, null, List.of(), List.of());
+    manager.commit();
+
+    List<List<String>> initInvocations = recorder.invocations.stream()
+      .map(RecordingCommandExecutor.Invocation::command)
+      .filter(cmd -> cmd.size() > 1 && "init".equals(cmd.get(1)))
+      .toList();
+    assertEquals(1, initInvocations.size(), "restic init must run for the out-of-volume local destination");
+    assertTrue(manager.task(backup.tag()) != null);
+  }
+
+  @Test
+  void simulatedCreationFollowedByRealCommitInitializesRepository() {
+    // Create the task in the simulation mode: the format stays pending (the pristine
+    // state is not consumed); the following real commit must initialize the repository
+    manager.simulate = true;
+    RecordingCommandExecutor recorder = new RecordingCommandExecutor();
+    manager.backendExecutor(new SystemExecutor(recorder));
+
+    Backup backup = new Backup(manager, volumeSource(), destination(), "secret", null, null, null, null, List.of(), List.of());
+    manager.commit();
+    assertTrue(recorder.invocations.isEmpty(), "Simulation must not spawn any commands");
+
+    manager.simulate = false;
+    manager.commit();
+    List<List<String>> initInvocations = recorder.invocations.stream()
+      .map(RecordingCommandExecutor.Invocation::command)
+      .filter(cmd -> cmd.size() > 1 && "init".equals(cmd.get(1)))
+      .toList();
+    assertEquals(1, initInvocations.size(), "The following real commit must initialize the pending repository");
+  }
+
+  @Test
+  void simulatedCreationMaterializesUponTheFirstRealRun() {
+    // The GUI shape of the pending creation: the task is born under the simulation
+    // mode (nothing written anywhere), then executed for real - the pending one-time
+    // initialization must materialize (the restic init) and the task must persist
+    manager.simulate = true;
+    RecordingCommandExecutor recorder = new RecordingCommandExecutor();
+    manager.backendExecutor(new SystemExecutor(recorder));
+
+    Backup backup = new Backup(manager, volumeSource(), destination(), "secret", null, null, null, null, List.of(), List.of());
+    manager.commit();
+    assertTrue(recorder.invocations.isEmpty(), "Simulation must not spawn any commands");
+
+    manager.simulate = false;
+    assertTrue(manager.process(backup.tag()), "The first real run must succeed");
+
+    List<List<String>> initInvocations = recorder.invocations.stream()
+      .map(RecordingCommandExecutor.Invocation::command)
+      .filter(cmd -> cmd.size() > 1 && "init".equals(cmd.get(1)))
+      .toList();
+    assertEquals(1, initInvocations.size(), "The pending initialization must run before the backup itself");
+
+    // The materialization must persist the task into the volume storage
+    Path storage = dir.resolve("volume").resolve(Bitferry.STORAGE);
+    assertTrue(Files.isRegularFile(storage), "The volume storage must be written by the materialization");
+    String dump = null;
+    try {
+      dump = Files.readString(storage);
+    } catch (IOException e) {
+      throw new RuntimeException(e);
+    }
+    assertTrue(dump.contains(backup.tag()), "The materialized task must be present in the volume storage");
+  }
+
+  @Test
+  void simulatedRunOfPendingTaskKeepsTheDeferral() {
+    // The simulation stays a pure dry run even for the pending tasks: no commands,
+    // no persistence
+    manager.simulate = true;
+    RecordingCommandExecutor recorder = new RecordingCommandExecutor();
+    manager.backendExecutor(new SystemExecutor(recorder));
+
+    Backup backup = new Backup(manager, volumeSource(), destination(), "secret", null, null, null, null, List.of(), List.of());
+    manager.commit();
+    assertTrue(manager.process(backup.tag()), "The simulated run must succeed");
+    // The simulated run exercises the backend in the dry-run form (the check, the
+    // retention, the backup itself) - but never the pending repository initialization
+    List<List<String>> initInvocations = recorder.invocations.stream()
+      .map(RecordingCommandExecutor.Invocation::command)
+      .filter(cmd -> cmd.size() > 1 && "init".equals(cmd.get(1)))
+      .toList();
+    assertTrue(initInvocations.isEmpty(), "The simulated run must not initialize the pending repository");
+    assertFalse(Files.isRegularFile(dir.resolve("volume").resolve(Bitferry.STORAGE)), "The simulated run must not persist anything");
+  }
+
+  @Test
   void realRcloneReplicateSyncsFilesSuccessfully() throws IOException {
     Assumptions.assumeTrue(available("rclone"), "rclone not available for the integration check");
     Path srcDir = dir.resolve("real-src");
@@ -1063,7 +1173,7 @@ class SystemExecutorTest {
     Endpoint repo = Endpoints.parse(manager, "local:" + repoDir);
 
     // Baseline state: service done recently, count low
-    RepoState state = new RepoState();
+    ResticRepositoryState state = new ResticRepositoryState();
     state.recordServe();
     state.recordBackup();
     state.save(repoDir);
@@ -1077,8 +1187,8 @@ class SystemExecutorTest {
     assertEquals("backup", recorder.invocations.get(0).command().get(1));
 
     // Backups count incremented
-    RepoState updated = RepoState.load(repoDir);
-    assertEquals(2, updated.backupsSinceServe());
+    ResticRepositoryState updated = ResticRepositoryState.load(repoDir);
+    assertEquals(2, updated.backups());
   }
 
   @Test
@@ -1091,7 +1201,7 @@ class SystemExecutorTest {
     Endpoint repo = Endpoints.parse(manager, "local:" + repoDir);
 
     // Threshold crossed: 5 backups done since service
-    RepoState state = new RepoState(Instant.now(), Instant.now(), 5, false);
+    ResticRepositoryState state = new ResticRepositoryState(Instant.now(), Instant.now(), 5, false);
     state.save(repoDir);
 
     Backup backup = new Backup(manager, volumeSource(), repo, "secret", null, null, "@default", "@default", "7d,5", List.of(), List.of());
@@ -1106,8 +1216,8 @@ class SystemExecutorTest {
     assertEquals("backup", recorder.invocations.get(3).command().get(1));
 
     // Count was reset to 0 by service, then incremented to 1 by the completed backup
-    RepoState updated = RepoState.load(repoDir);
-    assertEquals(1, updated.backupsSinceServe());
+    ResticRepositoryState updated = ResticRepositoryState.load(repoDir);
+    assertEquals(1, updated.backups());
   }
 
   @Test

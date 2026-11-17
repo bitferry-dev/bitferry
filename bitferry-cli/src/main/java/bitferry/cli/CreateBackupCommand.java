@@ -6,6 +6,7 @@ import bitferry.task.*;
 import java.util.*;
 import java.util.concurrent.*;
 import picocli.CommandLine.*;
+import picocli.CommandLine.Help.Ansi;
 import picocli.CommandLine.Model.*;
 
 /// Create incremental backup task with snapshotting (Restic).
@@ -92,6 +93,11 @@ public class CreateBackupCommand implements Callable<Integer>, HasCommonOptions 
       throw new BitferryError("Task " + task.tag() + " does not belong to any registered volume; it cannot be persisted");
     }
     m.commit();
+    // The simulated creation writes nothing (the storages hold no such task) and skips
+    // the backend initialization: surface it - the silent exit would read as a success
+    if (m.simulate()) {
+      spec.commandLine().getErr().println(Ansi.AUTO.string("@|faint the task creation simulated (nothing was written, repository not initialized); re-run without --dry-run to create the task for real|@"));
+    }
     return 0;
   }
 }

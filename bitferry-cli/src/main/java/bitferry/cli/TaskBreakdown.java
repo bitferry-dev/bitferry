@@ -184,14 +184,14 @@ public final class TaskBreakdown {
     }
 
     Path repoDir = null;
-    RepoState state = null;
+    ResticRepositoryState state = null;
     boolean stateFileExists = false;
     String loadFailure = null;
     if (backup.destination().isIntact()) {
       try {
         repoDir = Path.of(backup.destination().processOpts());
-        state = RepoState.load(repoDir);
-        stateFileExists = Files.isRegularFile(repoDir.resolve(RepoState.FILENAME));
+        state = ResticRepositoryState.load(repoDir);
+        stateFileExists = Files.isRegularFile(repoDir.resolve(ResticRepositoryState.FILENAME));
       } catch (Exception e) {
         // The load failure is reported verbatim: collapsing it into the
         // volume-missing status would misdirect the diagnosis
@@ -208,9 +208,9 @@ public final class TaskBreakdown {
     } else if (state.isCorruptOrMissing()) {
       appendProperty(sb, "Status:", Ansi.AUTO.string("@|yellow due (corrupted state file)|@"));
     } else if (cadence != null && state.isDue(cadence)) {
-      if (cadence.count() < Integer.MAX_VALUE && state.backupsSinceServe() >= cadence.count()) {
-        appendProperty(sb, "Status:", Ansi.AUTO.string(String.format("@|yellow due (threshold reached: %d backups since service)|@", state.backupsSinceServe())));
-      } else if (cadence.duration() != null && state.lastServe() != null && Duration.between(state.lastServe(), Instant.now()).compareTo(cadence.duration()) >= 0) {
+      if (cadence.count() < Integer.MAX_VALUE && state.backups() >= cadence.count()) {
+        appendProperty(sb, "Status:", Ansi.AUTO.string(String.format("@|yellow due (threshold reached: %d backups since service)|@", state.backups())));
+      } else if (cadence.duration() != null && state.maintenance() != null && Duration.between(state.maintenance(), Instant.now()).compareTo(cadence.duration()) >= 0) {
         appendProperty(sb, "Status:", Ansi.AUTO.string("@|yellow due (cadence duration elapsed)|@"));
       } else {
         appendProperty(sb, "Status:", Ansi.AUTO.string("@|yellow due|@"));
@@ -219,17 +219,17 @@ public final class TaskBreakdown {
       appendProperty(sb, "Status:", Ansi.AUTO.string("@|green ok|@"));
     }
 
-    if (state != null && state.lastBackup() != null) {
-      appendProperty(sb, "Last Backup:", formatInstant(state.lastBackup()) + " (" + formatElapsed(state.lastBackup(), Instant.now()) + ")");
+    if (state != null && state.backup() != null) {
+      appendProperty(sb, "Last Backup:", formatInstant(state.backup()) + " (" + formatElapsed(state.backup(), Instant.now()) + ")");
     } else {
       appendProperty(sb, "Last Backup:", "never");
     }
 
-    if (state != null && state.lastServe() != null) {
+    if (state != null && state.maintenance() != null) {
       String countInfo = cadence != null && cadence.count() < Integer.MAX_VALUE
-        ? String.format(" (%d of %d backups)", state.backupsSinceServe(), cadence.count())
-        : String.format(" (%d backups)", state.backupsSinceServe());
-      appendProperty(sb, "Last Service:", formatInstant(state.lastServe()) + " (" + formatElapsed(state.lastServe(), Instant.now()) + ")" + countInfo);
+        ? String.format(" (%d of %d backups)", state.backups(), cadence.count())
+        : String.format(" (%d backups)", state.backups());
+      appendProperty(sb, "Last Service:", formatInstant(state.maintenance()) + " (" + formatElapsed(state.maintenance(), Instant.now()) + ")" + countInfo);
     } else {
       appendProperty(sb, "Last Service:", "never");
     }

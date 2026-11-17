@@ -512,6 +512,7 @@ public abstract class Task {
         Volume v = manager.volume(vtag);
         if (v != null) v.checkPresence();
       }
+      materializePending();
       boolean success = manager.backendExecutor().run(this, output);
       // The bookkeeping rides the real successful runs only: the simulated runs change nothing
       if (success && !manager.simulate) processed();
@@ -533,10 +534,26 @@ public abstract class Task {
         Volume v = manager.volume(vtag);
         if (v != null) v.checkPresence();
       }
+      materializePending();
       return serveWith(manager.backendExecutor(), output);
     } finally {
       processing = false;
     }
+  }
+
+  /// Materialize the pending one-time initialization of a task created under the
+  /// simulation mode: the simulated creation runs the format through the simulated
+  /// executors and consumes no durable bookkeeping, leaving the pristine commit
+  /// state pending for a following real commit (see [Task#commit]). Without the
+  /// materialization the pending repository initialization (the restic init) would
+  /// never happen: the storages hold no such task, and the processing would run
+  /// against the not yet initialized repository. The commit also persists the task
+  /// (the volume storages hold nothing of the simulated creation), making the task
+  /// survive the restarts. The simulation mode keeps the deferral semantics: nothing
+  /// is written anywhere.
+  private void materializePending() {
+    if (commitState != CommitState.PRISTINE || manager.simulate) return;
+    manager.commit();
   }
 
   /// The tool dispatch: the concrete task hands itself to the executor's per-tool

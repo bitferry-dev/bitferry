@@ -81,6 +81,12 @@ public final class MainController {
     context.verbose(settings.verbose());
     simulate.setSelected(settings.simulate());
     context.simulate(settings.simulate());
+    // The persisted simulation mode applies to the whole session: surface it right
+    // upon the launch - the silently restored dry-run would mask the task creations
+    // (nothing written, no backend initialization) as the plain ones
+    if (settings.simulate()) {
+      logPaneController.log("Simulation mode: enabled (dry run) - restored from the previous session");
+    }
     // The tasks pane is the working surface: open on it rather than the volumes tab
     contentTabs.getTabs().stream()
       .filter(tab -> "Tasks".equals(tab.getText()))
@@ -192,7 +198,7 @@ public final class MainController {
       public void runFinished(boolean outcome, int ok, int failed) {
         setActionsDisabled(false);
         progress.setProgress(ok + failed == 0 ? 0 : (double) ok / (ok + failed));
-        String what = (sim ? "simulated " : "") + (verb.equals("service") ? "service pass" : "run");
+        String what = (sim ? "Simulated " : "") + (verb.equals("service") ? "service pass" : "run");
         status.setText(outcome && ok == 0
           ? "No intact tasks to " + action
           : outcome

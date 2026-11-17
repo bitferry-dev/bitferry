@@ -11,88 +11,86 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 
-/// Runtime service state of a repository tracked in `<repo>/bitferry.json`.
-public final class RepoState {
+/// Runtime service state of a repository tracked in `<repo>/.bitferry.json`.
+public final class ResticRepositoryState {
 
-  public static final String FILENAME = "bitferry.json";
-  private static final System.Logger LOG = System.getLogger(RepoState.class.getName());
+  public static final String FILENAME = ".bitferry.json";
+  private static final System.Logger LOG = System.getLogger(ResticRepositoryState.class.getName());
 
-  @JsonProperty("last_backup")
-  private Instant lastBackup;
+  @JsonProperty("backup")
+  private Instant backup;
 
-  @JsonProperty("last_serve")
-  @JsonAlias("last_maintenance")
-  private Instant lastServe;
+  @JsonProperty("maintenance")
+  private Instant maintenance;
 
-  @JsonProperty("backups_since_serve")
-  @JsonAlias("backups_since_maintenance")
-  private int backupsSinceServe;
+  @JsonProperty("backups_since_maintenance")
+  private int backups;
 
   @JsonIgnore
   private boolean corruptOrMissing;
 
-  public RepoState() {
+  public ResticRepositoryState() {
     this(null, null, 0, false);
   }
 
   @JsonCreator
-  public RepoState(
-    @JsonProperty("last_backup") Instant lastBackup,
-    @JsonProperty("last_serve") @JsonAlias("last_maintenance") Instant lastServe,
-    @JsonProperty("backups_since_serve") @JsonAlias("backups_since_maintenance") int backupsSinceServe
+  public ResticRepositoryState(
+    @JsonProperty("backup") Instant backup,
+    @JsonProperty("maintenance") Instant maintenance,
+    @JsonProperty("backups") @JsonAlias("backups_since_maintenance") int backups
   ) {
-    this(lastBackup, lastServe, backupsSinceServe, false);
+    this(backup, maintenance, backups, false);
   }
 
-  public RepoState(Instant lastBackup, Instant lastServe, int backupsSinceServe, boolean corruptOrMissing) {
-    this.lastBackup = lastBackup;
-    this.lastServe = lastServe;
-    this.backupsSinceServe = backupsSinceServe;
+  public ResticRepositoryState(Instant backup, Instant maintenance, int backups, boolean corruptOrMissing) {
+    this.backup = backup;
+    this.maintenance = maintenance;
+    this.backups = backups;
     this.corruptOrMissing = corruptOrMissing;
   }
 
-  public Instant lastBackup() {
-    return lastBackup;
+  public Instant backup() {
+    return backup;
   }
 
-  public Instant lastServe() {
-    return lastServe;
+  public Instant maintenance() {
+    return maintenance;
   }
 
-  public int backupsSinceServe() {
-    return backupsSinceServe;
+  public int backups() {
+    return backups;
   }
 
   public boolean isCorruptOrMissing() {
     return corruptOrMissing;
   }
 
-  /// Load repository state from `<repoDir>/bitferry.json`.
+  /// Load repository state from `<repoDir>/.bitferry.json`.
   /// If missing or corrupt, logs a warning and returns an uninitialized state that triggers service.
-  public static RepoState load(Path repoDir) {
+  public static ResticRepositoryState load(Path repoDir) {
     if (repoDir == null) {
-      return new RepoState(null, null, 0, true);
+      return new ResticRepositoryState(null, null, 0, true);
     }
     Path file = repoDir.resolve(FILENAME);
     if (!Files.isRegularFile(file)) {
-      return new RepoState(null, null, 0, true);
+      return new ResticRepositoryState(null, null, 0, true);
     }
     try {
       byte[] bytes = Files.readAllBytes(file);
       if (bytes.length == 0) {
         LOG.log(Level.WARNING, () -> "Empty repository state file in " + file + ", will trigger service");
-        return new RepoState(null, null, 0, true);
+        return new ResticRepositoryState(null, null, 0, true);
       }
-      RepoState state = Storage.mapper().readValue(bytes, RepoState.class);
+      ResticRepositoryState state = Storage.mapper().readValue(bytes, ResticRepositoryState.class);
       state.corruptOrMissing = false;
       return state;
     } catch (Exception e) {
       LOG.log(Level.WARNING, () -> "Corrupted repository state file in " + file + " (" + e.getMessage() + "), will trigger service");
-      return new RepoState(null, null, 0, true);
+      return new ResticRepositoryState(null, null, 0, true);
     }
   }
 
-  /// Persist the repository state to `<repoDir>/bitferry.json`.
+  /// Persist the repository state to `<repoDir>/.bitferry.json`.
   public void save(Path repoDir) {
     if (repoDir == null) return;
     Path file = repoDir.resolve(FILENAME);
@@ -107,14 +105,14 @@ public final class RepoState {
 
   /// Record a completed backup run.
   public void recordBackup() {
-    this.lastBackup = Instant.now();
-    this.backupsSinceServe++;
+    this.backup = Instant.now();
+    this.backups++;
   }
 
   /// Record a completed serve run.
   public void recordServe() {
-    this.lastServe = Instant.now();
-    this.backupsSinceServe = 0;
+    this.maintenance = Instant.now();
+    this.backups = 0;
     this.corruptOrMissing = false;
   }
 
@@ -126,6 +124,6 @@ public final class RepoState {
     if (cadence == null) {
       return false;
     }
-    return cadence.isDue(lastServe, backupsSinceServe);
+    return cadence.isDue(maintenance, backups);
   }
 }

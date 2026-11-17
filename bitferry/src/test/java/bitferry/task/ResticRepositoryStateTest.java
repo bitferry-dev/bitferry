@@ -10,18 +10,18 @@ import org.junit.jupiter.api.io.TempDir;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-class RepoStateTest {
+class ResticRepositoryStateTest {
 
   @TempDir
   Path tempDir;
 
   @Test
   void loadMissingFileReturnsCorruptOrMissingTrigger() {
-    RepoState state = RepoState.load(tempDir);
+    ResticRepositoryState state = ResticRepositoryState.load(tempDir);
     assertTrue(state.isCorruptOrMissing());
-    assertNull(state.lastBackup());
-    assertNull(state.lastServe());
-    assertEquals(0, state.backupsSinceServe());
+    assertNull(state.backup());
+    assertNull(state.maintenance());
+    assertEquals(0, state.backups());
 
     // isDue returns true for any cadence when corrupt or missing
     Cadence cadence = new Cadence(Duration.ofDays(7), 5);
@@ -30,57 +30,57 @@ class RepoStateTest {
 
   @Test
   void loadCorruptFileReturnsCorruptOrMissingTrigger() throws IOException {
-    Path stateFile = tempDir.resolve(RepoState.FILENAME);
+    Path stateFile = tempDir.resolve(ResticRepositoryState.FILENAME);
     Files.writeString(stateFile, "{ this is not valid json }");
 
-    RepoState state = RepoState.load(tempDir);
+    ResticRepositoryState state = ResticRepositoryState.load(tempDir);
     assertTrue(state.isCorruptOrMissing());
     assertTrue(state.isDue(new Cadence(Duration.ofDays(7), 5)));
 
     // Empty file also triggers
     Files.writeString(stateFile, "");
-    RepoState emptyState = RepoState.load(tempDir);
+    ResticRepositoryState emptyState = ResticRepositoryState.load(tempDir);
     assertTrue(emptyState.isCorruptOrMissing());
     assertTrue(emptyState.isDue(new Cadence(Duration.ofDays(7), 5)));
   }
 
   @Test
   void saveAndLoadRoundtrip() {
-    RepoState state = new RepoState();
+    ResticRepositoryState state = new ResticRepositoryState();
     state.recordServe();
     state.recordBackup();
     state.recordBackup();
 
     state.save(tempDir);
 
-    RepoState loaded = RepoState.load(tempDir);
+    ResticRepositoryState loaded = ResticRepositoryState.load(tempDir);
     assertFalse(loaded.isCorruptOrMissing());
-    assertNotNull(loaded.lastBackup());
-    assertNotNull(loaded.lastServe());
-    assertEquals(2, loaded.backupsSinceServe());
+    assertNotNull(loaded.backup());
+    assertNotNull(loaded.maintenance());
+    assertEquals(2, loaded.backups());
   }
 
   @Test
   void recordServeResetsCount() {
-    RepoState state = new RepoState();
+    ResticRepositoryState state = new ResticRepositoryState();
     state.recordBackup();
     state.recordBackup();
-    assertEquals(2, state.backupsSinceServe());
+    assertEquals(2, state.backups());
 
     state.recordServe();
-    assertEquals(0, state.backupsSinceServe());
-    assertNotNull(state.lastServe());
+    assertEquals(0, state.backups());
+    assertNotNull(state.maintenance());
     assertFalse(state.isCorruptOrMissing());
   }
 
   @Test
   void disabledCadenceNeverDueWhenStateValid() {
-    RepoState state = new RepoState();
+    ResticRepositoryState state = new ResticRepositoryState();
     state.recordServe();
     state.recordBackup();
     state.save(tempDir);
 
-    RepoState loaded = RepoState.load(tempDir);
+    ResticRepositoryState loaded = ResticRepositoryState.load(tempDir);
     assertFalse(loaded.isDue(null));
   }
 }

@@ -216,7 +216,13 @@ final class Dialogs {
           throw new BitferryError("Task does not belong to any registered volume; it cannot be persisted");
         }
         manager.commit();
-        logs.log("Task " + AnsiFormat.tag(candidate.tag()) + " created: " + AnsiFormat.task(candidate));
+        // The simulated creation writes nothing (the storages hold no such task) and
+        // skips the backend initialization (the restic repository init): say so instead
+        // of claiming a plain creation - the pending initialization materializes upon
+        // the first real run/commit once the simulation mode is off
+        logs.log(manager.simulate
+          ? "Task " + AnsiFormat.tag(candidate.tag()) + " creation simulated (nothing was written, repository not initialized; run with the simulation mode off to create the task for real): " + AnsiFormat.task(candidate)
+          : "Task " + AnsiFormat.tag(candidate.tag()) + " created: " + AnsiFormat.task(candidate));
         if (keyring && candidate.usesVault()) {
           if (!KeyringVault.INSTANCE.available()) {
             logs.log("Password kept in the volume vault (no usable OS keyring on the host)");
