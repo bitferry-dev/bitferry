@@ -163,6 +163,24 @@ public abstract class Task {
   /// The arrow used in the task listings between the endpoints.
   public abstract String director();
 
+  /// Return the unicode-friendly display form of the direction marker: the → arrow
+  /// for the unidirectional and the ↔ arrow for the bidirectional flow. The canonical
+  /// ASCII markers (--> and <->) remain the storage and comparison form; unknown
+  /// markers pass through unchanged.
+  public static String displayDirector(String marker) {
+    if (marker == null) return null;
+    return switch (marker) {
+      case "-->" -> "→";
+      case "<->" -> "↔";
+      default -> marker;
+    };
+  }
+
+  /// Return the unicode-friendly display form of the task's direction marker.
+  public String displayDirector() {
+    return displayDirector(director());
+  }
+
   public Manager manager() {
     return manager;
   }
@@ -563,7 +581,7 @@ public abstract class Task {
 
   /// Return the task's short descriptor used in the listings.
   public String describe() {
-    return displayOperation() + " " + source.describe() + " " + director() + " " + destination.describe();
+    return displayOperation() + " " + source.describe() + " " + displayDirector() + " " + destination.describe();
   }
 
   @Override

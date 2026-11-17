@@ -48,8 +48,37 @@ class AnsiFormatTest {
   @Test
   void directorFormatting() {
     assertEquals("", AnsiFormat.director(null));
-    assertEquals("\u001B[32m-->\u001B[0m", AnsiFormat.director("-->"));
-    assertEquals("\u001B[33m<->\u001B[0m", AnsiFormat.director("<->"));
+    assertEquals("\u001B[32m→\u001B[0m", AnsiFormat.director("-->"));
+    assertEquals("\u001B[33m↔\u001B[0m", AnsiFormat.director("<->"));
+  }
+
+  @Test
+  void directorDisplayForm() {
+    assertNull(Task.displayDirector(null));
+    assertEquals("→", Task.displayDirector("-->"));
+    assertEquals("↔", Task.displayDirector("<->"));
+    assertEquals("custom", Task.displayDirector("custom"));
+  }
+
+  @Test
+  void picocliMarkupFlavor() throws IOException {
+    LocalEndpoint local = new LocalEndpoint(Path.of("/local/path"));
+    assertEquals("@|blue /local/path|@", AnsiFormat.endpoint(local, AnsiFormat.Markup.PICOCLI));
+
+    Manager manager = new Manager();
+    Volume vol = new Volume(manager, dir.resolve("vol"));
+
+    // Intact volume endpoint
+    VolumeEndpoint intact = new VolumeEndpoint(manager, vol.tag(), "backup");
+    assertEquals(":@|cyan " + vol.tag() + "|@:backup", AnsiFormat.endpoint(intact, AnsiFormat.Markup.PICOCLI));
+
+    // Stale volume endpoint (vol not registered in a fresh manager)
+    Manager freshManager = new Manager();
+    VolumeEndpoint stale = new VolumeEndpoint(freshManager, vol.tag(), "backup");
+    assertEquals(":{@|bold,red " + vol.tag() + "|@}:backup", AnsiFormat.endpoint(stale, AnsiFormat.Markup.PICOCLI));
+
+    assertEquals("@|green →|@", AnsiFormat.director("-->", AnsiFormat.Markup.PICOCLI));
+    assertEquals("@|yellow ↔|@", AnsiFormat.director("<->", AnsiFormat.Markup.PICOCLI));
   }
 
   @Test
@@ -88,7 +117,7 @@ class AnsiFormatTest {
     String formattedCopy = AnsiFormat.task(copyTask);
     assertTrue(formattedCopy.contains("\u001B[1mcopy\u001B[0m"));
     assertTrue(formattedCopy.contains(":\u001B[36m" + vol1.tag() + "\u001B[0m:src"));
-    assertTrue(formattedCopy.contains("\u001B[32m-->\u001B[0m"));
+    assertTrue(formattedCopy.contains("\u001B[32m→\u001B[0m"));
     assertTrue(formattedCopy.contains(":\u001B[36m" + vol2.tag() + "\u001B[0m:dst"));
 
     Task eqTask = new Equalize(manager,
@@ -97,7 +126,7 @@ class AnsiFormatTest {
       null, List.of(), List.of());
 
     String formattedEq = AnsiFormat.task(eqTask);
-    assertTrue(formattedEq.contains("\u001B[33m<->\u001B[0m"));
+    assertTrue(formattedEq.contains("\u001B[33m↔\u001B[0m"));
   }
 
   @Test
@@ -129,7 +158,7 @@ class AnsiFormatTest {
       null, List.of(), List.of());
 
     String summaryStale = AnsiFormat.tasksSummary(freshManager);
-    assertEquals("1 task(s) (\u001B[32m0 intact\u001B[0m, \u001B[1;31m1 stale\u001B[0m)", summaryStale);
+    assertEquals("1 task(s) (0 intact, \u001B[1;31m1 stale\u001B[0m)", summaryStale);
   }
 
   @Test

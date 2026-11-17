@@ -318,7 +318,10 @@ public class Manager {
         Volume.restore(this, root);
         LOG.log(Level.INFO, () -> "Restored Bitferry volume from " + root);
       } catch (Exception e) {
-        String message = "Failed to restore Bitferry volume from " + AnsiFormat.path(root) + ": " + e.getMessage();
+        // The message stays plain: it travels into the loadErrors record (the API
+        // data) and the JUL console handler verbatim; the colorization is the
+        // frontends' concern
+        String message = "Failed to restore Bitferry volume from " + root + ": " + e.getMessage();
         LOG.log(Level.ERROR, () -> message);
         synchronized (registryLock) {
           loadErrors.add(message);

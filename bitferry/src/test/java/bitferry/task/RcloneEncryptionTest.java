@@ -48,7 +48,7 @@ class RcloneEncryptionTest {
     assertFalse(data.has("password"));
     assertEquals("encrypt", task.encryption().operation());
     assertEquals("encrypt+replicate", task.displayOperation());
-    assertEquals("encrypt+replicate " + volumeSource().describe() + " --> " + volumeEncrypted().describe(), task.describe());
+    assertEquals("encrypt+replicate " + volumeSource().describe() + " → " + volumeEncrypted().describe(), task.describe());
   }
 
   @Test
@@ -78,7 +78,7 @@ class RcloneEncryptionTest {
     assertFalse(data.get("rclone").has("encrypt"));
     assertEquals("decrypt", task.encryption().operation());
     assertEquals("decrypt+copy", task.displayOperation());
-    assertEquals("decrypt+copy " + volumeEncrypted().describe() + " --> " + volumeSource().describe(), task.describe());
+    assertEquals("decrypt+copy " + volumeEncrypted().describe() + " → " + volumeSource().describe(), task.describe());
   }
 
   @Test
@@ -151,7 +151,7 @@ class RcloneEncryptionTest {
     assertFalse(data.get("rclone").has("decrypt"));
     assertTrue(task.encryption().processEnvironment().isEmpty());
     assertEquals("replicate", task.displayOperation());
-    assertEquals("replicate " + volumeSource().describe() + " --> " + volumeEncrypted().describe(), task.describe());
+    assertEquals("replicate " + volumeSource().describe() + " → " + volumeEncrypted().describe(), task.describe());
     assertThrows(BitferryError.class, () -> task.vaultVolume());
   }
 

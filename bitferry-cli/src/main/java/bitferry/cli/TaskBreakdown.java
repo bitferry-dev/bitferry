@@ -89,14 +89,11 @@ public final class TaskBreakdown {
 
   private static String formatEndpoint(Endpoint endpoint) {
     if (endpoint instanceof LocalEndpoint l) {
-      return Ansi.AUTO.string("local:@|blue " + l.root() + "|@");
+      return Ansi.AUTO.string("local:" + AnsiFormat.endpoint(l, AnsiFormat.Markup.PICOCLI));
     } else if (endpoint instanceof VolumeEndpoint ve) {
-      String path = ve.path().equals(".") ? "" : ve.path();
-      if (ve.isIntact()) {
-        return Ansi.AUTO.string(":@|cyan " + ve.vtag() + "|@:" + path) + " (" + ve.processOpts() + ")";
-      } else {
-        return Ansi.AUTO.string(":{@|bold,red " + ve.vtag() + "|@}:" + path) + " (volume missing)";
-      }
+      // The detailed breakdown appends the probing outcome the shared form leaves out
+      String suffix = ve.isIntact() ? " (" + ve.processOpts() + ")" : " (volume missing)";
+      return Ansi.AUTO.string(AnsiFormat.endpoint(ve, AnsiFormat.Markup.PICOCLI) + suffix);
     }
     return endpoint.describe();
   }

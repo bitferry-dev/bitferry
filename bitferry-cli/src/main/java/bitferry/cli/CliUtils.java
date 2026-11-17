@@ -172,36 +172,15 @@ public final class CliUtils {
     return patterns;
   }
 
-  /// Format an endpoint with ANSI color markup for CLI display.
+  /// Format an endpoint with the picocli color markup: the presentation rules are
+  /// shared with the GUI flavor through [AnsiFormat], the markup resolves through
+  /// Ansi.AUTO at the print time keeping the TTY detection.
   public static String formatEndpoint(Endpoint endpoint) {
-    if (endpoint instanceof LocalEndpoint l) {
-      return Ansi.AUTO.string("@|blue " + l.root() + "|@");
-    } else if (endpoint instanceof VolumeEndpoint ve) {
-      // The volume root's '.' path is omitted in the listings
-      String path = ve.path().equals(".") ? "" : ve.path();
-      if (ve.isIntact()) {
-        return Ansi.AUTO.string(":@|cyan " + ve.vtag() + "|@:" + path);
-      } else {
-        return Ansi.AUTO.string(":{@|bold,red " + ve.vtag() + "|@}:" + path);
-      }
-    }
-    return endpoint.describe();
+    return AnsiFormat.endpoint(endpoint, AnsiFormat.Markup.PICOCLI);
   }
 
-  /// Format the task director arrow with ANSI color markup: the bidirectional arrow
-  /// renders yellow (the color keyed on the arrow the task carries).
-  public static String formatDirector(Task task) {
-    String arrow = task.director();
-    return Ansi.AUTO.string("@|" + ("<->".equals(arrow) ? "yellow" : "green") + " " + arrow + "|@");
-  }
-
-  /// Format a task with ANSI color markup.
+  /// Format a task with the picocli color markup (the shared presentation rules).
   public static String formatTask(Task task) {
-    return String.format("%s %s %s %s",
-      Ansi.AUTO.string("@|bold " + task.displayOperation() + "|@"),
-      formatEndpoint(task.source()),
-      formatDirector(task),
-      formatEndpoint(task.destination())
-    );
+    return AnsiFormat.task(task, AnsiFormat.Markup.PICOCLI);
   }
 }

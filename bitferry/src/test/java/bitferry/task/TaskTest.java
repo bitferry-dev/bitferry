@@ -65,7 +65,7 @@ class TaskTest {
     assertEquals(task, manager.task(task.tag()));
     assertTrue(task.isIntact());
     assertTrue(task.isLive());
-    assertEquals("replicate " + source().describe() + " --> " + destination().describe(), task.describe());
+    assertEquals("replicate " + source().describe() + " → " + destination().describe(), task.describe());
     assertTrue(task.refersVolume(volume.tag()));
     assertFalse(task.refersVolume("00000000"));
   }

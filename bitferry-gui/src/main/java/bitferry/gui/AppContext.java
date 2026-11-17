@@ -147,7 +147,9 @@ public final class AppContext {
         && currentRoots.equals(restoredRoots)
         && current.liveTasks().keySet().equals(restored.liveTasks().keySet())
         && current.selectTasks().keySet().equals(restored.selectTasks().keySet())
-        && current.loadErrors().equals(restored.loadErrors())) {
+        // The load errors compare as sets: the message set identifies the model
+        // state, the ordering is the probing accident
+        && java.util.Set.copyOf(current.loadErrors()).equals(java.util.Set.copyOf(restored.loadErrors()))) {
         return;
       }
       for (String err : restored.loadErrors()) {
