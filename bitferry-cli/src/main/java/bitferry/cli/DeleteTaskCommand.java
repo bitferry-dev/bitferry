@@ -33,6 +33,13 @@ public class DeleteTaskCommand implements Callable<Integer>, HasCommonOptions {
   public Integer call() {
     CommonOptions opts = CliUtils.resolveOptions(spec, options);
     Manager m = CliUtils.restoreManager(opts);
+    // The deletion is irreversible (the deletion tombstone propagates to all the
+    // referring storages; only the payload data is deliberately preserved) and the
+    // selection is fuzzy (a substring match), so the accidental one-keystroke
+    // destruction is gated behind --force (the GUI flow confirms interactively instead)
+    if (!m.force) {
+      throw new BitferryError("Task deletion requires --force (it tombstones the task in every referring storage); preview the selection with --dry-run");
+    }
     for (Task t : m.selectLiveTasks(tags)) {
       t.delete();
     }

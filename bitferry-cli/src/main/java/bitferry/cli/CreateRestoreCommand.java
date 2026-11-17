@@ -6,6 +6,7 @@ import bitferry.task.*;
 import java.util.*;
 import java.util.concurrent.*;
 import picocli.CommandLine.*;
+import picocli.CommandLine.Help.Ansi;
 import picocli.CommandLine.Model.*;
 
 /// Create repository content restore task (Restic).
@@ -70,6 +71,12 @@ public class CreateRestoreCommand implements Callable<Integer>, HasCommonOptions
       throw new BitferryError("Task " + task.tag() + " does not belong to any registered volume; it cannot be persisted");
     }
     m.commit();
+    // The simulated creation writes nothing (the storages hold no such task) and skips
+    // the backend-side actions: surface it - the silent exit would read as a success
+    // (mirroring the backup creation's advisory)
+    if (m.simulate()) {
+      spec.commandLine().getErr().println(Ansi.AUTO.string("@|faint the task creation simulated (nothing was written); re-run without --dry-run to create the task for real|@"));
+    }
     return 0;
   }
 }

@@ -750,7 +750,7 @@ public final class TaskFormController {
       if (resticMode()) {
         if (!password.getText().isEmpty() || !passwordConfirm.getText().isEmpty()) {
           if (password.getText().isEmpty()) throw new BitferryError("Password must be specified");
-          if (!password.getText().equals(passwordConfirm.getText())) throw new BitferryError("pPasswords do not match");
+          if (!password.getText().equals(passwordConfirm.getText())) throw new BitferryError("Passwords do not match");
         }
       }
     }

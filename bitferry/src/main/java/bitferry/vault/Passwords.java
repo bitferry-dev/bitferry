@@ -71,17 +71,40 @@ public final class Passwords {
     }
   }
 
-  /// Encode the password pair (the second one optional) into the single obscured token:
-  /// the passwords are joined with the line feed prior to the obscuring.
+  // The slot separator of the multi-password token: ',' lies outside the base64url
+  // alphabet of the obscured forms, so it unambiguously splits the token into the
+  // independently obscured slots
+  private static final String SLOT_SEPARATOR = ",";
+
+  /// Encode the password pair (the second one optional) into the single token: each
+  /// password is obscured independently and the obscured forms are comma-joined.
+  /// A '\n' inside a password is then representable - the former join-with-newline
+  /// codec silently truncated the first password at its embedded newline upon the
+  /// decoding (the corrupted password surfaced as a bare authentication failure).
+  /// The single-password form carries the trailing separator marking the empty
+  /// second slot.
   public static String encodePasswords(String password, String password2) {
-    return obscure(password2 == null ? password : password + "\n" + password2);
+    return password2 == null
+      ? obscure(password) + SLOT_SEPARATOR
+      : obscure(password) + SLOT_SEPARATOR + obscure(password2);
   }
 
-  /// Decode the obscured token back into the password pair (the second element null when single).
+  /// Decode the token back into the password pair (the second element null when
+  /// single). The legacy single-blob form (the passwords joined with the line feed
+  /// prior to the obscuring - the pre-slot tokens of the older versions) keeps
+  /// decoding; a legacy single password carrying a newline was already mangled by
+  /// that codec's encoding and is unrecoverable.
   public static String[] decodeToken(String token) {
+    int at = token.indexOf(SLOT_SEPARATOR);
+    if (at >= 0) {
+      String first = reveal(token.substring(0, at));
+      String rest = token.substring(at + 1);
+      return new String[]{first, rest.isEmpty() ? null : reveal(rest)};
+    }
+    // The legacy form: the newline-joined pair (or the plain single password)
     String revealed = reveal(token);
-    int at = revealed.indexOf('\n');
-    if (at < 0) return new String[]{revealed, null};
-    return new String[]{revealed.substring(0, at), revealed.substring(at + 1)};
+    int nl = revealed.indexOf('\n');
+    if (nl < 0) return new String[]{revealed, null};
+    return new String[]{revealed.substring(0, nl), revealed.substring(nl + 1)};
   }
 }

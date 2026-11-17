@@ -128,8 +128,15 @@ public class Equalize extends Rclone {
         for (Path f : files) {
           String name = f.getFileName().toString();
           if (name.contains(".path1.lst") || name.contains(".path2.lst") || name.endsWith(".lck")) {
-            int dotIdx = name.indexOf(".path");
-            if (dotIdx == -1 && name.endsWith(".lck")) dotIdx = name.lastIndexOf(".lck");
+            // The session boundary is located at the concrete listing-marker suffix
+            // (not the first ".path" substring): the canonicalized endpoint paths
+            // keep their dots, so a directory named e.g. "my.path" inside the
+            // session name would otherwise split the name at the wrong place and
+            // mis-rename the listing files
+            int dotIdx = name.contains(".path1.lst") ? name.indexOf(".path1.lst")
+              : name.contains(".path2.lst") ? name.indexOf(".path2.lst")
+              : name.endsWith(".lck") ? name.lastIndexOf(".lck")
+              : -1;
             if (dotIdx > 0) {
               String oldSession = name.substring(0, dotIdx);
               if (!oldSession.equals(expectedSession)) {

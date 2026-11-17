@@ -73,7 +73,15 @@ final class WindowsEventSource implements MediaWatch.EventSource {
           && (wParam.intValue() == DBT_DEVNODES_CHANGED
             || wParam.intValue() == DBT_DEVICEARRIVAL
             || wParam.intValue() == DBT_DEVICEREMOVECOMPLETE)) {
-          onChange.run();
+          try {
+            onChange.run();
+          } catch (RuntimeException e) {
+            // The consumer's failures must not cross the JNA native callback
+            // boundary (mirroring the udisks2 source): after the watcher's close
+            // shut its scheduler down, a late WM_DEVICECHANGE used to surface a
+            // RejectedExecutionException inside the native dispatch
+            LOG.log(java.lang.System.Logger.Level.DEBUG, "Media change consumer failed: " + e);
+          }
         }
         return User32.INSTANCE.DefWindowProc(hwnd, msg, wParam, lParam);
       };

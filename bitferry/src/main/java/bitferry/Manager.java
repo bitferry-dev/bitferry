@@ -362,7 +362,13 @@ public class Manager {
   static Path mountPoint(FileStore store) {
     String text = store.toString();
     if (!text.endsWith(")")) return null;
-    int open = text.lastIndexOf(" (");
+    // The mount is the prefix before the final parenthesized group (the file store
+    // name); the name may itself carry parentheses (a bind-mount or a network source
+    // with a paren in the path), so the opening paren is located by matching the
+    // bracket depth backward from the end - a plain lastIndexOf(" (") would split
+    // inside the name and truncate the mount ("​/mnt/data (/mnt/other (x))" used to
+    // yield "/mnt/data (/mnt/other")
+    int open = trailingGroupOpenParen(text);
     if (open > 0) {
       String inside = text.substring(open + 2, text.length() - 1);
       if (inside.matches("^[A-Za-z]:.*")) {
@@ -377,6 +383,27 @@ public class Manager {
       }
     }
     return null;
+  }
+
+  /// The index of the " (" separator opening the final balanced group (the one
+  /// closed by the trailing ')'), or -1 when the text carries no such group in the
+  /// expected form. The zero index is reported for the unlabeled "(drive:)" form.
+  private static int trailingGroupOpenParen(String text) {
+    int depth = 1; // Scanning starts inside the group closed by the trailing ')'
+    for (int i = text.length() - 2; i >= 0; i--) {
+      char c = text.charAt(i);
+      if (c == ')') depth++;
+      else if (c == '(') {
+        depth--;
+        if (depth == 0) {
+          // The separator is the " (" form (the caller skips both characters);
+          // the leading paren of the unlabeled Windows form reports zero
+          if (i > 0 && text.charAt(i - 1) == ' ') return i - 1;
+          return i == 0 ? 0 : -1;
+        }
+      }
+    }
+    return -1;
   }
 
   /// Probe the specified roots for the volumes restoring the discovered ones.

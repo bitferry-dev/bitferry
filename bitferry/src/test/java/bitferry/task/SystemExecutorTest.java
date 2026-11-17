@@ -364,10 +364,14 @@ class SystemExecutorTest {
   @Test
   void capturedModeForcesColorsPassthroughLeavesEnvironmentUntouched() throws Exception {
     Path envFile = Files.createTempFile("bitferry-env", ".txt");
+    // The POSIX shell present on the Windows hosts (the Git Bash sh) treats the
+    // backslashes of the native path as escape sequences: the forward-slash form
+    // keeps the redirect target resolvable on both platforms
+    String envPath = envFile.toAbsolutePath().toString().replace('\\', '/');
     try {
       // The passthrough inherits the real environment: nothing is forced
       int code = SystemCommandExecutor.INSTANCE.execute(
-        List.of("sh", "-c", "echo CLICOLOR_FORCE=${CLICOLOR_FORCE:-unset} > " + envFile),
+        List.of("sh", "-c", "echo CLICOLOR_FORCE=${CLICOLOR_FORCE:-unset} > " + envPath),
         null, null, null);
       assertEquals(0, code);
       assertEquals("CLICOLOR_FORCE=unset", Files.readString(envFile).trim());
@@ -1435,11 +1439,17 @@ class SystemExecutorTest {
     // Halted immediately after failed check: forget and prune never executed (the
     // extra invocation is the auto-heal diagnostic probe - no sibling exists here,
     // so the heal declines and the check is not retried)
-    List<String> subcommands = recorder.invocations.stream()
-      .map(inv -> inv.command().get(1))
+    List<List<String>> commands = recorder.invocations.stream()
+      .map(RecordingCommandExecutor.Invocation::command)
       .toList();
-    assertEquals(List.of("check", "cat"), subcommands);
-    assertEquals(1, subcommands.stream().filter("check"::equals).count(), "the check must not be retried without a healing sibling");
+    // The first invocation is the check; the second is the diagnostic probe (the
+    // testPassword shape: restic -r <repo> cat config)
+    assertEquals("check", commands.getFirst().get(1));
+    assertTrue(commands.get(1).contains("cat") && commands.get(1).contains("config"),
+      "the second invocation is the diagnostic probe: " + commands.get(1));
+    assertEquals(1, commands.stream().filter(c -> c.size() > 1 && "check".equals(c.get(1))).count(),
+      "the check must not be retried without a healing sibling");
+    assertEquals(2, commands.size(), "nothing runs after the declined heal");
   }
 
   @Test

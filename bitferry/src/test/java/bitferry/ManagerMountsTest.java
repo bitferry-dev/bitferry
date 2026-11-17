@@ -37,6 +37,10 @@ class ManagerMountsTest {
     // The Windows stores with and without label
     assertEquals(Path.of("C:\\"), Manager.mountPoint(store("SYSTEM (C:)", "NTFS")));
     assertEquals(Path.of("D:\\"), Manager.mountPoint(store("(D:)", "NTFS")));
+    // The source name carrying its own parentheses: the final balanced group is
+    // the name, so the mount prefix survives intact (the plain lastIndexOf split
+    // used to truncate the mount at the name's inner paren)
+    assertEquals(Path.of("/mnt/data"), Manager.mountPoint(store("/mnt/data (/mnt/other (x))", "btrfs")));
     // The text without the mount point suffix is rejected
     assertNull(Manager.mountPoint(store("weird", "btrfs")));
   }

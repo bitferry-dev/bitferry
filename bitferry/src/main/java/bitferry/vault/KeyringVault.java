@@ -59,9 +59,23 @@ public final class KeyringVault implements Vault {
     SecretStore<StoredCredential> store = store();
     if (store == null) throw new BitferryError("No usable operating system keyring detected");
     String key = KEY_PREFIX + task.tag();
-    store.delete(key);
-    if (!store.add(key, new StoredCredential(USER, token.toCharArray()))) {
-      throw new BitferryError("Keyring storage refused the token of task " + task.tag());
+    try {
+      store.delete(key);
+    } catch (RuntimeException e) {
+      // The stale-entry cleanup is best-effort (a locked or broken keyring must
+      // surface as the expected BitferryError, not a raw RuntimeException escaping
+      // the class's failure policy); the store.add below overwrites the entry anyway
+    }
+    try {
+      if (!store.add(key, new StoredCredential(USER, token.toCharArray()))) {
+        throw new BitferryError("Keyring storage refused the token of task " + task.tag());
+      }
+    } catch (RuntimeException e) {
+      // A locked or broken keyring must surface as the expected BitferryError
+      // (mirroring the degrade-to-empty policy of the retrieval side, which here
+      // means the failure is reported instead of escaping raw)
+      if (e instanceof BitferryError error) throw error;
+      throw new BitferryError("Keyring storage failure for task " + task.tag() + ": " + e.getMessage(), e);
     }
   }
 

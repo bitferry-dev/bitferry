@@ -37,6 +37,11 @@ public final class VolumeEndpoint implements Endpoint {
       if (element.toString().equals("..")) throw new BitferryError("Invalid Bitferry volume -relative path " + path);
     }
     if (p.isAbsolute()) throw new BitferryError("Invalid Bitferry volume -relative path " + path);
+    // The rooted relative paths (".../dir", "\\dir", "C:dir") pass the isAbsolute()
+    // check on Windows yet resolve() re-anchors them at the volume root's drive (or
+    // the given drive), escaping the volume - reject any path carrying a root component
+    // (a crafted storage descriptor or a ':tag:/dir' specifier typo must not escape)
+    if (p.getRoot() != null) throw new BitferryError("Invalid Bitferry volume -relative path " + path);
     this.manager = manager;
     this.vtag = vtag;
     // The platform separator (the backslash of the Windows paths) is normalized
@@ -55,7 +60,14 @@ public final class VolumeEndpoint implements Endpoint {
 
   @Override
   public String processOpts() {
-    return volume().root().resolve(path).normalize().toString();
+    Path resolved = volume().root().resolve(path).normalize();
+    // The defense-in-depth containment check: the creator validation guards the
+    // new descriptors, this one backstops whatever reaches the processing (the
+    // crafted or hand-edited storage descriptors restored from the media)
+    if (!resolved.startsWith(volume().root())) {
+      throw new BitferryError("Invalid Bitferry volume -relative path " + path + ": it escapes the volume root " + volume().root());
+    }
+    return resolved.toString();
   }
 
   @Override

@@ -59,12 +59,19 @@ public final class Storage {
   /// Write the contents into the specified target file atomically: the new contents
   /// go into the target's '~'-suffixed intermediate file first which then replaces
   /// the target in a single rename step. The intermediate file is removed upon any failure.
+  ///
+  /// <p>The intermediate file is restricted to its owner (best-effort) before the
+  /// contents are written: the storage files carry the vault section with the password
+  /// tokens (the rclone-obscured secrets recoverable by anyone who can read the file),
+  /// so the umask-inherited broad permissions must not leak them. The move preserves
+  /// the permissions of the intermediate file.
   public static void writeText(Path target, String contents) throws IOException {
     target = target.toAbsolutePath().normalize();
     if (target.getParent() != null) Files.createDirectories(target.getParent());
     Path image = target.resolveSibling(target.getFileName().toString() + "~");
     try {
       try (FileChannel channel = FileChannel.open(image, StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING)) {
+        restrictToOwner(image);
         channel.write(ByteBuffer.wrap(contents.getBytes(StandardCharsets.UTF_8)));
         channel.force(true);
       }
@@ -102,6 +109,40 @@ public final class Storage {
       return WRITER.writeValueAsString(value);
     } catch (JacksonException e) {
       throw new BitferryError("serialization failure: " + e.getMessage(), e);
+    }
+  }
+
+  /// Best-effort owner-only restriction of a storage file: the POSIX mode bits where
+  /// the file system supports them, the owner-only ACL otherwise (Windows). Mirrors
+  /// the strict variant of the task package's temporary password files, but degrades
+  /// silently: the vault travels with the removable media, and the permission-less
+  /// file systems of that media (the FAT family) must not fail the storage write -
+  /// the hardening simply applies where the platform can represent it.
+  private static void restrictToOwner(Path file) {
+    try {
+      Files.setPosixFilePermissions(file, java.util.Set.of(
+        java.nio.file.attribute.PosixFilePermission.OWNER_READ,
+        java.nio.file.attribute.PosixFilePermission.OWNER_WRITE));
+      return;
+    } catch (UnsupportedOperationException | IOException ignored) {
+      // Not a POSIX file system (e.g. Windows), or the chmod was refused: fall
+      // through to the ACL handling
+    }
+    try {
+      java.nio.file.attribute.AclFileAttributeView view =
+        Files.getFileAttributeView(file, java.nio.file.attribute.AclFileAttributeView.class);
+      if (view == null) return; // No ACL support (e.g. FAT): keep the defaults
+      java.nio.file.attribute.UserPrincipal owner = view.getOwner();
+      // The single allowed entry: the owner gets the full control; every other
+      // account (and the inherited entries) gets nothing
+      java.nio.file.attribute.AclEntry ownerEntry = java.nio.file.attribute.AclEntry.newBuilder()
+        .setType(java.nio.file.attribute.AclEntryType.ALLOW)
+        .setPrincipal(owner)
+        .setPermissions(java.util.EnumSet.allOf(java.nio.file.attribute.AclEntryPermission.class))
+        .build();
+      view.setAcl(java.util.List.of(ownerEntry));
+    } catch (IOException | SecurityException ignored) {
+      // The best-effort hardening must never fail the storage write
     }
   }
 }

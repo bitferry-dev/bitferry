@@ -6,6 +6,7 @@ import bitferry.task.*;
 import java.util.*;
 import java.util.concurrent.*;
 import picocli.CommandLine.*;
+import picocli.CommandLine.Help.Ansi;
 import picocli.CommandLine.Model.*;
 
 /// Base command for creating Rclone tasks (copy, update, replicate, equalize).
@@ -99,7 +100,7 @@ public abstract class RcloneTaskCommand implements Callable<Integer>, HasCommonO
     List<String> exc = CliUtils.parsePatterns(exclude, excludeExts);
     Task task = taskFactory().create(m, src, dst, execute, inc, exc);
     if (encryptRequested || decryptRequested) {
-      if (!task.supportsEncryption()) throw new BitferryError("Rncryption is supported for the Rclone tasks only");
+      if (!task.supportsEncryption()) throw new BitferryError("Encryption is supported for the Rclone tasks only");
       Rclone rclone = (Rclone) task;
       // The password is obtained after the endpoints are validated
       String password = CliUtils.obtainPassword();
@@ -114,6 +115,11 @@ public abstract class RcloneTaskCommand implements Callable<Integer>, HasCommonO
       throw new BitferryError("Task " + task.tag() + " does not belong to any registered volume; it cannot be persisted");
     }
     m.commit();
+    // The simulated creation writes nothing (the storages hold no such task): surface
+    // it - the silent exit would read as a success (mirroring the backup advisory)
+    if (m.simulate()) {
+      spec.commandLine().getErr().println(Ansi.AUTO.string("@|faint the task creation simulated (nothing was written); re-run without --dry-run to create the task for real|@"));
+    }
     return 0;
   }
 }

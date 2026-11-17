@@ -159,7 +159,10 @@ final class ResticExecutor {
 
     List<String> registered = new ArrayList<>();
     registered.add(restic.tag());
-    for (Task t : manager.tasks().values()) {
+    // The live co-repository tasks only: the deletion tombstones are invisible for
+    // all the operations, so they must not receive the token (nor participate in
+    // the co-repository discovery below)
+    for (Task t : manager.liveTasks().values()) {
       if (t != restic && t.isIntact() && t instanceof Restic otherRestic) {
         if (Restic.sameRepository(repo, repoPath(otherRestic))) {
           otherRestic.updatePassword(newPassword);
@@ -168,15 +171,31 @@ final class ResticExecutor {
       }
     }
 
-    // The invisible co-repository tasks: the state tags not registered in this session
+    // The invisible co-repository tasks: the state tags not registered in this session.
+    // The tasks deleted in this session are witnessed by their tombstones - their tags
+    // can never be used again, so their maintenance entries are dropped from the state
+    // instead of being reported stale forever (a deleted task holds no token anymore)
+    List<String> dropped = new ArrayList<>();
+    for (Task t : manager.tasks().values()) {
+      if (!(t.isDeleted() && t instanceof Restic other) || t == restic) continue;
+      try {
+        if (!Restic.sameRepository(repo, repoPath(other))) continue;
+      } catch (BitferryError e) {
+        // The tombstone's endpoints cannot be resolved (the hosting volume is
+        // absent): its repository membership is unknowable, the entry stays
+        continue;
+      }
+      dropped.add(t.tag());
+    }
     ResticRepositoryState state = ResticRepositoryState.load(repoDir);
-    if (state.normalize(registered)) state.save(repoDir);
+    boolean changed = state.normalize(registered) | state.drop(dropped);
+    if (changed) state.save(repoDir);
     List<String> stale = state.tags().stream()
       .filter(tag -> !registered.contains(tag))
       .toList();
     if (!stale.isEmpty()) {
       LOG.log(Level.WARNING, () -> "The stored passwords of the co-repository task(s) " + String.join(", ", stale)
-        + " were not updated (their volumes are not restored); their runs will fail the authentication until the token is re-synced");
+        + " were not updated (their volumes are not restored, or the tasks were deleted); the unreachable tasks' runs will fail the authentication until the token is re-synced");
     }
     return stale;
   }
@@ -198,7 +217,9 @@ final class ResticExecutor {
     if (testPassword(manager, repo, own)) {
       return false; // The own token opens the repository: the failure is not an authentication one
     }
-    for (Task t : manager.tasks().values()) {
+    // The live tasks only: the deletion tombstones are invisible for all the
+    // operations and must not donate their tokens
+    for (Task t : manager.liveTasks().values()) {
       if (t == task || !(t.isIntact() && t instanceof Restic sibling)) continue;
       if (!Restic.sameRepository(repo, repoPath(sibling))) continue;
       String candidate;
@@ -495,11 +516,12 @@ final class ResticExecutor {
 
   /// The backup tasks sharing this task's repository (per [Restic#sameRepository]),
   /// this task included. The restore tasks do not participate: they hold neither
-  /// a cadence nor a retention policy.
+  /// a cadence nor a retention policy. The live tasks only: the deletion tombstones
+  /// are invisible for all the operations and must not receive the service.
   private List<Backup> coRepoTasks(Backup backup) {
     String repo = repoPath(backup);
     List<Backup> sharing = new ArrayList<>();
-    for (Task t : backup.manager().tasks().values()) {
+    for (Task t : backup.manager().liveTasks().values()) {
       if (t.isIntact() && t instanceof Backup other && Restic.sameRepository(repo, repoPath(other))) {
         sharing.add(other);
       }

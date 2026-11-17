@@ -103,10 +103,11 @@ public class ModifyTaskCommand implements Callable<Integer>, HasCommonOptions {
     List<Task> selected = m.selectLiveTasks(List.of(tag));
     Task task = selected.get(0);
 
-    if (hasType) {
-      task = task.morph(type);
-    }
-
+    // The option applicability guards run BEFORE the morph (and any other mutation):
+    // the morph is destructive (an equalize task loses its bisync baseline on disk),
+    // so a rejected option after it would leave the half-applied morph behind - the
+    // guards' outcomes are identical pre- and post-morph (the morph never leaves the
+    // rclone family, and the backup tasks reject the morph itself)
     if (hasForget || hasCheck || hasServe) {
       if (!task.supportsRetentionPolicy()) {
         throw new BitferryError("Forget, check, and serve options are only applicable to backup tasks");
@@ -119,16 +120,21 @@ public class ModifyTaskCommand implements Callable<Integer>, HasCommonOptions {
       throw new BitferryError("Include filters are not applicable to backup tasks (restic backup filters by exclusion only)");
     }
 
+    if (password && !task.supportsPasswordRotation()) {
+      throw new BitferryError("Rclone crypt parameters and passwords cannot be modified on an existing task; create a new task");
+    }
+
+    if (hasType) {
+      task = task.morph(type);
+    }
+
     if (password) {
-      if (!task.supportsPasswordRotation()) {
-        throw new BitferryError("Rclone crypt parameters and passwords cannot be modified on an existing task; create a new task");
-      }
       String newPassword = CliUtils.obtainPassword();
       List<String> stale = m.passwd((Restic) task, newPassword);
       if (!stale.isEmpty()) {
         spec.commandLine().getErr().println(Ansi.AUTO.string("@|bold,yellow Warning:|@ the co-repository task(s) " + String.join(", ", stale)
-          + " were not reachable - their stored passwords were not updated (their volumes are not restored)."
-          + " Their runs will fail the authentication until re-synced; re-run the password change when they are restored"));
+          + " were not reachable - their stored passwords were not updated (their volumes are not restored, or the tasks were deleted)."
+          + " The unreachable tasks' runs will fail the authentication until the token is re-synced (by the auto-heal upon their next run, or by re-entering the password)"));
       }
     }
 

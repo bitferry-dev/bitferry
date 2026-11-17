@@ -38,6 +38,33 @@ class PasswordsTest {
   }
 
   @Test
+  void passwordsCarryingNewlinesSurviveTheTokens() {
+    // The slot codec obscures each password independently: an embedded newline used
+    // to be silently consumed as the pair separator upon the decoding (the first
+    // password came back truncated, surfacing as a bare authentication failure)
+    String single = Passwords.encodePasswords("alpha\nbeta", null);
+    assertEquals("alpha\nbeta", Passwords.decodeToken(single)[0]);
+    assertNull(Passwords.decodeToken(single)[1]);
+
+    String pair = Passwords.encodePasswords("al\npha", "be\nta");
+    assertEquals("al\npha", Passwords.decodeToken(pair)[0]);
+    assertEquals("be\nta", Passwords.decodeToken(pair)[1]);
+  }
+
+  @Test
+  void legacyNewlineJoinedTokensKeepDecoding() {
+    // The pre-slot single-blob form (the passwords joined with the line feed prior
+    // to the obscuring) keeps decoding for the tokens stored by the older versions
+    String legacySingle = Passwords.obscure("alpha");
+    assertEquals("alpha", Passwords.decodeToken(legacySingle)[0]);
+    assertNull(Passwords.decodeToken(legacySingle)[1]);
+
+    String legacyPair = Passwords.obscure("alpha\nbeta");
+    assertEquals("alpha", Passwords.decodeToken(legacyPair)[0]);
+    assertEquals("beta", Passwords.decodeToken(legacyPair)[1]);
+  }
+
+  @Test
   void garbageTokensAreRejected() {
     assertThrows(BitferryError.class, () -> Passwords.reveal("not base64 at all!!"));
     assertThrows(BitferryError.class, () -> Passwords.reveal(Base64.getUrlEncoder().withoutPadding().encodeToString(new byte[4])));

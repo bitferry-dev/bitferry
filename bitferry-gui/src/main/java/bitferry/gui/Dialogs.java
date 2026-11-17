@@ -255,11 +255,6 @@ final class Dialogs {
         Task current = manager.task(task.tag());
         if (current == null) throw new BitferryError("Task " + task.tag() + " is no longer registered");
 
-        // Morph the task if its operation type was changed (supported for rclone tasks)
-        if (!current.operation().equals(form.type())) {
-          current = current.morph(form.type());
-        }
-
         // Rotate repository password if entered (restic only); the invisible
         // co-repository tasks (their volumes are absent) keep the stale token:
         // their runs fail the authentication until re-synced (by the auto-heal
@@ -269,9 +264,18 @@ final class Dialogs {
           logs.log("Password updated for task " + AnsiFormat.tag(current.tag()));
           if (!stale.isEmpty()) {
             logs.log(AnsiFormat.error("Warning: the co-repository task(s) " + String.join(", ", stale)
-              + " were not reachable - their stored passwords were not updated (their volumes are not restored)."
-              + " Their runs will fail the authentication until re-synced; re-run the password change when they are restored"));
+              + " were not reachable - their stored passwords were not updated (their volumes are not restored, or the tasks were deleted)."
+              + " The unreachable tasks' runs will fail the authentication until the token is re-synced (by the auto-heal upon their next run, or by re-entering the password)"));
           }
+        }
+
+        // The mutations run BEFORE the morph: the morph is destructive (an equalize
+        // task loses its bisync baseline on disk), so a failing mutation after it
+        // used to leave the half-applied morph behind. The morph carries the mutated
+        // state over (the process options, the filters, the flags), so the ordering
+        // is equivalent for the successful path
+        if (!current.operation().equals(form.type())) {
+          current = current.morph(form.type());
         }
 
         // Backend execution options (the resolution rides the task's profile route)

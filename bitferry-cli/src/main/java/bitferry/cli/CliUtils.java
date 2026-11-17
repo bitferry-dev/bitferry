@@ -90,6 +90,10 @@ public final class CliUtils {
     char[] pwdChars = console.readPassword("Password: ");
     char[] confirmChars = console.readPassword("Repeat password: ");
     try {
+      // The end-of-stream (Ctrl+D) yields null arrays: treat it as "no password
+      // entered" so obtainPassword raises its clean BitferryError - converting a
+      // null array used to NPE past that check with a bare 'Error: null'
+      if (pwdChars == null || confirmChars == null) return null;
       if (!Arrays.equals(pwdChars, confirmChars)) throw new BitferryError("Passwords do not match");
       return new String(pwdChars);
     } finally {

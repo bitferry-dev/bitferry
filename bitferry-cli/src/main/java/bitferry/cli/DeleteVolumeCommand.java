@@ -32,6 +32,13 @@ public class DeleteVolumeCommand implements Callable<Integer>, HasCommonOptions 
   public Integer call() {
     CommonOptions opts = CliUtils.resolveOptions(spec, options);
     Manager m = CliUtils.restoreManager(opts);
+    // The deletion is irreversible (the storage file is physically removed and every
+    // task on the volume is tombstoned across the peer storages) and the selection is
+    // fuzzy (a substring match), so the accidental one-keystroke destruction is gated
+    // behind --force mirroring the storage-overwrite protection
+    if (!m.force) {
+      throw new BitferryError("Volume deletion requires --force (it removes the volume storage and tombstones every task referring to it); preview the selection with --dry-run");
+    }
     for (Volume v : m.selectVolumes(tags)) {
       v.delete();
     }

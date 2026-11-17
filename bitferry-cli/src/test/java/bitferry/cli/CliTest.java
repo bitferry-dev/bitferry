@@ -305,7 +305,13 @@ class CliTest {
     err = new StringWriter();
     cmd.setOut(new PrintWriter(out));
     cmd.setErr(new PrintWriter(err));
-    int code3 = cmd.execute("--path", volDir.toString(), "delete", "task", task.tag());
+    // The deletion is gated behind --force (the irreversible tombstone propagation
+    // and the fuzzy substring selection): the un-forced invocation refuses and the
+    // task stays registered
+    assertNotEquals(0, cmd.execute("--path", volDir.toString(), "delete", "task", task.tag()));
+    assertTrue(err.toString().contains("--force"), () -> "stderr: " + err.toString());
+    assertNotNull(managerFor(volDir).task(task.tag()));
+    int code3 = cmd.execute("--path", volDir.toString(), "delete", "--force", "task", task.tag());
     assertEquals(0, code3, () -> "stderr: " + err.toString());
 
     // The tombstone persists in the storage until the garbage collection removes it,
@@ -584,7 +590,7 @@ class CliTest {
     cmd = Main.createCommandLine();
     err = new StringWriter();
     cmd.setErr(new PrintWriter(err));
-    assertEquals(0, cmd.execute("--path", volDir.toString(), "delete", "task", tag), () -> "stderr: " + err.toString());
+    assertEquals(0, cmd.execute("--path", volDir.toString(), "delete", "--force", "task", tag), () -> "stderr: " + err.toString());
     cmd = Main.createCommandLine();
     err = new StringWriter();
     cmd.setErr(new PrintWriter(err));
@@ -797,7 +803,7 @@ class CliTest {
     // Delete the backup task to allow re-creating over the same endpoints with --force
     Task existingTask = managerFor(volDir).tasks().values().iterator().next();
     cmd = Main.createCommandLine();
-    assertEquals(0, cmd.execute("--path", volDir.toString(), "delete", "task", existingTask.tag()));
+    assertEquals(0, cmd.execute("--path", volDir.toString(), "delete", "--force", "task", existingTask.tag()));
 
     // 4. Force (--force) proceeds over existing repo with a new password
     cmd = Main.createCommandLine();
@@ -1013,7 +1019,7 @@ class CliTest {
     assertNull(task1.serialize().get("restic").get("execute"));
 
     // Delete task1 to test shorthand creation cleanly
-    assertEquals(0, cmd.execute("--path", volDir.toString(), "delete", "task", task1.tag()));
+    assertEquals(0, cmd.execute("--path", volDir.toString(), "delete", "--force", "task", task1.tag()));
 
     // 2. Create backup with shorthands -f -c
     code = executeWithPassword("pass1", "--path", volDir.toString(),
@@ -1026,7 +1032,7 @@ class CliTest {
     assertEquals(Backup.CHECK.get("default"), Task.strings(task2.serialize().get("restic").get("check"), false));
 
     // Delete task2
-    assertEquals(0, cmd.execute("--path", volDir.toString(), "delete", "task", task2.tag()));
+    assertEquals(0, cmd.execute("--path", volDir.toString(), "delete", "--force", "task", task2.tag()));
 
     // 3. Create backup with directly specified raw options without @
     code = executeWithPassword("pass1", "--path", volDir.toString(),
@@ -1063,7 +1069,7 @@ class CliTest {
     assertEquals(Rclone.PROCESS.get("default"), Task.strings(task1.serialize().get("rclone").get("execute"), false));
 
     // Delete task1
-    assertEquals(0, cmd.execute("--path", volDir.toString(), "delete", "task", task1.tag()));
+    assertEquals(0, cmd.execute("--path", volDir.toString(), "delete", "--force", "task", task1.tag()));
 
     // 2. Shorthand -e -u (extended encryption)
     code = executeWithPassword("cryptpass", "--path", volDir.toString(),
@@ -1075,7 +1081,7 @@ class CliTest {
     assertEquals(Rclone.PROFILE.get("extended"), Task.strings(task2.serialize().get("rclone").get("encrypt"), false));
 
     // Delete task2
-    assertEquals(0, cmd.execute("--path", volDir.toString(), "delete", "task", task2.tag()));
+    assertEquals(0, cmd.execute("--path", volDir.toString(), "delete", "--force", "task", task2.tag()));
 
     // 3. Shorthand -e (default encryption) with directly specified -X --fast-list
     code = executeWithPassword("cryptpass", "--path", volDir.toString(),
@@ -1130,7 +1136,7 @@ class CliTest {
     assertEquals("14d,10", task1.cadence().format());
     assertEquals("14d,10", task1.serialize().get("restic").get("serve").asString());
 
-    assertEquals(0, cmd.execute("--path", volDir.toString(), "delete", "task", task1.tag()));
+    assertEquals(0, cmd.execute("--path", volDir.toString(), "delete", "--force", "task", task1.tag()));
 
     // 2. Shorthand -s sets @default (7d,5)
     code = executeWithPassword("secret1", "--path", volDir.toString(),
@@ -1142,7 +1148,7 @@ class CliTest {
     assertEquals("7d,5", task2.cadence().format());
     assertNull(task2.serialize().get("restic"));
 
-    assertEquals(0, cmd.execute("--path", volDir.toString(), "delete", "task", task2.tag()));
+    assertEquals(0, cmd.execute("--path", volDir.toString(), "delete", "--force", "task", task2.tag()));
 
     // 3. Disable with -S -
     code = executeWithPassword("secret1", "--path", volDir.toString(),
@@ -1154,7 +1160,7 @@ class CliTest {
     assertNull(task3.cadence());
     assertEquals("-", task3.serialize().get("restic").get("serve").asString());
 
-    assertEquals(0, cmd.execute("--path", volDir.toString(), "delete", "task", task3.tag()));
+    assertEquals(0, cmd.execute("--path", volDir.toString(), "delete", "--force", "task", task3.tag()));
 
     // 4. Mutual exclusivity: -s and -S both specified
     code = executeWithPassword("secret1", "--path", volDir.toString(),

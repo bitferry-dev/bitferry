@@ -58,21 +58,39 @@ public class ServeCommand implements Callable<Integer>, HasCommonOptions {
     for (Task t : tasks.values()) {
       i++;
       if (!m.quiet) {
-        String line = String.format("@|bold [%d/%d]|@ @|cyan %s|@  %s", i, n, t.tag(), CliUtils.formatTask(t));
+        String line = String.format(Locale.ROOT, "@|bold [%d/%d]|@ @|cyan %s|@  %s", i, n, t.tag(), CliUtils.formatTask(t));
         out.println(Ansi.AUTO.string(line));
       }
-      boolean ok = t.serve(null);
+      // The task-level failures isolate to the failing task mirroring [Manager.serve]
+      // and the GUI runner: a BitferryError (a vanished volume, a dropped vault token)
+      // used to abort the whole batch here, skipping the remaining tasks, the per-task
+      // status line, the summary and the post-service commit
+      boolean ok;
+      try {
+        ok = t.serve(null);
+      } catch (BitferryError e) {
+        ok = false;
+        if (!m.quiet) out.println(Ansi.AUTO.string("@|red     error: " + e.getMessage() + "|@"));
+      } catch (RuntimeException e) {
+        ok = false;
+        if (!m.quiet) out.println(Ansi.AUTO.string("@|red     unexpected failure: " + e + "|@"));
+      }
       outcome = ok && outcome;
       if (!m.quiet) {
-        String status = ok ? "@|green     ✓ success|@" : "@|red     ✗ failure|@";
-        out.println(Ansi.AUTO.string(status));
+        // The ASCII approximations on the non-unicode consoles: the encoder would
+        // otherwise collapse the marks into the semantically lossy '?' (mirroring
+        // [TaskBreakdown.formatStatus])
+        String status = ok
+          ? Ansi.AUTO.string(Symbols.unicode() ? "@|green     ✓ success|@" : "@|green     ok success|@")
+          : Ansi.AUTO.string(Symbols.unicode() ? "@|red     ✗ failure|@" : "@|red     x failure|@");
+        out.println(status);
       }
     }
     if (!m.quiet) {
       out.println();
       String summary = outcome
-        ? String.format("@|green All %d task(s) serviced successfully.|@", n)
-        : String.format("@|red Some of the %d task(s) failed servicing.|@", n);
+        ? String.format(Locale.ROOT, "@|green All %d task(s) serviced successfully.|@", n)
+        : String.format(Locale.ROOT, "@|red Some of the %d task(s) failed servicing.|@", n);
       out.println(Ansi.AUTO.string(summary));
     }
     // Persist the post-service state changes (mirroring ExecuteCommand and Runner):

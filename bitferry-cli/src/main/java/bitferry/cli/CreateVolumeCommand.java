@@ -4,6 +4,7 @@ import bitferry.*;
 import java.nio.file.*;
 import java.util.concurrent.*;
 import picocli.CommandLine.*;
+import picocli.CommandLine.Help.Ansi;
 import picocli.CommandLine.Model.*;
 
 /// Create a new Bitferry volume entity.
@@ -37,6 +38,12 @@ public class CreateVolumeCommand implements Callable<Integer>, HasCommonOptions 
     Manager m = CliUtils.restoreManager(opts);
     new Volume(m, root);
     m.commit();
+    // The simulated creation writes nothing (the storages hold no such volume):
+    // surface it - the silent exit would read as a success (mirroring the backup
+    // creation's advisory)
+    if (m.simulate()) {
+      spec.commandLine().getErr().println(Ansi.AUTO.string("@|faint the volume creation simulated (nothing was written); re-run without --dry-run to create the volume for real|@"));
+    }
     return 0;
   }
 }

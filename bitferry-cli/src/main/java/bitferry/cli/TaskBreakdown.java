@@ -202,11 +202,15 @@ public final class TaskBreakdown {
 
     // The repository-wide due evaluation: the service covers the whole repository,
     // so it triggers when any co-repository task's cadence is due - not only this
-    // task's own one (mirrors the executor's pre-backup gate)
+    // task's own one (mirrors the executor's pre-backup gate). The evaluation is
+    // gated on this task's own cadence mirroring the executor's trigger: the run of
+    // a cadence-disabled task never services the repository, so reporting 'due'
+    // (even a sibling-attributed one) would contradict the run behavior. The live
+    // tasks only: the deletion tombstones are invisible for all the operations.
     Backup dueTask = null;
-    if (state != null && !state.isCorruptOrMissing() && repoDir != null) {
+    if (cadence != null && state != null && !state.isCorruptOrMissing() && repoDir != null) {
       String repo = repoDir.toString();
-      for (Task t : backup.manager().tasks().values()) {
+      for (Task t : backup.manager().liveTasks().values()) {
         if (t.isIntact() && t instanceof Backup other && other.cadence() != null
           && Restic.sameRepository(repo, other.destination().processOpts())
           && state.isDue(other.tag(), other.cadence())) {
@@ -229,7 +233,7 @@ public final class TaskBreakdown {
       Cadence dueCadence = dueTask.cadence();
       String attribution = dueTask == backup ? "" : " (co-repository task " + dueTask.tag() + ")";
       if (dueCadence.count() < Integer.MAX_VALUE && due.backups() >= dueCadence.count()) {
-        appendProperty(sb, "Status:", Ansi.AUTO.string(String.format("@|yellow due (threshold reached: %d backups since service)%s|@", due.backups(), attribution)));
+        appendProperty(sb, "Status:", Ansi.AUTO.string(String.format(Locale.ROOT, "@|yellow due (threshold reached: %d backups since service)%s|@", due.backups(), attribution)));
       } else if (dueCadence.duration() != null && due.maintenance() != null && Duration.between(due.maintenance(), Instant.now()).compareTo(dueCadence.duration()) >= 0) {
         appendProperty(sb, "Status:", Ansi.AUTO.string("@|yellow due (cadence duration elapsed)" + attribution + "|@"));
       } else {
@@ -248,8 +252,8 @@ public final class TaskBreakdown {
 
     if (entry != null && entry.maintenance() != null) {
       String countInfo = cadence != null && cadence.count() < Integer.MAX_VALUE
-        ? String.format(" (%d of %d backups)", entry.backups(), cadence.count())
-        : String.format(" (%d backups)", entry.backups());
+        ? String.format(Locale.ROOT, " (%d of %d backups)", entry.backups(), cadence.count())
+        : String.format(Locale.ROOT, " (%d backups)", entry.backups());
       appendProperty(sb, "Last Service:", formatInstant(entry.maintenance()) + " (" + formatElapsed(entry.maintenance(), Instant.now()) + ")" + countInfo);
     } else {
       appendProperty(sb, "Last Service:", "never");

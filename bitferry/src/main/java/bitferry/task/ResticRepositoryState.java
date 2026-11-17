@@ -168,6 +168,19 @@ public final class ResticRepositoryState {
     return changed;
   }
 
+  /// Remove the entries of the specified tags. Called for the tasks deleted in the
+  /// current session: their tags are never reused, so the entries would otherwise
+  /// linger in the file forever, being reported as the stale co-repository tasks
+  /// by every following password change (a deleted task holds no token anymore).
+  /// The tags unknown to the file are ignored. Return true when anything was removed.
+  public boolean drop(Collection<String> tags) {
+    boolean changed = false;
+    for (String tag : tags) {
+      if (tasks.remove(tag) != null) changed = true;
+    }
+    return changed;
+  }
+
   /// The entry tags currently tracked (the unknown-tag entries of the other
   /// sessions are preserved within the file but not listed until seen here).
   public Collection<String> tags() {
