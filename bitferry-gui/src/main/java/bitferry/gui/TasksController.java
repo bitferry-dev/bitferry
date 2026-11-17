@@ -312,7 +312,7 @@ public final class TasksController {
         if (current == null) throw new BitferryError("Task " + task.tag() + " is no longer registered");
         current.delete();
         manager.commit();
-        logs.log("Task " + current.tag() + " deleted");
+        logs.log("Task " + AnsiFormat.tag(current.tag()) + " deleted");
         // Re-probe the manager mirroring the volume deletion flow: the reload's
         // garbage collection retires the tombstone right away when all the referred
         // volumes are visible (the storages are cleaned by the following commits),

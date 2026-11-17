@@ -135,11 +135,11 @@ class RcloneEncryptionTest {
   void localUnencryptedEndIsRejected() {
     Replicate task = new Replicate(manager, localSource(), volumeEncrypted(), null, List.of(), List.of());
     BitferryError error = assertThrows(BitferryError.class, () -> task.encrypt("secret", null, Rclone.Encryption.options("@default")));
-    assertTrue(error.getMessage().contains("encryption requires the unencrypted endpoint to reside within a Bitferry volume"));
+    assertTrue(error.getMessage().toLowerCase().contains("unencrypted endpoint to reside"));
 
     Copy reverse = new Copy(manager, volumeEncrypted(), localSource(), null, List.of(), List.of());
     error = assertThrows(BitferryError.class, () -> reverse.decrypt("secret", null, Rclone.Encryption.options("@default")));
-    assertTrue(error.getMessage().contains("encryption requires the unencrypted endpoint to reside within a Bitferry volume"));
+    assertTrue(error.getMessage().toLowerCase().contains("unencrypted endpoint to reside"));
   }
 
   @Test

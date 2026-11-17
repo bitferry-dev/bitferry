@@ -83,7 +83,7 @@ class MediaWatchLiveTest {
       // Settle the watcher initialization
       Thread.sleep(300);
       int before = reports.get();
-      String setup = run("udisksctl", "loop-setup", "-f", image.toString());
+      String setup = run("udisksctl", "loop-setup", "--no-user-interaction", "-f", image.toString());
       // The polkit-restricted hosts (the loop setup gated behind the auth dialog)
       // skip: the transport itself is proven by the error arriving over the bus
       if (setup.contains("NotAuthorized")) {
@@ -93,7 +93,7 @@ class MediaWatchLiveTest {
       assertTrue(matcher.find(), () -> "loop-setup output: " + setup);
       loopDevice = matcher.group();
 
-      String mount = run("udisksctl", "mount", "-b", loopDevice);
+      String mount = run("udisksctl", "mount", "--no-user-interaction", "-b", loopDevice);
       if (mount.contains("NotAuthorized")) {
         Assumptions.assumeTrue(false, "mount is polkit-restricted on this host");
       }
@@ -107,8 +107,8 @@ class MediaWatchLiveTest {
       assertTrue(arrivalReported, "the loop media arrival must be reported");
 
       // The removal
-      run("udisksctl", "unmount", "-b", loopDevice);
-      run("udisksctl", "loop-delete", "-b", loopDevice);
+      run("udisksctl", "unmount", "--no-user-interaction", "-b", loopDevice);
+      run("udisksctl", "loop-delete", "--no-user-interaction", "-b", loopDevice);
       loopDevice = null;
       boolean removalSettled = false;
       for (int i = 0; i < 100 && !removalSettled; i++) {
@@ -120,7 +120,7 @@ class MediaWatchLiveTest {
       watch.close();
       if (loopDevice != null) {
         try {
-          run("udisksctl", "unmount", "-b", loopDevice);
+          run("udisksctl", "unmount", "--no-user-interaction", "-b", loopDevice);
         } catch (Exception ignored) {
         }
         try {

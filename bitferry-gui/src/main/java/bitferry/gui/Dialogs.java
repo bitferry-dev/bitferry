@@ -103,7 +103,7 @@ final class Dialogs {
       try {
         volume = new Volume(manager, path);
         manager.commit();
-        logs.log("Bitferry volume " + volume.tag() + " created at " + volume.root());
+        logs.log("Bitferry volume " + AnsiFormat.tag(volume.tag()) + " created at " + AnsiFormat.path(volume.root()));
         context.fireModelChanged();
       } catch (RuntimeException e) {
         if (volume != null) {
@@ -216,7 +216,7 @@ final class Dialogs {
           throw new BitferryError("Task does not belong to any registered volume; it cannot be persisted");
         }
         manager.commit();
-        logs.log("Task " + candidate.tag() + " created: " + candidate.describe());
+        logs.log("Task " + AnsiFormat.tag(candidate.tag()) + " created: " + AnsiFormat.task(candidate));
         if (keyring && candidate.usesVault()) {
           if (!KeyringVault.INSTANCE.available()) {
             logs.log("Password kept in the volume vault (no usable OS keyring on the host)");
@@ -235,7 +235,7 @@ final class Dialogs {
         // Deregister on the same manager instance the task was built on: the context's
         // manager may have been swapped by a concurrent reload meanwhile
         if (task != null) manager.deregisterTask(task);
-        logs.log("Task creation failed: " + e.getMessage());
+        logs.log(AnsiFormat.error("Task creation failed: " + e.getMessage()));
         Platform.runLater(() -> errorAlert(context, "Task creation failed", e.getMessage()));
       }
     });
@@ -257,7 +257,7 @@ final class Dialogs {
         // Rotate repository password if entered (restic only)
         if (form.resticMode() && !form.password().isEmpty()) {
           manager.passwd((Restic) current, form.password());
-          logs.log("Password updated for task " + current.tag());
+          logs.log("Password updated for task " + AnsiFormat.tag(current.tag()));
         }
 
         // Backend execution options (the resolution rides the task's profile route)
@@ -293,10 +293,10 @@ final class Dialogs {
         }
 
         manager.commit();
-        logs.log("Task " + current.tag() + " modified: " + current.describe());
+        logs.log("Task " + AnsiFormat.tag(current.tag()) + " modified: " + AnsiFormat.task(current));
         context.fireModelChanged();
       } catch (RuntimeException e) {
-        logs.log("Task modification failed: " + e.getMessage());
+        logs.log(AnsiFormat.error("Task modification failed: " + e.getMessage()));
         Platform.runLater(() -> errorAlert(context, "Task modification failed", e.getMessage()));
       }
     });
@@ -323,7 +323,7 @@ final class Dialogs {
         // The whole unchecked family surfaces (the BitferryError along with the
         // invalid-path/security-style failures): neither the log nor the alert
         // may be silently skipped
-        logs.log(title + " failed: " + e.getMessage());
+        logs.log(AnsiFormat.error(title + " failed: " + e.getMessage()));
         Platform.runLater(() -> errorAlert(context, title + " failed", e.getMessage()));
       }
     });

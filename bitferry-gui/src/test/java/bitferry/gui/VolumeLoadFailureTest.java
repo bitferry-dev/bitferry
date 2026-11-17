@@ -1,5 +1,6 @@
 package bitferry.gui;
 
+import bitferry.AnsiFormat;
 import bitferry.Bitferry;
 import bitferry.Manager;
 import org.junit.jupiter.api.Test;
@@ -29,7 +30,8 @@ class VolumeLoadFailureTest {
     assertFalse(m.loadErrors().isEmpty());
     assertEquals(1, m.loadErrors().size());
     String err = m.loadErrors().getFirst();
-    assertTrue(err.contains("failed to restore volume from '" + Bitferry.canonicalize(tempDir) + "'"),
+    String stripped = AnsiFormat.strip(err);
+    assertTrue(stripped.toLowerCase().contains("failed to restore bitferry volume from " + Bitferry.canonicalize(tempDir)),
         () -> "unexpected error message: " + err);
     assertEquals(m.loadErrors(), reported);
     assertEquals(m.loadErrors(), m.restoreErrors());
@@ -57,14 +59,14 @@ class VolumeLoadFailureTest {
     // Verify manager holds the error
     assertFalse(context.manager().loadErrors().isEmpty());
     String canonicalPath = Bitferry.canonicalize(tempDir).toString();
-    assertTrue(context.manager().loadErrors().stream().anyMatch(e -> e.contains(canonicalPath)));
+    assertTrue(context.manager().loadErrors().stream().map(AnsiFormat::strip).anyMatch(e -> e.contains(canonicalPath)));
 
     // Verify the failure was reported to the GUI logger
-    assertTrue(captured.stream().anyMatch(msg -> msg.contains("failed to restore volume from '" + canonicalPath + "'")),
+    assertTrue(captured.stream().map(AnsiFormat::strip).anyMatch(msg -> msg.toLowerCase().contains("failed to restore bitferry volume from " + canonicalPath)),
         () -> "GUI log did not receive volume load failure. Captured logs: " + captured);
 
     // Verify subsequent manager restored summary was also logged
-    assertTrue(captured.stream().anyMatch(msg -> msg.contains("manager restored:")),
+    assertTrue(captured.stream().map(AnsiFormat::strip).anyMatch(msg -> msg.startsWith("Manager update:")),
         () -> "GUI log did not receive manager restored message. Captured logs: " + captured);
   }
 }

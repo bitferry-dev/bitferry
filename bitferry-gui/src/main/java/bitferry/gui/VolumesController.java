@@ -141,7 +141,7 @@ public final class VolumesController {
       Path root = current.root();
       current.delete();
       manager.commit();
-      logs.log("Bitferry volume " + current.tag() + " deleted at " + root);
+      logs.log("Bitferry volume " + AnsiFormat.tag(current.tag()) + " deleted at " + AnsiFormat.path(root));
       // The removal is a filesystem-level change the media watcher cannot observe
       // (the mount set is unchanged): re-probe the manager explicitly. The reload
       // restores the fresh-CLI consistency (the tasks carried only by the deleted

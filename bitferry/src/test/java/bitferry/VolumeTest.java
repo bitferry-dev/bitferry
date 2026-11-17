@@ -167,7 +167,7 @@ class VolumeTest {
     Files.writeString(root.resolve(Bitferry.STORAGE), "{\"bitferry\": \"8\", \"volume\": \"e42f2d8c\", \"modified\": \"2026-01-01T00:00:00+00:00\"}");
     Manager manager = new Manager();
     BitferryError error = assertThrows(BitferryError.class, () -> Volume.restore(manager, root));
-    assertTrue(error.getMessage().contains("unsupported volume storage version 8"));
+    assertTrue(error.getMessage().toLowerCase().contains("unsupported volume storage version 8"));
   }
 
   @Test
@@ -177,7 +177,7 @@ class VolumeTest {
     Files.writeString(root.resolve(Bitferry.STORAGE), "{\"volume\": \"e42f2d8c\", \"modified\": \"2026-01-01T00:00:00+00:00\"}");
     Manager manager = new Manager();
     BitferryError error = assertThrows(BitferryError.class, () -> Volume.restore(manager, root));
-    assertTrue(error.getMessage().contains("missing volume storage version property 'bitferry'"));
+    assertTrue(error.getMessage().toLowerCase().contains("missing volume storage version property 'bitferry'"));
   }
 
   @Test
@@ -187,7 +187,7 @@ class VolumeTest {
     Files.writeString(root.resolve(Bitferry.STORAGE), "[\"not an object\"]");
     Manager manager = new Manager();
     BitferryError error = assertThrows(BitferryError.class, () -> Volume.restore(manager, root));
-    assertTrue(error.getMessage().contains("invalid volume storage descriptor: expected a JSON object"));
+    assertTrue(error.getMessage().toLowerCase().contains("invalid volume storage descriptor: expected a json object"));
   }
 
   @Test

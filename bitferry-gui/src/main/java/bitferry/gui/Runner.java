@@ -90,7 +90,7 @@ public final class Runner {
         Manager manager = context.manager();
         List<Task> tasks = new ArrayList<>(manager.selectTasks(tags).values());
         if (tasks.isEmpty()) {
-          logs.log("No intact tasks to " + (serve ? "service" : "execute"));
+          logs.log("\u001B[33mNo intact tasks to " + (serve ? "service" : "execute") + "\u001B[0m");
           done(listener, true, 0, 0);
           return;
         }
@@ -109,7 +109,7 @@ public final class Runner {
           index++;
           int at = index;
           Platform.runLater(() -> listener.taskStarted(at, total, task.tag()));
-          output.accept(String.format("\u001B[1m[%d/%d]\u001B[0m \u001B[36m%s\u001B[0m  %s", at, total, task.tag(), task.describe()));
+          output.accept(String.format("\u001B[1m[%d/%d]\u001B[0m %s  %s", at, total, AnsiFormat.tag(task.tag()), AnsiFormat.task(task)));
           boolean okTask;
           try {
             okTask = serve ? task.serve(output) : task.process(output);

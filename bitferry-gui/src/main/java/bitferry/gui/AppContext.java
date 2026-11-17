@@ -112,7 +112,7 @@ public final class AppContext {
       }
       manager = restored;
       logger.accept("Manager update: " + restored.liveVolumes().size() + " volume(s), "
-        + restored.liveTasks().size() + " task(s)");
+        + AnsiFormat.tasksSummary(restored));
       fireModelChanged();
     });
   }
@@ -156,7 +156,7 @@ public final class AppContext {
         }
       }
       logger.accept("Manager update due to media change: " + restored.liveVolumes().size()
-        + " volume(s), " + restored.liveTasks().size() + " task(s)");
+        + " volume(s), " + AnsiFormat.tasksSummary(restored));
       fireModelChanged();
     });
   }

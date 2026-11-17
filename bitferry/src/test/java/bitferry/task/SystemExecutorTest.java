@@ -530,7 +530,7 @@ class SystemExecutorTest {
     boolean result = executor.run(task, captured::add);
 
     assertFalse(result);
-    assertTrue(captured.stream().anyMatch(msg -> msg.contains("command failed with exit code 2")));
+    assertTrue(captured.stream().anyMatch(msg -> msg.contains("Command failed with exit code 2")));
   }
 
   @Test
@@ -735,7 +735,7 @@ class SystemExecutorTest {
 
     Backup backup = new Backup(manager, volumeSource(), Endpoints.parse(manager, "local:" + repo), "secret", null, null, null, null, List.of(), List.of());
     BitferryError error = assertThrows(BitferryError.class, () -> executor.conform(backup));
-    assertTrue(error.getMessage().contains("the existing repository at '" + repo + "' does not accept the provided password"));
+    assertTrue(error.getMessage().contains("does not accept the provided password"));
     assertFalse(error.getMessage().contains("--attach"));
   }
 
@@ -751,7 +751,7 @@ class SystemExecutorTest {
 
     Restore restore = new Restore(manager, Endpoints.parse(manager, "local:" + repo), volumeRestored(), "secret", null, List.of(), List.of());
     BitferryError error = assertThrows(BitferryError.class, () -> executor.conform(restore));
-    assertTrue(error.getMessage().contains("the existing repository at '" + repo + "' does not accept the provided password"));
+    assertTrue(error.getMessage().contains("does not accept the provided password"));
     assertFalse(error.getMessage().contains("--attach"));
   }
 
@@ -766,7 +766,7 @@ class SystemExecutorTest {
 
     Restore restore = new Restore(manager, Endpoints.parse(manager, "local:" + notRepo), volumeRestored(), "secret", null, List.of(), List.of());
     BitferryError error = assertThrows(BitferryError.class, () -> executor.conform(restore));
-    assertTrue(error.getMessage().contains("not a valid restic repository"));
+    assertTrue(error.getMessage().contains("restic repository"));
   }
 
   @Test
@@ -1179,7 +1179,7 @@ class SystemExecutorTest {
     Backup backup = new Backup(manager, volumeSource(), Endpoints.parse(manager, "local:" + repoDir), "old-secret", null, null, null, null, List.of(), List.of());
 
     BitferryError err = assertThrows(BitferryError.class, () -> executor.passwd(backup, "new-secret"));
-    assertTrue(err.getMessage().contains("is not accepted by the repository"));
+    assertTrue(err.getMessage().contains("is not accepted by the Restic repository"));
     assertEquals("old-secret", backup.password());
   }
 

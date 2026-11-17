@@ -25,7 +25,7 @@ class EndpointsTest {
   void barePathOutsideVolumesIsRejected() {
     // The bare form is resolve-or-reject: the plain local endpoints are only created via the explicit `local:` prefix
     BitferryError error = assertThrows(BitferryError.class, () -> Endpoints.parse(manager, dir.resolve("some/dir").toString()));
-    assertTrue(error.getMessage().contains("failed to resolve path"));
+    assertTrue(error.getMessage().toLowerCase().contains("failed to resolve path"));
   }
 
   @Test
