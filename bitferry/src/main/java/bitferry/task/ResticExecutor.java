@@ -53,7 +53,7 @@ final class ResticExecutor {
       return; // Repo directory absent: skip conformance
     }
     if (!hasRepository(repo)) {
-      throw new BitferryError("the repository at '" + repo + "' is not a valid restic repository");
+      throw new BitferryError("Invalid restic repository at " + repo);
     }
     probeRepository(restore, repo);
   }
@@ -62,19 +62,19 @@ final class ResticExecutor {
   void format(Backup backup) {
     Manager manager = backup.manager();
     if (manager.simulate) {
-      LOG.log(Level.INFO, () -> "simulated repository initialization for task " + backup.tag());
+      LOG.log(Level.INFO, () -> "Simulated repository initialization for task " + backup.tag());
       return;
     }
     String repo = backup.destination().processOpts();
     if (Boolean.TRUE.equals(backup.formatMode())) {
-      LOG.log(Level.INFO, () -> "wiping existing repository '" + repo + "' for task " + backup.tag());
+      LOG.log(Level.INFO, () -> "Wiping existing repository for task " + backup.tag() + " in " + repo);
       wipeRepository(Path.of(repo));
     } else if (hasRepository(repo)) {
       probeRepository(backup, repo);
-      LOG.log(Level.INFO, () -> "existing repository opened; attaching implicitly");
+      LOG.log(Level.INFO, () -> "Existing repository opened; attaching implicitly");
       return;
     }
-    LOG.log(Level.INFO, () -> "initializing repository '" + repo + "' for task " + backup.tag());
+    LOG.log(Level.INFO, () -> "Initializing repository for task " + backup.tag() + " in " + repo);
     List<String> cmd = new ArrayList<>();
     cmd.add(resolveExecutable());
     cmd.add("init");
@@ -86,11 +86,11 @@ final class ResticExecutor {
       ExecutorSupport.echoCommandLine(manager, cmd, null);
       int exitCode = commandExecutor.execute(cmd, null, backup.processEnvironment(), null);
       if (exitCode != 0) {
-        throw new BitferryError("repository initialization failure for task " + backup.tag() + " (exit code " + exitCode + ")");
+        throw new BitferryError("Restic repository initialization failure for task " + backup.tag() + " (exit code " + exitCode + ")");
       }
     } catch (IOException | InterruptedException e) {
       if (e instanceof InterruptedException) Thread.currentThread().interrupt();
-      throw new BitferryError("repository initialization failure for task " + backup.tag() + ": " + e.getMessage(), e);
+      throw new BitferryError("Restic repository initialization failure for task " + backup.tag() + ": " + e.getMessage(), e);
     }
   }
 
@@ -110,12 +110,12 @@ final class ResticExecutor {
       List<String> output = new ArrayList<>();
       int exitCode = commandExecutor.execute(cmd, null, restic.processEnvironment(), output::add);
       if (exitCode != 0) {
-        throw new BitferryError("the existing repository at '" + repo + "' does not accept the provided password");
+        throw new BitferryError("Restic repository at " + repo + " does not accept the provided password");
       }
       restic.markConformed();
     } catch (IOException | InterruptedException e) {
       if (e instanceof InterruptedException) Thread.currentThread().interrupt();
-      throw new BitferryError("repository probe failure for task " + restic.tag() + ": " + e.getMessage(), e);
+      throw new BitferryError("Restic repository probe failure for task " + restic.tag() + ": " + e.getMessage(), e);
     }
   }
 
@@ -125,26 +125,26 @@ final class ResticExecutor {
 
   void passwd(Restic restic, String newPassword) {
     if (newPassword == null || newPassword.isEmpty()) {
-      throw new BitferryError("new password must be specified");
+      throw new BitferryError("New password must be specified");
     }
     String repo = repoPath(restic);
     Path repoDir = Path.of(repo);
     if (!Files.isDirectory(repoDir) || !hasRepository(repo)) {
-      throw new BitferryError("the repository at '" + repo + "' is not a valid restic repository");
+      throw new BitferryError("Invalid Restic repository at " + repo);
     }
     Manager manager = restic.manager();
     if (manager.simulate) {
-      LOG.log(Level.INFO, () -> "simulated password change for task " + restic.tag());
+      LOG.log(Level.INFO, () -> "Simulated password change for task " + restic.tag());
       return;
     }
     boolean alreadyMatches = testPassword(manager, repo, newPassword);
     if (!alreadyMatches) {
       if (!restic.mayRotateRepositoryKey()) {
-        throw new BitferryError("the repository at '" + repo + "' does not accept the provided password");
+        throw new BitferryError("Restic repository at " + repo + " does not accept the provided password");
       }
       boolean currentValid = testPassword(manager, repo, restic.password());
       if (!currentValid) {
-        throw new BitferryError("current stored password for task " + restic.tag() + " is not accepted by the repository at '" + repo + "'");
+        throw new BitferryError("Current stored password for task " + restic.tag() + " is not accepted by the Restic repository at " + repo);
       }
       rotateKey(manager, repo, restic.password(), newPassword);
     }
@@ -223,18 +223,18 @@ final class ResticExecutor {
       List<String> output = new ArrayList<>();
       int exitCode = commandExecutor.execute(cmd, null, Map.of("RESTIC_PASSWORD", oldPassword), output::add);
       if (exitCode != 0) {
-        throw new BitferryError("restic key passwd failed (exit code " + exitCode + "): " + String.join("\n", output));
+        throw new BitferryError("Restic key passwd failed (exit code " + exitCode + "): " + String.join("\n", output));
       }
     } catch (IOException | InterruptedException e) {
       if (e instanceof InterruptedException) Thread.currentThread().interrupt();
-      throw new BitferryError("failed to change repository password: " + e.getMessage(), e);
+      throw new BitferryError("Failed to change repository password: " + e.getMessage(), e);
     } finally {
       if (tempFile != null) {
         final Path leaked = tempFile;
         try {
           Files.deleteIfExists(leaked);
         } catch (IOException e) {
-          LOG.log(Level.WARNING, () -> "failed to remove the temporary password file '" + leaked + "' - remove it manually");
+          LOG.log(Level.WARNING, () -> "Failed to remove the temporary password file '" + leaked + "' - remove it manually");
         }
       }
     }
@@ -252,7 +252,7 @@ final class ResticExecutor {
       // Not a POSIX file system (e.g. Windows): fall through to the ACL handling
     }
     AclFileAttributeView view = Files.getFileAttributeView(file, AclFileAttributeView.class);
-    if (view == null) throw new BitferryError("cannot restrict the temporary password file permissions: no ACL support");
+    if (view == null) throw new BitferryError("Cannot restrict the temporary password file permissions: no ACL support");
     try {
       UserPrincipal owner = view.getOwner();
       // The single allowed entry: the owner gets the full control; every other
@@ -264,7 +264,7 @@ final class ResticExecutor {
         .build();
       view.setAcl(List.of(ownerEntry));
     } catch (IOException e) {
-      throw new BitferryError("failed to restrict the temporary password file permissions: " + e.getMessage(), e);
+      throw new BitferryError("Failed to restrict the temporary password file permissions: " + e.getMessage(), e);
     }
   }
 
@@ -294,7 +294,7 @@ final class ResticExecutor {
       }
     }
     if (!failures.isEmpty()) {
-      throw new BitferryError("failed to wipe the existing repository '" + repo + "': " + String.join("; ", failures));
+      throw new BitferryError("Failed to wipe Restic repository " + repo + ": " + String.join("; ", failures));
     }
   }
 
@@ -462,13 +462,13 @@ final class ResticExecutor {
     if (backup.cadence() != null) {
       RepoState state = RepoState.load(repoDir);
       if (state.isDue(backup.cadence())) {
-        LOG.log(Level.INFO, () -> "serve cadence triggered for task " + backup.tag() + "; running service before backup");
+        LOG.log(Level.INFO, () -> "Serve cadence triggered for task " + backup.tag() + "; running service before backup");
         if (output != null) {
-          output.accept("serve cadence triggered for task " + backup.tag() + "; running service before backup");
+          output.accept("Serve cadence triggered for task " + backup.tag() + "; running service before backup");
         }
         boolean served = serveBackup(backup, output);
         if (!served) {
-          String msg = "service failed before backup for task " + backup.tag() + "; aborting backup";
+          String msg = "Service failed before backup for task " + backup.tag() + "; aborting backup";
           LOG.log(Level.ERROR, () -> msg);
           if (output != null) output.accept(msg);
           return false;
@@ -477,7 +477,7 @@ final class ResticExecutor {
     }
 
     if (output != null) {
-      output.accept("backing up '" + backup.source().processOpts() + "' into repository '" + repo + "'");
+      output.accept("Backing up " + backup.source().processOpts() + " into repository " + repo);
     }
 
     List<String> cmd = backupCommand(backup);
@@ -501,17 +501,17 @@ final class ResticExecutor {
     Map<String, String> environment = backup.processEnvironment();
 
     if (output != null) {
-      output.accept("servicing repository '" + repo + "'");
+      output.accept("Servicing repository " + repo);
     }
 
     // Step 1: Structural check (gatekeeper before any retention/prune)
     List<String> checkCmd = serveCheckCommand(backup);
     if (output != null) {
-      output.accept("checking repository '" + repo + "'");
+      output.accept("Checking repository " + repo);
     }
     boolean checkOk = ExecutorSupport.execute(commandExecutor, manager, checkCmd, null, environment, backup.tag(), output);
     if (!checkOk) {
-      String msg = "service aborted for task " + backup.tag() + ": repository check failed";
+      String msg = "Service aborted for task " + backup.tag() + ": repository check failed";
       LOG.log(Level.ERROR, () -> msg);
       if (output != null) output.accept(msg);
       return false;
@@ -521,7 +521,7 @@ final class ResticExecutor {
     List<String> forgetCmd = serveForgetCommand(backup);
     if (forgetCmd != null) {
       if (output != null) {
-        output.accept("applying retention policy to repository '" + repo + "'");
+        output.accept("Applying retention policy to repository " + repo);
       }
       boolean forgetOk = ExecutorSupport.execute(commandExecutor, manager, forgetCmd, null, environment, backup.tag(), output);
       if (!forgetOk) {
@@ -532,7 +532,7 @@ final class ResticExecutor {
     // Step 3: Prune (reclaim space)
     List<String> pruneCmd = pruneCommand(backup);
     if (output != null) {
-      output.accept("pruning repository '" + repo + "'");
+      output.accept("Pruning repository " + repo);
     }
     boolean pruneOk = ExecutorSupport.execute(commandExecutor, manager, pruneCmd, null, environment, backup.tag(), output);
     if (!pruneOk) {
@@ -555,7 +555,7 @@ final class ResticExecutor {
     Map<String, String> environment = restore.processEnvironment();
 
     if (output != null) {
-      output.accept("checking repository '" + repo + "'");
+      output.accept("Checking repository " + repo);
     }
 
     List<String> checkCmd = serveCheckCommand(restore);
@@ -568,7 +568,7 @@ final class ResticExecutor {
     String target = restore.destination().processOpts();
 
     if (output != null) {
-      output.accept("restoring repository '" + repo + "' into '" + target + "'");
+      output.accept("Restoring repository " + repo + " into " + target);
     }
 
     List<String> cmd = restoreCommand(restore);

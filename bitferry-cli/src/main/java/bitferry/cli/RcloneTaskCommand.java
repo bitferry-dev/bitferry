@@ -82,12 +82,12 @@ public abstract class RcloneTaskCommand implements Callable<Integer>, HasCommonO
     boolean encryptRequested = encryptDefault || encrypt != null;
     boolean decryptRequested = decryptDefault || decrypt != null;
     // The shorthand and the explicit forms of the same setting are mutually exclusive
-    if (encryptDefault && encrypt != null) throw new BitferryError("destination encryption specified twice: use either -e or --encrypt");
-    if (decryptDefault && decrypt != null) throw new BitferryError("source decryption specified twice: use either -d or --decrypt");
-    if (encryptRequested && decryptRequested) throw new BitferryError("invalid encryption options: the encryption and decryption are mutually exclusive");
+    if (encryptDefault && encrypt != null) throw new BitferryError("Destination encryption specified twice: use either -e or --encrypt");
+    if (decryptDefault && decrypt != null) throw new BitferryError("Source decryption specified twice: use either -d or --decrypt");
+    if (encryptRequested && decryptRequested) throw new BitferryError("Invalid encryption options: the encryption and decryption are mutually exclusive");
     // The explicit profile selection leaves nothing for the unicode modifier to resolve
-    if (extended && (encrypt != null || decrypt != null)) throw new BitferryError("invalid encryption options: the extended profile modifier (-u) conflicts with the explicitly specified encryption profile");
-    if (extended && !encryptRequested && !decryptRequested) throw new BitferryError("invalid encryption options: the extended profile modifier requires the encryption to be requested");
+    if (extended && (encrypt != null || decrypt != null)) throw new BitferryError("Invalid encryption options: the extended profile modifier (-u) conflicts with the explicitly specified encryption profile");
+    if (extended && !encryptRequested && !decryptRequested) throw new BitferryError("Invalid encryption options: the extended profile modifier requires the encryption to be requested");
     String profile = encrypt != null ? encrypt : decrypt != null ? decrypt : extended ? "@extended" : "@default";
     CommonOptions opts = CliUtils.resolveOptions(spec, options);
     Manager m = CliUtils.restoreManager(opts);
@@ -99,7 +99,7 @@ public abstract class RcloneTaskCommand implements Callable<Integer>, HasCommonO
     List<String> exc = CliUtils.parsePatterns(exclude, excludeExts);
     Task task = taskFactory().create(m, src, dst, execute, inc, exc);
     if (encryptRequested || decryptRequested) {
-      if (!task.supportsEncryption()) throw new BitferryError("encryption is supported for the rclone tasks only");
+      if (!task.supportsEncryption()) throw new BitferryError("Rncryption is supported for the Rclone tasks only");
       Rclone rclone = (Rclone) task;
       // The password is obtained after the endpoints are validated
       String password = CliUtils.obtainPassword();
@@ -111,7 +111,7 @@ public abstract class RcloneTaskCommand implements Callable<Integer>, HasCommonO
       CliUtils.noteKeyringStorage(spec, task, keyring);
     }
     if (m.volumes().values().stream().noneMatch(v -> task.refersVolume(v.tag()))) {
-      throw new BitferryError("task " + task.tag() + " does not belong to any registered volume; it cannot be persisted");
+      throw new BitferryError("Task " + task.tag() + " does not belong to any registered volume; it cannot be persisted");
     }
     m.commit();
     return 0;

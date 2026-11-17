@@ -265,7 +265,7 @@ public final class ItemListController {
       controller.init(initialItems, profiles);
       return controller;
     } catch (IOException e) {
-      throw new BitferryError("the item list editor form loading failure", e);
+      throw new BitferryError("Item list editor form loading failure", e);
     }
   }
 }

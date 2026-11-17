@@ -6,6 +6,7 @@ import java.io.*;
 import java.lang.System.Logger.Level;
 import java.nio.file.*;
 import java.util.*;
+import java.util.function.Consumer;
 import java.util.regex.*;
 import java.util.stream.*;
 import tools.jackson.databind.JsonNode;
@@ -20,6 +21,7 @@ public class Manager {
 
   private final Map<String, Volume> volumes = new LinkedHashMap<>();
   private final Map<String, Task> tasks = new LinkedHashMap<>();
+  private final List<String> loadErrors = new ArrayList<>();
 
   /// The registry lock: the mutations and the snapshot iterations are serialized so
   /// that a concurrent reader (a GUI table rebuild on the FX thread) never observes a
@@ -63,6 +65,18 @@ public class Manager {
     synchronized (registryLock) {
       return volumes.get(tag);
     }
+  }
+
+  /// Return any error messages recorded during volume loading / restoration.
+  public List<String> loadErrors() {
+    synchronized (registryLock) {
+      return List.copyOf(loadErrors);
+    }
+  }
+
+  /// Alias for [loadErrors] matching the restoration terminology.
+  public List<String> restoreErrors() {
+    return loadErrors();
   }
 
   /// The comparable snapshot of the current mount set (the sorted mount-point
@@ -110,10 +124,10 @@ public class Manager {
       try {
         return v.endpoint(canonical);
       } catch (BitferryError e) {
-        LOG.log(Level.DEBUG, () -> "path '" + canonical + "' can not be resolved against volume " + v.tag());
+        LOG.log(Level.DEBUG, () -> "Path " + canonical + " can not be resolved against volume " + v.tag());
       }
     }
-    throw new BitferryError("failed to resolve path '" + canonical + "' against any registered volumes in " + this);
+    throw new BitferryError("Failed to resolve path " + canonical + " against any registered Bitferry volumes in " + this);
   }
 
   /// Register the volume upon its creation or restoration keeping the copy with the newest
@@ -123,13 +137,13 @@ public class Manager {
     synchronized (registryLock) {
       Volume existing = volumes.get(volume.tag());
       if (existing == null) {
-        LOG.log(Level.INFO, () -> "volume " + volume.tag() + " registered in " + this);
+        LOG.log(Level.INFO, () -> "Bitferry volume " + volume.tag() + " registered in " + this);
       } else if (existing.mtime().isBefore(volume.mtime())
         || (existing.mtime().isEqual(volume.mtime()) && volume.pendingDeletion() && !existing.pendingDeletion())) {
         volumes.remove(volume.tag());
-        LOG.log(Level.INFO, () -> "replaced already registered volume " + volume.tag() + " with the one with newer timestamp");
+        LOG.log(Level.INFO, () -> "Replaced already registered Bitferry volume " + volume.tag() + " with the one with newer timestamp");
       } else {
-        LOG.log(Level.INFO, () -> "kept already registered volume " + volume.tag() + " with newer timestamp");
+        LOG.log(Level.INFO, () -> "Kept already registered Bitferry volume " + volume.tag() + " with newer timestamp");
         return;
       }
       volumes.put(volume.tag(), volume);
@@ -145,13 +159,13 @@ public class Manager {
     synchronized (registryLock) {
       Task existing = tasks.get(task.tag());
       if (existing == null) {
-        LOG.log(Level.INFO, () -> "task " + task.tag() + " registered in " + this);
+        LOG.log(Level.INFO, () -> "Task " + task.tag() + " registered in " + this);
       } else if (existing.mtime().isBefore(task.mtime())
         || (existing.mtime().isEqual(task.mtime()) && task.isDeleted() && !existing.isDeleted())) {
         tasks.remove(task.tag());
-        LOG.log(Level.INFO, () -> "replaced already registered task " + task.tag() + " with the one with newer timestamp");
+        LOG.log(Level.INFO, () -> "Replaced already registered task " + task.tag() + " with the one with newer timestamp");
       } else {
-        LOG.log(Level.INFO, () -> "kept already registered task " + task.tag() + " with newer timestamp");
+        LOG.log(Level.INFO, () -> "Kept already registered task " + task.tag() + " with newer timestamp");
         return;
       }
       tasks.put(task.tag(), task);
@@ -171,7 +185,7 @@ public class Manager {
   public void replaceTask(Task task) {
     synchronized (registryLock) {
       tasks.put(task.tag(), task);
-      LOG.log(Level.INFO, () -> "task " + task.tag() + " replaced in " + this);
+      LOG.log(Level.INFO, () -> "Task " + task.tag() + " replaced in " + this);
     }
   }
 
@@ -257,7 +271,7 @@ public class Manager {
       boolean allPresent = task.referredVolumes().stream().allMatch(vtag -> volume(vtag) != null);
       if (allPresent) {
         task.collect();
-        LOG.log(Level.INFO, () -> "collected the deleted task " + task.tag());
+        LOG.log(Level.INFO, () -> "Collected the deleted task " + task.tag());
       }
     }
   }
@@ -285,32 +299,41 @@ public class Manager {
   /// the BITFERRY_PATH directories, the mounted file systems) is a caller's concern -
   /// the CLI composes it in CliUtils.restoreManager keeping the direct Manager use
   /// (the tests, the embedders) isolated from the host environment.
-  public Manager restore(List<Path> roots) {
+  public Manager restore(List<Path> roots, Consumer<String> errorConsumer) {
     for (Path root : roots.stream().map(Bitferry::canonicalize).distinct().toList()) {
       try {
         // The probe no longer declares IOException (the modern JDK convenience probes
         // resolve the access errors into the false return), so the guard is the
         // unchecked SecurityException only
         if (!java.nio.file.Files.isRegularFile(root.resolve(Bitferry.STORAGE))) {
-          LOG.log(Level.DEBUG, () -> "no volume storage found in '" + root + "'");
+          LOG.log(Level.DEBUG, () -> "No Bitferry volume storage found in " + root);
           continue;
         }
       } catch (SecurityException e) {
-        LOG.log(Level.DEBUG, () -> "cannot access '" + root + "': " + e.getMessage());
+        LOG.log(Level.DEBUG, () -> "Cannot access " + root + ": " + e.getMessage());
         continue;
       }
-      LOG.log(Level.INFO, () -> "probing '" + root + "' for volume");
+      LOG.log(Level.INFO, () -> "Probing " + root + " for Bitferry volume");
       try {
         Volume.restore(this, root);
-        LOG.log(Level.INFO, () -> "restored volume from '" + root + "'");
-      } catch (BitferryError e) {
-        LOG.log(Level.ERROR, () -> "failed to restore volume from '" + root + "': " + e.getMessage());
+        LOG.log(Level.INFO, () -> "Restored Bitferry volume from " + root);
+      } catch (Exception e) {
+        String message = "Failed to restore Bitferry volume from " + root + ": " + e.getMessage();
+        LOG.log(Level.ERROR, () -> message);
+        synchronized (registryLock) {
+          loadErrors.add(message);
+        }
+        if (errorConsumer != null) errorConsumer.accept(message);
       }
     }
     // The tombstones whose referred volumes have all become visible are collected:
     // their physical removal from the storages materializes upon the following commit
     collectGarbage();
     return this;
+  }
+
+  public Manager restore(List<Path> roots) {
+    return restore(roots, null);
   }
 
   /// The mount points of the presently mounted file systems — the
@@ -375,7 +398,7 @@ public class Manager {
       try {
         volume.commit();
       } catch (BitferryError e) {
-        LOG.log(Level.ERROR, () -> "commit failure(s) for volume " + volume.tag() + ": " + e.getMessage());
+        LOG.log(Level.ERROR, () -> "Commit failure(s) for Bitferry volume " + volume.tag() + ": " + e.getMessage());
         problems.add(e.getMessage());
       }
     }
@@ -393,7 +416,7 @@ public class Manager {
       try {
         outcome = t.process(output) && outcome;
       } catch (BitferryError e) {
-        LOG.log(Level.ERROR, () -> "task " + t.tag() + " processing failure: " + e.getMessage());
+        LOG.log(Level.ERROR, () -> "Task " + t.tag() + " processing failure: " + e.getMessage());
         outcome = false;
       }
     }
@@ -430,7 +453,7 @@ public class Manager {
       try {
         outcome = t.serve(output) && outcome;
       } catch (BitferryError e) {
-        LOG.log(Level.ERROR, () -> "task " + t.tag() + " servicing failure: " + e.getMessage());
+        LOG.log(Level.ERROR, () -> "Task " + t.tag() + " servicing failure: " + e.getMessage());
         outcome = false;
       }
     }

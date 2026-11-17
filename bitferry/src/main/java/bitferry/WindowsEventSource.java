@@ -45,13 +45,13 @@ final class WindowsEventSource implements MediaWatch.EventSource {
       pump.setDaemon(true);
       pump.start();
       if (!started.await(5, TimeUnit.SECONDS)) {
-        LOG.log(java.lang.System.Logger.Level.DEBUG, "device message window startup timed out");
+        LOG.log(java.lang.System.Logger.Level.DEBUG, "Device message window startup timed out");
         close();
         return false;
       }
       return alive;
     } catch (Exception e) {
-      LOG.log(java.lang.System.Logger.Level.DEBUG, () -> "device message window unavailable: " + e);
+      LOG.log(java.lang.System.Logger.Level.DEBUG, () -> "Device message window unavailable: " + e);
       close();
       return false;
     }
@@ -111,7 +111,7 @@ final class WindowsEventSource implements MediaWatch.EventSource {
     } catch (Throwable t) {
       // The pump teardown (the close) is normal here; the setup failures degrade
       // to the polling fallback
-      LOG.log(java.lang.System.Logger.Level.DEBUG, () -> "device message pump finished: " + t);
+      LOG.log(java.lang.System.Logger.Level.DEBUG, () -> "Device message pump finished: " + t);
     } finally {
       alive = false;
       started.countDown();

@@ -70,9 +70,9 @@ public class CreateBackupCommand implements Callable<Integer>, HasCommonOptions 
   @Override
   public Integer call() {
     // The shorthand and the explicit forms of the same setting are mutually exclusive
-    if (defaultForget && forget != null) throw new BitferryError("snapshot retention policy specified twice: use either -f or --forget");
-    if (defaultCheck && check != null) throw new BitferryError("repository checking specified twice: use either -c or --check");
-    if (defaultServe && serve != null) throw new BitferryError("serve cadence specified twice: use either -s or --serve");
+    if (defaultForget && forget != null) throw new BitferryError("Snapshot retention policy specified twice: use either -f or --forget");
+    if (defaultCheck && check != null) throw new BitferryError("Repository checking specified twice: use either -c or --check");
+    if (defaultServe && serve != null) throw new BitferryError("Serve cadence specified twice: use either -s or --serve");
     CommonOptions opts = CliUtils.resolveOptions(spec, options);
     Manager m = CliUtils.restoreManager(opts);
     // The bare paths encompassed by the intact volumes are attached to them
@@ -89,7 +89,7 @@ public class CreateBackupCommand implements Callable<Integer>, HasCommonOptions 
     Backup task = new Backup(m, src, repo, password, format, execute, f, c, sCadence, List.of(), exc, keyring);
     CliUtils.noteKeyringStorage(spec, task, keyring);
     if (m.volumes().values().stream().noneMatch(v -> task.refersVolume(v.tag()))) {
-      throw new BitferryError("task " + task.tag() + " does not belong to any registered volume; it cannot be persisted");
+      throw new BitferryError("Task " + task.tag() + " does not belong to any registered volume; it cannot be persisted");
     }
     m.commit();
     return 0;

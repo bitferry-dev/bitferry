@@ -48,7 +48,7 @@ public final class Passwords {
       System.arraycopy(ciphertext, 0, payload, IV_LENGTH, ciphertext.length);
       return Base64.getUrlEncoder().withoutPadding().encodeToString(payload);
     } catch (GeneralSecurityException e) {
-      throw new BitferryError("password obscuring failure: " + e.getMessage(), e);
+      throw new BitferryError("Password obscuring failure: " + e.getMessage(), e);
     }
   }
 
@@ -58,16 +58,16 @@ public final class Passwords {
     try {
       payload = Base64.getUrlDecoder().decode(obscured);
     } catch (IllegalArgumentException e) {
-      throw new BitferryError("invalid obscured password - is it obscured?", e);
+      throw new BitferryError("Invalid obscured password - is it obscured?", e);
     }
-    if (payload.length < IV_LENGTH) throw new BitferryError("obscured password too short - is it obscured?");
+    if (payload.length < IV_LENGTH) throw new BitferryError("Obscured password too short - is it obscured?");
     try {
       Cipher cipher = Cipher.getInstance("AES/CTR/NoPadding");
       cipher.init(Cipher.DECRYPT_MODE, new SecretKeySpec(KEY, "AES"), new IvParameterSpec(payload, 0, IV_LENGTH));
       byte[] plaintext = cipher.doFinal(payload, IV_LENGTH, payload.length - IV_LENGTH);
       return new String(plaintext, StandardCharsets.UTF_8);
     } catch (GeneralSecurityException e) {
-      throw new BitferryError("password revealing failure: " + e.getMessage(), e);
+      throw new BitferryError("Password revealing failure: " + e.getMessage(), e);
     }
   }
 

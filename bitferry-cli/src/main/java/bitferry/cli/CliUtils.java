@@ -23,7 +23,7 @@ public final class CliUtils {
   public static void ensureUniqueTask(Manager manager, Endpoint source, Endpoint destination) {
     Task existing = manager.findTask(source, destination);
     if (existing != null) {
-      throw new BitferryError("task " + existing.tag() + " already covers " + existing.describe() + "; delete it first or specify different endpoints");
+      throw new BitferryError("Task " + existing.tag() + " already covers " + existing.describe() + "; delete it first or specify different endpoints");
     }
   }
 
@@ -35,7 +35,7 @@ public final class CliUtils {
   /// input channel so that they do not leak into the shell history or the process listings.
   public static String obtainPassword() {
     String password = passwordSource.get();
-    if (password == null || password.isEmpty()) throw new BitferryError("password must be specified");
+    if (password == null || password.isEmpty()) throw new BitferryError("Password must be specified");
     return password;
   }
 
@@ -61,11 +61,11 @@ public final class CliUtils {
   // The terminal prompting: hidden input with confirmation
   private static String readPasswordFromTerminal() {
     Console console = System.console();
-    if (console == null) throw new BitferryError("password prompting requires an interactive terminal; run the deployed bitferry executable (deploy it with ./gradlew :bitferry-cli:installDist) -- the gradle run task does not attach a terminal to the application, and the piped or redirected standard input is deliberately not accepted");
+    if (console == null) throw new BitferryError("Password prompting requires an interactive terminal; run the deployed bitferry executable (deploy it with ./gradlew :bitferry-cli:installDist) -- the gradle run task does not attach a terminal to the application, and the piped or redirected standard input is deliberately not accepted");
     char[] pwdChars = console.readPassword("Password: ");
     char[] confirmChars = console.readPassword("Repeat password: ");
     try {
-      if (!Arrays.equals(pwdChars, confirmChars)) throw new BitferryError("passwords do not match");
+      if (!Arrays.equals(pwdChars, confirmChars)) throw new BitferryError("Passwords do not match");
       return new String(pwdChars);
     } finally {
       if (pwdChars != null) Arrays.fill(pwdChars, '\0');

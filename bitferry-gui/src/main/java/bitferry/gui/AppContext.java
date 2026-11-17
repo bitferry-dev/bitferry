@@ -107,8 +107,11 @@ public final class AppContext {
   public void reload() {
     operations.execute(() -> {
       Manager restored = restoreNow();
+      for (String err : restored.loadErrors()) {
+        logger.accept(err);
+      }
       manager = restored;
-      logger.accept("manager restored: " + restored.liveVolumes().size() + " volume(s), "
+      logger.accept("Manager update: " + restored.liveVolumes().size() + " volume(s), "
         + restored.liveTasks().size() + " task(s)");
       fireModelChanged();
     });
@@ -143,14 +146,23 @@ public final class AppContext {
       if (current != null
         && currentRoots.equals(restoredRoots)
         && current.liveTasks().keySet().equals(restored.liveTasks().keySet())
-        && current.selectTasks().keySet().equals(restored.selectTasks().keySet())) {
+        && current.selectTasks().keySet().equals(restored.selectTasks().keySet())
+        && current.loadErrors().equals(restored.loadErrors())) {
         return;
       }
-      logger.accept("media change detected - manager restored: " + restored.liveVolumes().size()
+      for (String err : restored.loadErrors()) {
+        if (current == null || !current.loadErrors().contains(err)) {
+          logger.accept(err);
+        }
+      }
+      logger.accept("Manager update due to media change: " + restored.liveVolumes().size()
         + " volume(s), " + restored.liveTasks().size() + " task(s)");
       fireModelChanged();
     });
   }
+
+  // The extra roots (tested/injected roots) included in probing
+  final List<Path> extraRoots = new ArrayList<>();
 
   // The shared restore: the probing policy roots + the verbosity carry-over.
   private Manager restoreNow() {
@@ -159,6 +171,11 @@ public final class AppContext {
     if (env != null && !env.isBlank()) {
       for (String entry : env.split(Pattern.quote(File.pathSeparator))) roots.add(Path.of(entry));
     }
+    String prop = System.getProperty("bitferry.path");
+    if (prop != null && !prop.isBlank()) {
+      for (String entry : prop.split(Pattern.quote(File.pathSeparator))) roots.add(Path.of(entry));
+    }
+    roots.addAll(extraRoots);
     roots.add(Path.of(System.getProperty("user.home")));
     roots.addAll(Manager.mountPoints());
     Manager restored = new Manager().restore(roots);

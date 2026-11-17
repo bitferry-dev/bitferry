@@ -50,11 +50,11 @@ public final class Endpoints {
       String part = x.group("tag");
       List<Volume> es = new ArrayList<>();
       for (Volume v : manager.volumes().values()) if (v.isLive() && Tags.matches(part, v.tag())) es.add(v);
-      if (es.isEmpty()) throw new BitferryError("no intact volume matching (partial) tag '" + part + "'");
-      if (es.size() > 1) throw new BitferryError("multiple volumes matching (partial) tag '" + part + "': " + String.join(", ", es.stream().map(v -> v.tag()).toList()));
+      if (es.isEmpty()) throw new BitferryError("No intact volume matching (partial) tag " + part);
+      if (es.size() > 1) throw new BitferryError("Multiple volumes matching (partial) tag " + part + ": " + String.join(", ", es.stream().map(v -> v.tag()).toList()));
       return new VolumeEndpoint(manager, es.getFirst().tag(), x.group("path"));
     }
-    throw new BitferryError("invalid endpoint specifier '" + specifier + "'");
+    throw new BitferryError("Invalid endpoint specifier " + specifier);
   }
 
   /// Restore an endpoint from the storage descriptor node dispatching
@@ -67,7 +67,7 @@ public final class Endpoints {
     } catch (BitferryError e) {
       throw e;
     } catch (RuntimeException e) {
-      throw BitferryError.resolve(e, "invalid endpoint descriptor: " + e.getMessage());
+      throw BitferryError.resolve(e, "Invalid endpoint descriptor: " + e.getMessage());
     }
   }
 }

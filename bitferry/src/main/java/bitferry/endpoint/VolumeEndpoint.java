@@ -30,13 +30,13 @@ public final class VolumeEndpoint implements Endpoint {
     @JsonProperty("volume") String vtag,
     @JsonProperty("path") String path
   ) {
-    if (manager == null || vtag == null) throw new BitferryError("invalid endpoint descriptor");
+    if (manager == null || vtag == null) throw new BitferryError("Invalid endpoint descriptor");
     path = path == null ? "." : path;
     Path p = Path.of(path);
     for (Path element : p) {
-      if (element.toString().equals("..")) throw new BitferryError("invalid volume-relative path '" + path + "'");
+      if (element.toString().equals("..")) throw new BitferryError("Invalid Bitferry volume -relative path " + path);
     }
-    if (p.isAbsolute()) throw new BitferryError("invalid volume-relative path '" + path + "'");
+    if (p.isAbsolute()) throw new BitferryError("Invalid Bitferry volume -relative path " + path);
     this.manager = manager;
     this.vtag = vtag;
     // The platform separator (the backslash of the Windows paths) is normalized
@@ -80,7 +80,7 @@ public final class VolumeEndpoint implements Endpoint {
   @Override
   public Volume requireVolume(Manager manager, String message) {
     Volume volume = manager.volumes().get(vtag);
-    if (volume == null) throw new BitferryError("no volume " + vtag + " is registered");
+    if (volume == null) throw new BitferryError("No volume " + vtag + " is registered");
     return volume;
   }
 
@@ -98,7 +98,7 @@ public final class VolumeEndpoint implements Endpoint {
 
   private Volume volume() {
     Volume volume = manager.volumes().get(vtag);
-    if (volume == null) throw new BitferryError("no volume " + vtag + " is registered");
+    if (volume == null) throw new BitferryError("No volume " + vtag + " is registered");
     return volume;
   }
 }

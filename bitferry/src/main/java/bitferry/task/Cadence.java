@@ -29,7 +29,7 @@ public record Cadence(Duration duration, int count) {
       String name = option.substring(1);
       Cadence profile = PROFILES.get(name);
       if (profile == null) {
-        throw new BitferryError("unknown cadence profile '" + option + "'");
+        throw new BitferryError("Unknown cadence profile " + option);
       }
       return profile;
     }
@@ -54,14 +54,14 @@ public record Cadence(Duration duration, int count) {
       try {
         cnt = cStr.isEmpty() ? Integer.MAX_VALUE : Integer.parseInt(cStr);
       } catch (NumberFormatException e) {
-        throw new BitferryError("invalid cadence backup count '" + cStr + "': expected integer", e);
+        throw new BitferryError("Invalid cadence backup count " + cStr + ": expected integer", e);
       }
     } else {
-      throw new BitferryError("invalid cadence specification '" + option + "': expected '<duration>,<count>', '<duration>' or '<count>'");
+      throw new BitferryError("Invalid cadence specification " + option + ": expected '<duration>,<count>', '<duration>' or '<count>'");
     }
 
     if (cnt <= 0) {
-      throw new BitferryError("invalid cadence backup count '" + cnt + "': must be positive");
+      throw new BitferryError("Invalid cadence backup count " + cnt + ": must be positive");
     }
     return new Cadence(dur, cnt);
   }
@@ -69,7 +69,7 @@ public record Cadence(Duration duration, int count) {
   /// Parse duration strings such as "7d", "24h", "30m", "2w".
   public static Duration parseDuration(String s) {
     if (s == null || s.isEmpty()) {
-      throw new BitferryError("empty duration string");
+      throw new BitferryError("Empty duration string");
     }
     char unit = s.charAt(s.length() - 1);
     String numStr = s.substring(0, s.length() - 1);
@@ -77,10 +77,10 @@ public record Cadence(Duration duration, int count) {
     try {
       amount = Long.parseLong(numStr);
     } catch (NumberFormatException e) {
-      throw new BitferryError("invalid duration number in '" + s + "'");
+      throw new BitferryError("Invalid duration number in " + s);
     }
     if (amount <= 0) {
-      throw new BitferryError("duration must be positive: '" + s + "'");
+      throw new BitferryError("Duration must be positive but got: " + s);
     }
     return switch (unit) {
       case 's' -> Duration.ofSeconds(amount);
@@ -88,7 +88,7 @@ public record Cadence(Duration duration, int count) {
       case 'h' -> Duration.ofHours(amount);
       case 'd' -> Duration.ofDays(amount);
       case 'w' -> Duration.ofDays(amount * 7);
-      default -> throw new BitferryError("unknown duration unit '" + unit + "' in '" + s + "': expected s, m, h, d, or w");
+      default -> throw new BitferryError("Unknown duration unit " + unit + " in " + s + ": expected s, m, h, d, or w");
     };
   }
 

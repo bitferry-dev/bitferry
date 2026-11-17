@@ -735,22 +735,22 @@ public final class TaskFormController {
   }
 
   void validate() {
-    if (source().isEmpty()) throw new BitferryError("source endpoint must be specified");
-    if (destination().isEmpty()) throw new BitferryError("destination endpoint must be specified");
+    if (source().isEmpty()) throw new BitferryError("Source endpoint must be specified");
+    if (destination().isEmpty()) throw new BitferryError("Destination endpoint must be specified");
     if (existing == null) {
       if (resticMode()) {
-        if (password.getText().isEmpty()) throw new BitferryError("password must be specified");
-        if (!password.getText().equals(passwordConfirm.getText())) throw new BitferryError("passwords do not match");
+        if (password.getText().isEmpty()) throw new BitferryError("Password must be specified");
+        if (!password.getText().equals(passwordConfirm.getText())) throw new BitferryError("Passwords do not match");
       }
       if (encryption() != null) {
-        if (cryptPassword.getText().isEmpty()) throw new BitferryError("encryption password must be specified");
-        if (!cryptPassword.getText().equals(cryptPasswordConfirm.getText())) throw new BitferryError("encryption passwords do not match");
+        if (cryptPassword.getText().isEmpty()) throw new BitferryError("Encryption password must be specified");
+        if (!cryptPassword.getText().equals(cryptPasswordConfirm.getText())) throw new BitferryError("Encryption passwords do not match");
       }
     } else {
       if (resticMode()) {
         if (!password.getText().isEmpty() || !passwordConfirm.getText().isEmpty()) {
-          if (password.getText().isEmpty()) throw new BitferryError("password must be specified");
-          if (!password.getText().equals(passwordConfirm.getText())) throw new BitferryError("passwords do not match");
+          if (password.getText().isEmpty()) throw new BitferryError("Password must be specified");
+          if (!password.getText().equals(passwordConfirm.getText())) throw new BitferryError("pPasswords do not match");
         }
       }
     }
@@ -766,7 +766,7 @@ public final class TaskFormController {
       controller.init(context, existing);
       return controller;
     } catch (IOException e) {
-      throw new BitferryError("the task form loading failure", e);
+      throw new BitferryError("Task form loading failure", e);
     }
   }
 }

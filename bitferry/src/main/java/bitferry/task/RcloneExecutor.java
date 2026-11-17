@@ -51,7 +51,7 @@ final class RcloneExecutor {
         rawPaths.add(rel.toString().replace('\\', '/'));
       }
     } catch (IOException e) {
-      throw new BitferryError("failed to inspect '" + encryptedSide + "': " + e.getMessage(), e);
+      throw new BitferryError("Failed to inspect " + encryptedSide + ": " + e.getMessage(), e);
     }
 
     if (rawPaths.isEmpty()) {

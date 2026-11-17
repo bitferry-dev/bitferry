@@ -120,13 +120,13 @@ public final class MainController {
   @FXML
   private void onVerbose() {
     context.verbose(verbose.isSelected());
-    logPaneController.log("backend verbosity: " + (verbose.isSelected() ? "verbose" : "normal"));
+    logPaneController.log("Backend verbosity: " + (verbose.isSelected() ? "verbose" : "normal"));
   }
 
   @FXML
   private void onSimulate() {
     context.simulate(simulate.isSelected());
-    logPaneController.log("simulation mode: " + (simulate.isSelected() ? "enabled (dry run)" : "disabled"));
+    logPaneController.log("Simulation mode: " + (simulate.isSelected() ? "enabled (dry run)" : "disabled"));
   }
 
   @FXML
@@ -137,10 +137,10 @@ public final class MainController {
   @FXML
   private void onReload() {
     if (runner.isBusy()) {
-      logPaneController.log("reload rejected: a run is in progress");
+      logPaneController.log("Reload rejected: a run is in progress");
       return;
     }
-    logPaneController.log("reloading the manager...");
+    logPaneController.log("Reloading the manager");
     context.reload();
   }
 

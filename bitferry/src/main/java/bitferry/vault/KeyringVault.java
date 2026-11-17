@@ -57,11 +57,11 @@ public final class KeyringVault implements Vault {
   @Override
   public void storeToken(Task task, String token) {
     SecretStore<StoredCredential> store = store();
-    if (store == null) throw new BitferryError("no usable OS keyring on the host");
+    if (store == null) throw new BitferryError("No usable operating system keyring detected");
     String key = KEY_PREFIX + task.tag();
     store.delete(key);
     if (!store.add(key, new StoredCredential(USER, token.toCharArray()))) {
-      throw new BitferryError("keyring storage refused the token of task " + task.tag());
+      throw new BitferryError("Keyring storage refused the token of task " + task.tag());
     }
   }
 

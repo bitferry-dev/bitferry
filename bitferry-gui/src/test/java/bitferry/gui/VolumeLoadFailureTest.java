@@ -1,0 +1,70 @@
+package bitferry.gui;
+
+import bitferry.Bitferry;
+import bitferry.Manager;
+import org.junit.jupiter.api.Test;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+/// Tests for volume load failure reporting in Manager and AppContext (GUI log).
+class VolumeLoadFailureTest {
+
+  @Test
+  void managerRestoreRecordsLoadErrors() throws Exception {
+    Path tempDir = Files.createTempDirectory("bitferry-corrupt-vol-");
+    Path storage = tempDir.resolve(Bitferry.STORAGE);
+    Files.writeString(storage, "{ \"bitferry\": \"999\", \"volume\": \"badvol\" }");
+
+    List<String> reported = new ArrayList<>();
+    Manager m = new Manager().restore(List.of(tempDir), reported::add);
+
+    assertFalse(m.loadErrors().isEmpty());
+    assertEquals(1, m.loadErrors().size());
+    String err = m.loadErrors().getFirst();
+    assertTrue(err.contains("failed to restore volume from '" + Bitferry.canonicalize(tempDir) + "'"),
+        () -> "unexpected error message: " + err);
+    assertEquals(m.loadErrors(), reported);
+    assertEquals(m.loadErrors(), m.restoreErrors());
+  }
+
+  @Test
+  void appContextReloadReportsVolumeLoadFailuresToLogger() throws Exception {
+    Path tempDir = Files.createTempDirectory("bitferry-corrupt-gui-");
+    Path storage = tempDir.resolve(Bitferry.STORAGE);
+    Files.writeString(storage, "{ corrupt json");
+
+    AppContext context = new AppContext();
+    context.extraRoots.add(tempDir);
+
+    List<String> captured = Collections.synchronizedList(new ArrayList<>());
+    context.logger = captured::add;
+
+    CountDownLatch changed = new CountDownLatch(1);
+    context.onModelChanged(changed::countDown);
+
+    context.reload();
+    assertTrue(changed.await(5, TimeUnit.SECONDS), "reload timed out");
+    context.operations().submit(() -> null).get(5, TimeUnit.SECONDS);
+
+    // Verify manager holds the error
+    assertFalse(context.manager().loadErrors().isEmpty());
+    String canonicalPath = Bitferry.canonicalize(tempDir).toString();
+    assertTrue(context.manager().loadErrors().stream().anyMatch(e -> e.contains(canonicalPath)));
+
+    // Verify the failure was reported to the GUI logger
+    assertTrue(captured.stream().anyMatch(msg -> msg.contains("failed to restore volume from '" + canonicalPath + "'")),
+        () -> "GUI log did not receive volume load failure. Captured logs: " + captured);
+
+    // Verify subsequent manager restored summary was also logged
+    assertTrue(captured.stream().anyMatch(msg -> msg.contains("manager restored:")),
+        () -> "GUI log did not receive manager restored message. Captured logs: " + captured);
+  }
+}

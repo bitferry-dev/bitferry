@@ -107,7 +107,7 @@ final class ExecutorSupport {
     try {
       int exitCode = executor.execute(command, workingDirectory, environment, output);
       if (exitCode != 0) {
-        String message = "command failed with exit code " + exitCode + " for task " + taskTag;
+        String message = "Command failed with exit code " + exitCode + " for task " + taskTag;
         LOG.log(Level.ERROR, () -> message);
         if (output != null) output.accept(message);
         return false;
@@ -115,7 +115,7 @@ final class ExecutorSupport {
       return true;
     } catch (IOException | InterruptedException e) {
       if (e instanceof InterruptedException) Thread.currentThread().interrupt();
-      String message = "task " + taskTag + " processing failure: " + e.getMessage();
+      String message = "Task " + taskTag + " processing failure: " + e.getMessage();
       LOG.log(Level.ERROR, () -> message);
       if (output != null) output.accept(message);
       return false;

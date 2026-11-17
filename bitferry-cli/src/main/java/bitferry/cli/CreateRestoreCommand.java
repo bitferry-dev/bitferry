@@ -67,7 +67,7 @@ public class CreateRestoreCommand implements Callable<Integer>, HasCommonOptions
     Restore task = new Restore(m, repo, dst, password, execute, inc, exc, keyring);
     CliUtils.noteKeyringStorage(spec, task, keyring);
     if (m.volumes().values().stream().noneMatch(v -> task.refersVolume(v.tag()))) {
-      throw new BitferryError("task " + task.tag() + " does not belong to any registered volume; it cannot be persisted");
+      throw new BitferryError("Task " + task.tag() + " does not belong to any registered volume; it cannot be persisted");
     }
     m.commit();
     return 0;

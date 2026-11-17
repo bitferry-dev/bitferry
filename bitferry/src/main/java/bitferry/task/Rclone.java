@@ -213,7 +213,7 @@ public abstract class Rclone extends Task {
       case Update.OPERATION -> new Update(manager, source, destination, tag, BACKEND, mtime, include, exclude, storeBackend());
       case Replicate.OPERATION, "mirror", "synchronize" -> new Replicate(manager, source, destination, tag, BACKEND, mtime, include, exclude, storeBackend());
       case Equalize.OPERATION -> new Equalize(manager, source, destination, tag, BACKEND, mtime, include, exclude, storeBackend());
-      default -> throw new BitferryError("invalid rclone operation '" + newOperation + "'");
+      default -> throw new BitferryError("Invalid rclone operation " + newOperation);
     };
     morphed.manual = this.manual;
     morphed.runnable = this.runnable;
@@ -302,7 +302,7 @@ public abstract class Rclone extends Task {
     /// over the encrypt/decrypt descriptor keys. Exactly one of them may be present.
     static Encryption restore(Rclone task, Backend backend) {
       if (backend == null) return NoCrypt.INSTANCE;
-      if (backend.encrypt() != null && backend.decrypt() != null) throw new BitferryError("invalid encryption descriptor");
+      if (backend.encrypt() != null && backend.decrypt() != null) throw new BitferryError("Invalid encryption descriptor");
       if (backend.encrypt() != null) return new Encrypt(task, backend.encrypt());
       if (backend.decrypt() != null) return new Decrypt(task, backend.decrypt());
       return NoCrypt.INSTANCE;
@@ -340,7 +340,7 @@ public abstract class Rclone extends Task {
     /// keep the storage kind), falling back to the creation-time selection; the stale
     /// entries in the other provider are dropped.
     void storePasswords(String password, String password2) {
-      if (password == null || password.isEmpty()) throw new BitferryError("password must be specified for task " + task().tag());
+      if (password == null || password.isEmpty()) throw new BitferryError("Password must be specified for task " + task().tag());
       Vault target = holding != null ? holding : vault;
       target.storeToken(task(), Passwords.encodePasswords(password, password2));
       if (target != Vault.volume()) Vault.volume().deleteToken(task());
@@ -367,7 +367,7 @@ public abstract class Rclone extends Task {
     private void cache() {
       if (!cached) {
         String token = retrieveToken();
-        if (token == null) throw new BitferryError("no stored password token for task " + task().tag());
+        if (token == null) throw new BitferryError("No stored password token for task " + task().tag());
         String[] passwords = Passwords.decodeToken(token);
         cachedPassword = passwords[0];
         cachedPassword2 = passwords[1];
@@ -435,6 +435,8 @@ public abstract class Rclone extends Task {
     }
   }
 
+  private static final String E = "Encryption requires the unencrypted endpoint to reside in a Bitferry volume";
+
   /// The encrypt mode: rclone writes the encrypted replica into the destination
   /// (moved into the ':crypt:' remote through --crypt-remote).
   public static final class Encrypt extends Encryption {
@@ -465,7 +467,7 @@ public abstract class Rclone extends Task {
 
     @Override
     public Volume vaultVolume(Rclone task) {
-      return task.source().requireVolume(task.manager(), "encryption requires the unencrypted endpoint to reside within a Bitferry volume");
+      return task.source().requireVolume(task.manager(), E);
     }
   }
 
@@ -498,7 +500,7 @@ public abstract class Rclone extends Task {
 
     @Override
     public Volume vaultVolume(Rclone task) {
-      return task.destination().requireVolume(task.manager(), "encryption requires the unencrypted endpoint to reside within a Bitferry volume");
+      return task.destination().requireVolume(task.manager(), E);
     }
   }
 
@@ -527,7 +529,7 @@ public abstract class Rclone extends Task {
 
     @Override
     public Volume vaultVolume(Rclone task) {
-      throw new BitferryError("the directory endpoint must reside within a Bitferry volume");
+      throw new BitferryError("Directory endpoint must reside within a Bitferry volume");
     }
 
     @Override

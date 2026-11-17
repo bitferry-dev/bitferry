@@ -74,8 +74,8 @@ public final class Runner {
     aborted = true;
     int terminated = BackendProcesses.abort();
     logs.log(terminated > 0
-      ? "abort requested: terminating the backend process(es)"
-      : "abort requested: stopping before the next task");
+      ? "Abort requested: terminating the backend process(es)"
+      : "Abort requested: stopping before the next task");
   }
 
   // The shared sequential run loop over the selected tasks (execute or serve)
@@ -90,7 +90,7 @@ public final class Runner {
         Manager manager = context.manager();
         List<Task> tasks = new ArrayList<>(manager.selectTasks(tags).values());
         if (tasks.isEmpty()) {
-          logs.log("no intact tasks to " + (serve ? "service" : "execute"));
+          logs.log("No intact tasks to " + (serve ? "service" : "execute"));
           done(listener, true, 0, 0);
           return;
         }
@@ -99,7 +99,7 @@ public final class Runner {
         String runTitle = (manager.simulate ? "simulated " : "") + (serve ? "service" : "run") + ": " + tasks.size() + " task(s)";
         Consumer<String> output = logs.openRun(runTitle);
         if (manager.simulate) {
-          output.accept("\u001B[33msimulation mode (dry run) — no on-disk changes will be made\u001B[0m");
+          output.accept("\u001B[33mSimulation mode (dry run) — no on-disk changes will be made\u001B[0m");
         }
         int index = 0;
         for (Task task : tasks) {
@@ -114,10 +114,10 @@ public final class Runner {
           try {
             okTask = serve ? task.serve(output) : task.process(output);
           } catch (BitferryError e) {
-            output.accept("\u001B[31merror: " + e.getMessage() + "\u001B[0m");
+            output.accept("\u001B[31mError: " + e.getMessage() + "\u001B[0m");
             okTask = false;
           } catch (RuntimeException e) {
-            output.accept("\u001B[31munexpected failure: " + e + "\u001B[0m");
+            output.accept("\u001B[31mUnexpected failure: " + e + "\u001B[0m");
             okTask = false;
           }
           output.accept(okTask ? "\u001B[32m    ✓ success\u001B[0m" : "\u001B[31m    ✗ failure\u001B[0m");
@@ -134,7 +134,7 @@ public final class Runner {
           try {
             manager.commit();
           } catch (RuntimeException e) {
-            output.accept("\u001B[31merror: post-run commit failed: " + e.getMessage() + "\u001B[0m");
+            output.accept("\u001B[31mError: post-run commit failed: " + e.getMessage() + "\u001B[0m");
           }
         }
         if (aborted) {
@@ -150,7 +150,7 @@ public final class Runner {
         }
       } catch (RuntimeException e) {
         // The runner must never wedge the toolbar: report and finish the run
-        logs.log("run failed: " + e);
+        logs.log("Run failed: " + e);
         done(listener, false, ok, failed);
       }
     });

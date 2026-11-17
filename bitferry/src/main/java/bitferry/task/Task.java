@@ -147,7 +147,7 @@ public abstract class Task {
   // JSON array extraction into the string list; missing nodes yield the empty list
   public static List<String> strings(JsonNode node, boolean emptyOnMissing) {
     if (node == null || node.isNull() || node.isMissingNode()) return emptyOnMissing ? new ArrayList<>() : null;
-    if (!node.isArray()) throw new BitferryError("invalid task descriptor");
+    if (!node.isArray()) throw new BitferryError("Invalid task descriptor");
     List<String> xs = new ArrayList<>();
     node.forEach(x -> xs.add(x.asString()));
     return xs;
@@ -291,7 +291,7 @@ public abstract class Task {
   /// reach through the static Task type): the mode picks between the encrypt and the
   /// decrypt wiring. Raises [BitferryError] on the tasks not supporting the encryption.
   public Task setEncryption(String mode, String password, String password2, List<String> options, boolean keyring) {
-    throw new BitferryError("encryption is supported for the rclone tasks only");
+    throw new BitferryError("Encryption is supported for the Rclone tasks only");
   }
 
   /// The encryption summary for the breakdown listings (empty for the tasks without
@@ -314,7 +314,7 @@ public abstract class Task {
 
   /// Morph this task into another operation type.
   public Task morph(String newOperation) {
-    throw new BitferryError("altering operation type is not supported for " + operation() + " tasks");
+    throw new BitferryError("Altering operation type is not supported for " + operation() + " tasks");
   }
 
   /// Whether the task carries the retention/check/cadence policy options.
@@ -353,7 +353,7 @@ public abstract class Task {
   /// end of the task, so the password travels along with the plaintext data.
   /// Raises [BitferryError] for the endpoints residing outside Bitferry volumes.
   public Volume vaultVolume() {
-    throw new BitferryError("the directory endpoint must reside within a Bitferry volume");
+    throw new BitferryError("Directory endpoint must reside within a Bitferry volume");
   }
 
   /// Mark the task out-of-date: the generation is set to exceed the generations of
@@ -455,7 +455,7 @@ public abstract class Task {
           // leaving the transition pending for a following real commit
           commitState = CommitState.LIVE;
         }
-        LOG.log(Level.INFO, () -> "task " + tag + " committed");
+        LOG.log(Level.INFO, () -> "Task " + tag + " committed");
         return;
       }
       case LIVE -> {
@@ -468,7 +468,7 @@ public abstract class Task {
       // destruction.
       case DELETED -> {
         commitState = CommitState.DEAD;
-        LOG.log(Level.INFO, () -> "task " + tag + " committed");
+        LOG.log(Level.INFO, () -> "Task " + tag + " committed");
         return;
       }
       case DEAD -> {
@@ -483,10 +483,10 @@ public abstract class Task {
   /// paths), and the processing-in-progress guard rejects the re-entrancy (the task
   /// dispatched while its previous run is still going). Return true on success.
   public boolean process(Consumer<String> output) {
-    if (processing) throw new BitferryError("task " + tag + " is already being processed");
+    if (processing) throw new BitferryError("Task " + tag + " is already being processed");
     processing = true;
     try {
-      LOG.log(Level.INFO, () -> "processing task " + tag);
+      LOG.log(Level.INFO, () -> "Processing task " + tag);
       for (String vtag : referredVolumes()) {
         Volume v = manager.volume(vtag);
         if (v != null) v.checkPresence();
@@ -504,10 +504,10 @@ public abstract class Task {
   /// The referred volumes are checked for presence, and the processing-in-progress guard
   /// rejects re-entrancy. Return true on success.
   public boolean serve(Consumer<String> output) {
-    if (processing) throw new BitferryError("task " + tag + " is already being processed");
+    if (processing) throw new BitferryError("Task " + tag + " is already being processed");
     processing = true;
     try {
-      LOG.log(Level.INFO, () -> "servicing task " + tag);
+      LOG.log(Level.INFO, () -> "Servicing task " + tag);
       for (String vtag : referredVolumes()) {
         Volume v = manager.volume(vtag);
         if (v != null) v.checkPresence();
@@ -522,7 +522,7 @@ public abstract class Task {
   /// slot (the double dispatch making the per-type executor overloads reachable
   /// through the static Task type). The base reports the unsupported backend.
   public boolean runWith(Executor executor, Consumer<String> output) {
-    String message = "unsupported task backend for task " + tag + ": " + getClass().getName();
+    String message = "Unsupported task backend for task " + tag + ": " + getClass().getName();
     LOG.log(Level.ERROR, message);
     if (output != null) output.accept(message);
     return false;
@@ -530,7 +530,7 @@ public abstract class Task {
 
   /// The service dispatch mirroring [runWith].
   public boolean serveWith(Executor executor, Consumer<String> output) {
-    String message = "unsupported backend for service of task " + tag + ": " + getClass().getName();
+    String message = "Unsupported backend for service of task " + tag + ": " + getClass().getName();
     LOG.log(Level.ERROR, message);
     if (output != null) output.accept(message);
     return false;
@@ -581,7 +581,7 @@ public abstract class Task {
     if (option.startsWith("@")) {
       String name = option.substring(1);
       List<String> profile = route.get(name);
-      if (profile == null) throw new BitferryError("unknown options profile '" + option + "'");
+      if (profile == null) throw new BitferryError("Unknown options profile " + option);
       return profile;
     }
     return Arrays.stream(option.split(","))

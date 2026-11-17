@@ -80,10 +80,10 @@ public final class Volume {
     @JsonProperty("tasks") List<JsonNode> tasks,
     @JsonProperty("vault") Map<String, String> vault
   ) {
-    if (version == null) throw new BitferryError("missing volume storage version property 'bitferry'");
-    if (!Bitferry.STORAGE_VERSION.equals(version)) throw new BitferryError("unsupported volume storage version " + version);
-    if (tag == null) throw new IllegalArgumentException("missing volume field 'volume'");
-    if (modified == null) throw new IllegalArgumentException("missing volume field 'modified'");
+    if (version == null) throw new BitferryError("Missing volume storage version property 'bitferry'");
+    if (!Bitferry.STORAGE_VERSION.equals(version)) throw new BitferryError("Unsupported volume storage version " + version);
+    if (tag == null) throw new IllegalArgumentException("Missing volume field 'volume'");
+    if (modified == null) throw new IllegalArgumentException("Missing volume field 'modified'");
     this.version = version;
     this.manager = manager;
     this.tag = tag;
@@ -99,7 +99,7 @@ public final class Volume {
         try {
           Task.restore(manager, taskData);
         } catch (BitferryError e) {
-          LOG.log(Level.ERROR, () -> "failed to restore task for volume " + tag + " from '" + root + "': " + e.getMessage());
+          LOG.log(Level.ERROR, () -> "Failed to restore task for Bitferry volume " + tag + " from " + root + ": " + e.getMessage());
         }
       }
     }
@@ -111,7 +111,7 @@ public final class Volume {
     try {
       JsonNode node = Storage.readJson(storage);
       if (node == null || !node.isObject()) {
-        throw new BitferryError("invalid volume storage descriptor: expected a JSON object");
+        throw new BitferryError("Invalid volume storage descriptor: expected a JSON object");
       }
       return Storage.mapper().readerFor(Volume.class)
         .with(new InjectableValues.Std(Map.of("manager", manager, "root", root)))
@@ -119,7 +119,7 @@ public final class Volume {
     } catch (BitferryError e) {
       throw e;
     } catch (RuntimeException e) {
-      throw BitferryError.resolve(e, "volume reading failure from file '" + storage + "'");
+      throw BitferryError.resolve(e, "Bitferry volume reading failure from " + storage);
     }
   }
 
@@ -217,7 +217,7 @@ public final class Volume {
   /// Raises [BitferryError] if the root is not a subpath of the volume's root.
   public Endpoint endpoint(Path root) {
     Path canonical = Bitferry.canonicalize(root);
-    if (!canonical.startsWith(this.root)) throw new BitferryError("path '" + root + "' is outside the volume " + tag + " root '" + this.root + "'");
+    if (!canonical.startsWith(this.root)) throw new BitferryError("Path " + root + " is outside the volume " + tag + " at " + this.root);
     String relative = this.root.relativize(canonical).toString();
     return new VolumeEndpoint(manager, tag, relative.isEmpty() ? "." : relative);
   }
@@ -251,7 +251,7 @@ public final class Volume {
   /// the deletion.
   public void commit() {
     if (!isModified() && !manager.force && commitState == CommitState.LIVE) {
-      LOG.log(Level.DEBUG, () -> "volume " + tag + " is up-to-date and no forced save requested; skipped");
+      LOG.log(Level.DEBUG, () -> "Bitferry volume " + tag + " is up-to-date and no forced save requested; skipped");
       return;
     }
     Path storage = root.resolve(Bitferry.STORAGE);
@@ -261,7 +261,7 @@ public final class Volume {
       try {
         task.commit();
       } catch (BitferryError e) {
-        LOG.log(Level.ERROR, () -> "commit failure(s) for task " + task.tag() + ": " + e.getMessage());
+        LOG.log(Level.ERROR, () -> "Commit failure(s) for task " + task.tag() + ": " + e.getMessage());
         problems.add(e.getMessage());
       }
     }
@@ -275,7 +275,7 @@ public final class Volume {
             // (else it would re-fail every following commit) - mirroring the task's
             // rollback upon the failed pristine commit
             manager.deregisterVolume(this);
-            throw new BitferryError("refuse to overwrite existing file '" + storage + "'; use --force to overcome this error");
+            throw new BitferryError("Refuse to overwrite existing storage file " + storage + "; use --force to overcome this error"); // FIXME --force is for CLI only
           }
           commitState = CommitState.LIVE;
         }
@@ -292,18 +292,18 @@ public final class Volume {
                 // The simulation writes nothing and consumes no durable bookkeeping:
                 // the pending mtime/generation/modified state is left for a following
                 // real commit to materialize
-                LOG.log(Level.INFO, () -> "simulated volume " + tag + " save to file '" + storage + "'");
+                LOG.log(Level.INFO, () -> "Simulated Bitferry volume " + tag + " save to " + storage);
               } else {
                 // The actual storage writing time is stored, not the in-memory modification time
                 mtime = OffsetDateTime.now().truncatedTo(java.time.temporal.ChronoUnit.MICROS);
                 Storage.writeText(storage, contents);
-                LOG.log(Level.INFO, () -> "volume " + tag + " written to file '" + storage + "'");
+                LOG.log(Level.INFO, () -> "Bitferry volume " + tag + " written to " + storage);
               }
             } catch (IOException e) {
-              throw new BitferryError("volume " + tag + " storage saving failure", e);
+              throw new BitferryError("Bitferry volume " + tag + " storage saving failure", e);
             }
           } else {
-            LOG.log(Level.DEBUG, () -> "volume " + tag + " is up-to-date and no forced save requested; skipped");
+            LOG.log(Level.DEBUG, () -> "Bitferry volume " + tag + " is up-to-date and no forced save requested; skipped");
           }
           break loop;
         }
@@ -312,7 +312,7 @@ public final class Volume {
           if (manager.simulate) {
             // The simulation removes nothing and consumes no durable bookkeeping:
             // the deletion stays pending for a following real commit
-            LOG.log(Level.INFO, () -> "simulated volume " + tag + " storage removal");
+            LOG.log(Level.INFO, () -> "Simulated Bitferry volume " + tag + " storage removal");
             break loop;
           } else {
             // Both the storage file and the possibly stale intermediate
@@ -321,9 +321,9 @@ public final class Volume {
               Files.deleteIfExists(storage);
               Files.deleteIfExists(root.resolve(Bitferry.STORAGE_IMAGE));
             } catch (IOException e) {
-              throw new BitferryError("volume " + tag + " storage removal failure", e);
+              throw new BitferryError("Bitferry volume " + tag + " storage removal failure", e);
             }
-            LOG.log(Level.INFO, () -> "volume " + tag + " storage file '" + storage + "' deleted");
+            LOG.log(Level.INFO, () -> "Bitferry volume " + tag + " storage " + storage + " deleted");
           }
           commitState = CommitState.DEAD;
           live = false;
@@ -350,7 +350,7 @@ public final class Volume {
       generation = surviving.isEmpty() ? 0 : surviving.values().stream().mapToInt(Task::generation).max().orElseThrow() + 1;
       modified = false;
     }
-    if (!problems.isEmpty()) throw new BitferryError("task commit failure(s) in volume " + tag + ": " + String.join("; ", problems));
+    if (!problems.isEmpty()) throw new BitferryError("Task commit failure(s) in volume " + tag + ": " + String.join("; ", problems));
   }
 
   /// The identity of the file system the specified directory resides on (the source
@@ -391,7 +391,7 @@ public final class Volume {
       if (os.contains("mac os") || os.contains("darwin")) return !directory.startsWith("/Volumes");
       return isFixedLinux(directory);
     } catch (IOException | RuntimeException e) {
-      LOG.log(Level.DEBUG, () -> "fixedness classification failed for '" + directory + "': " + e);
+      LOG.log(Level.DEBUG, () -> "Storage fixedness classification failed for " + directory + ": " + e);
       return false;
     }
   }
@@ -420,7 +420,7 @@ public final class Volume {
       }
       return Files.readString(sysdev.resolve("removable")).trim().equals("0");
     } catch (IOException e) {
-      LOG.log(Level.DEBUG, () -> "no sysfs removable flag for the source '" + source + "'");
+      LOG.log(Level.DEBUG, () -> "No sysfs removable flag for " + source);
       return false;
     }
   }
@@ -440,7 +440,7 @@ public final class Volume {
   public void checkPresence() {
     String current = fileStoreId(root);
     if (fileStore != null && !fileStore.equals(current))
-      throw new BitferryError("volume " + tag + " root '" + root + "' has disappeared (its file system is no longer " + fileStore + ")");
+      throw new BitferryError("Bitferry volume " + tag + " root " + root + " has disappeared (its file system is no longer " + fileStore + ")");
   }
 
 

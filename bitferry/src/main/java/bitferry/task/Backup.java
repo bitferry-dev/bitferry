@@ -75,7 +75,7 @@ public class Backup extends Restic {
   ) {
     super(manager, source, destination, tag, modified, include, exclude, backendOpts, PROCESS);
     if (backend != null && !BACKEND.equals(backend)) {
-      throw new BitferryError("invalid task backend: expected '" + BACKEND + "' but got '" + backend + "'");
+      throw new BitferryError("Invalid task backend: expected " + BACKEND + " but got " + backend);
     }
     this.format = null;
     this.forget = backendOpts == null ? null : backendOpts.forget();
@@ -145,9 +145,10 @@ public class Backup extends Restic {
   /// The backup tasks filter by exclusion only: restic backup has no include patterns
   /// (unlike restic restore), so the include filters would be silently ignored. The
   /// stored legacy filters, if any, are removable via [clearInclude].
+  /// FIXME should not come to backup in the first place
   @Override
   public void setInclude(Collection<String> include) {
-    throw new BitferryError("include filters are not applicable to backup tasks (restic backup filters by exclusion only)");
+    throw new BitferryError("Include filters are not applicable to backup tasks (restic backup filters by exclusion only)");
   }
 
   @Override

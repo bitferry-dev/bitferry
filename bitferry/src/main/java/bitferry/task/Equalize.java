@@ -46,7 +46,7 @@ public class Equalize extends Rclone {
   ) {
     super(manager, source, destination, tag, modified, include, exclude, backendOpts, PROCESS);
     if (backend != null && !BACKEND.equals(backend)) {
-      throw new BitferryError("invalid task backend: expected '" + BACKEND + "' but got '" + backend + "'");
+      throw new BitferryError("Invalid task backend: expected " + BACKEND + " but got " + backend);
     }
   }
 
@@ -141,7 +141,7 @@ public class Equalize extends Rclone {
         }
       }
     } catch (IOException e) {
-      LOG.log(Level.WARNING, () -> "failed to prepare bisync workdir " + dir + ": " + e.getMessage());
+      LOG.log(Level.WARNING, () -> "Failed to prepare bisync workdir " + dir + ": " + e.getMessage());
     }
   }
 
@@ -160,7 +160,7 @@ public class Equalize extends Rclone {
         }
       }
     } catch (IOException e) {
-      LOG.log(Level.WARNING, () -> "failed to invalidate bisync baseline in " + workdir() + ": " + e.getMessage());
+      LOG.log(Level.WARNING, () -> "Failed to invalidate bisync baseline in " + workdir() + ": " + e.getMessage());
     }
   }
 

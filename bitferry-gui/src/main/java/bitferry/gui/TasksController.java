@@ -309,10 +309,10 @@ public final class TasksController {
         // belong to a manager swapped out by a concurrent reload
         Manager manager = context.manager();
         Task current = manager.task(task.tag());
-        if (current == null) throw new BitferryError("task " + task.tag() + " is no longer registered");
+        if (current == null) throw new BitferryError("Task " + task.tag() + " is no longer registered");
         current.delete();
         manager.commit();
-        logs.log("task " + current.tag() + " deleted");
+        logs.log("Task " + current.tag() + " deleted");
         // Re-probe the manager mirroring the volume deletion flow: the reload's
         // garbage collection retires the tombstone right away when all the referred
         // volumes are visible (the storages are cleaned by the following commits),

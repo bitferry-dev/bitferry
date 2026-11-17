@@ -32,7 +32,7 @@ public class Update extends Rclone {
   ) {
     super(manager, source, destination, tag, modified, include, exclude, backendOpts);
     if (backend != null && !BACKEND.equals(backend)) {
-      throw new BitferryError("invalid task backend: expected '" + BACKEND + "' but got '" + backend + "'");
+      throw new BitferryError("Invalid task backend: expected " + BACKEND + " but got " + backend);
     }
   }
 

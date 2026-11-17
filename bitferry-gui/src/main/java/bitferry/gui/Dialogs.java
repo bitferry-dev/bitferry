@@ -192,7 +192,7 @@ final class Dialogs {
         Endpoint source = Endpoints.parse(manager, form.source());
         Endpoint destination = Endpoints.parse(manager, form.destination());
         Task existing = manager.findTask(source, destination);
-        if (existing != null) throw new BitferryError("task " + existing.tag() + " already covers " + existing.describe());
+        if (existing != null) throw new BitferryError("Task " + existing.tag() + " already covers " + existing.describe());
         List<String> include = patterns(form.include());
         List<String> exclude = patterns(form.exclude());
         String execute = form.execute();
@@ -200,12 +200,12 @@ final class Dialogs {
         task = switch (form.type()) {
           case "copy" -> new Copy(manager, source, destination, execute, include, exclude);
           case "update" -> new Update(manager, source, destination, execute, include, exclude);
-          case "replicate", "mirror", "synchronize" -> new Replicate(manager, source, destination, execute, include, exclude);
+          case "replicate" -> new Replicate(manager, source, destination, execute, include, exclude);
           case "equalize" -> new Equalize(manager, source, destination, execute, include, exclude);
           case "backup" -> new Backup(manager, source, destination, form.password(), form.format(),
             execute, form.forget(), form.check(), form.serve(), include, exclude, keyring);
           case "restore" -> new Restore(manager, source, destination, form.password(), execute, include, exclude, keyring);
-          default -> throw new BitferryError("unknown task type '" + form.type() + "'");
+          default -> throw new BitferryError("Unknown task type " + form.type());
         };
         if (form.encryption() != null && task.supportsEncryption()) {
           task.setEncryption(form.encryption(), form.password(), null, Rclone.Encryption.options(form.profile()), keyring);
@@ -213,17 +213,17 @@ final class Dialogs {
         task.setManual(form.manual());
         Task candidate = task;
         if (manager.volumes().values().stream().noneMatch(v -> candidate.refersVolume(v.tag()))) {
-          throw new BitferryError("task does not belong to any registered volume; it cannot be persisted");
+          throw new BitferryError("Task does not belong to any registered volume; it cannot be persisted");
         }
         manager.commit();
-        logs.log("task " + candidate.tag() + " created: " + candidate.describe());
+        logs.log("Task " + candidate.tag() + " created: " + candidate.describe());
         if (keyring && candidate.usesVault()) {
           if (!KeyringVault.INSTANCE.available()) {
-            logs.log("password kept in the volume vault (no usable OS keyring on the host)");
+            logs.log("Password kept in the volume vault (no usable OS keyring on the host)");
           } else {
             try {
               if (!candidate.vaultVolume().isFixed()) {
-                logs.log("password stored in the OS keyring (the vault volume resides on removable media - the token will not travel with it)");
+                logs.log("Password stored in the OS keyring (the vault volume resides on removable media - the token will not travel with it)");
               }
             } catch (BitferryError ignored) {
               // No volume-resident end: the persistence check reports it separately
@@ -235,7 +235,7 @@ final class Dialogs {
         // Deregister on the same manager instance the task was built on: the context's
         // manager may have been swapped by a concurrent reload meanwhile
         if (task != null) manager.deregisterTask(task);
-        logs.log("task creation failed: " + e.getMessage());
+        logs.log("Task creation failed: " + e.getMessage());
         Platform.runLater(() -> errorAlert(context, "Task creation failed", e.getMessage()));
       }
     });
@@ -247,7 +247,7 @@ final class Dialogs {
       Manager manager = context.manager();
       try {
         Task current = manager.task(task.tag());
-        if (current == null) throw new BitferryError("task " + task.tag() + " is no longer registered");
+        if (current == null) throw new BitferryError("Task " + task.tag() + " is no longer registered");
 
         // Morph the task if its operation type was changed (supported for rclone tasks)
         if (!current.operation().equals(form.type())) {
@@ -257,7 +257,7 @@ final class Dialogs {
         // Rotate repository password if entered (restic only)
         if (form.resticMode() && !form.password().isEmpty()) {
           manager.passwd((Restic) current, form.password());
-          logs.log("password updated for task " + current.tag());
+          logs.log("Password updated for task " + current.tag());
         }
 
         // Backend execution options (the resolution rides the task's profile route)
@@ -293,10 +293,10 @@ final class Dialogs {
         }
 
         manager.commit();
-        logs.log("task " + current.tag() + " modified: " + current.describe());
+        logs.log("Task " + current.tag() + " modified: " + current.describe());
         context.fireModelChanged();
       } catch (RuntimeException e) {
-        logs.log("task modification failed: " + e.getMessage());
+        logs.log("Task modification failed: " + e.getMessage());
         Platform.runLater(() -> errorAlert(context, "Task modification failed", e.getMessage()));
       }
     });

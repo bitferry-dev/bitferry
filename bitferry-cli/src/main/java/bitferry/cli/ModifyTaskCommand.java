@@ -81,11 +81,11 @@ public class ModifyTaskCommand implements Callable<Integer>, HasCommonOptions {
     PrintWriter out = spec != null ? spec.commandLine().getOut() : new PrintWriter(System.out, true);
     CommonOptions opts = CliUtils.resolveOptions(spec, options);
 
-    if (defaultForget && forget != null) throw new BitferryError("cannot specify both -f and -F");
-    if (defaultCheck && check != null) throw new BitferryError("cannot specify both -c and -C");
-    if (defaultServe && serve != null) throw new BitferryError("cannot specify both -s and -S");
-    if (clearInclude && (include != null || includeExts != null)) throw new BitferryError("cannot specify both --include/--include-ext and --clear-include");
-    if (clearExclude && (exclude != null || excludeExts != null)) throw new BitferryError("cannot specify both --exclude/--exclude-ext and --clear-exclude");
+    if (defaultForget && forget != null) throw new BitferryError("Cannot specify both -f and -F");
+    if (defaultCheck && check != null) throw new BitferryError("Cannot specify both -c and -C");
+    if (defaultServe && serve != null) throw new BitferryError("Cannot specify both -s and -S");
+    if (clearInclude && (include != null || includeExts != null)) throw new BitferryError("Cannot specify both --include/--include-ext and --clear-include");
+    if (clearExclude && (exclude != null || excludeExts != null)) throw new BitferryError("Cannot specify both --exclude/--exclude-ext and --clear-exclude");
 
     boolean hasForget = defaultForget || forget != null;
     boolean hasCheck = defaultCheck || check != null;
@@ -96,7 +96,7 @@ public class ModifyTaskCommand implements Callable<Integer>, HasCommonOptions {
     boolean hasType = type != null;
 
     if (!password && !hasForget && !hasCheck && !hasServe && !hasInclude && !hasExclude && !hasExecute && !hasType) {
-      throw new BitferryError("no modifications specified for task " + tag);
+      throw new BitferryError("No modifications specified for task " + tag);
     }
 
     Manager m = CliUtils.restoreManager(opts);
@@ -109,19 +109,19 @@ public class ModifyTaskCommand implements Callable<Integer>, HasCommonOptions {
 
     if (hasForget || hasCheck || hasServe) {
       if (!task.supportsRetentionPolicy()) {
-        throw new BitferryError("forget, check, and serve options are only applicable to backup tasks");
+        throw new BitferryError("Forget, check, and serve options are only applicable to backup tasks");
       }
     }
 
     // The include filters are rejected upfront (before any mutation): restic backup
     // has no include patterns (the exclusion only), so they would be silently ignored
     if ((include != null || includeExts != null) && !task.acceptsIncludeFilters()) {
-      throw new BitferryError("include filters are not applicable to backup tasks (restic backup filters by exclusion only)");
+      throw new BitferryError("Include filters are not applicable to backup tasks (restic backup filters by exclusion only)");
     }
 
     if (password) {
       if (!task.supportsPasswordRotation()) {
-        throw new BitferryError("rclone crypt parameters and passwords cannot be modified on an existing task; recreation is required");
+        throw new BitferryError("Rclone crypt parameters and passwords cannot be modified on an existing task; create a new task");
       }
       String newPassword = CliUtils.obtainPassword();
       m.passwd((Restic) task, newPassword);

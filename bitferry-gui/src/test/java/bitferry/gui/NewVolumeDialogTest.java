@@ -85,7 +85,7 @@ class NewVolumeDialogTest {
     assertEquals("Overwrite Bitferry volume", captured.get().getTitle());
     assertTrue(captured.get().getButtonTypes().contains(ButtonType.YES));
     assertTrue(captured.get().getButtonTypes().contains(ButtonType.NO));
-    assertTrue(captured.get().getContentText().contains("already exists"));
+    assertTrue(captured.get().getContentText().contains("Overwrite existing"));
 
     String newContent = Files.readString(storage);
     assertNotEquals("unregistered leftover storage", newContent);

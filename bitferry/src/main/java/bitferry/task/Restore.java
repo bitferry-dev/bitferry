@@ -43,7 +43,7 @@ public class Restore extends Restic {
   ) {
     super(manager, source, destination, tag, modified, include, exclude, backendOpts, PROCESS);
     if (backend != null && !BACKEND.equals(backend)) {
-      throw new BitferryError("invalid task backend: expected '" + BACKEND + "' but got '" + backend + "'");
+      throw new BitferryError("Invalid task backend: expected " + BACKEND + " but got " + backend);
     }
   }
 

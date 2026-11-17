@@ -44,7 +44,7 @@ final class UdisksEventSource implements MediaWatch.EventSource {
         try {
           onChange.run();
         } catch (RuntimeException e) {
-          LOG.log(java.lang.System.Logger.Level.WARNING, "media change consumer failed: " + e);
+          LOG.log(java.lang.System.Logger.Level.WARNING, "Media change consumer failed: " + e);
         }
       };
       // The ObjectManager signals: InterfacesAdded and InterfacesRemoved on /org/freedesktop/UDisks2

@@ -80,14 +80,14 @@ public final class RepoState {
     try {
       byte[] bytes = Files.readAllBytes(file);
       if (bytes.length == 0) {
-        LOG.log(Level.WARNING, () -> "empty repository state file in " + file + ", will trigger service");
+        LOG.log(Level.WARNING, () -> "Empty repository state file in " + file + ", will trigger service");
         return new RepoState(null, null, 0, true);
       }
       RepoState state = Storage.mapper().readValue(bytes, RepoState.class);
       state.corruptOrMissing = false;
       return state;
     } catch (Exception e) {
-      LOG.log(Level.WARNING, () -> "corrupted repository state file in " + file + " (" + e.getMessage() + "), will trigger service");
+      LOG.log(Level.WARNING, () -> "Corrupted repository state file in " + file + " (" + e.getMessage() + "), will trigger service");
       return new RepoState(null, null, 0, true);
     }
   }
@@ -101,7 +101,7 @@ public final class RepoState {
       Storage.writeText(file, json);
       this.corruptOrMissing = false;
     } catch (IOException e) {
-      LOG.log(Level.WARNING, () -> "failed to save repository state file " + file + ": " + e.getMessage());
+      LOG.log(Level.WARNING, () -> "Failed to save repository state file " + file + ": " + e.getMessage());
     }
   }
 
