@@ -579,6 +579,11 @@ final class ResticExecutor {
     return ExecutorSupport.resolveExecutable("restic");
   }
 
+  /// The verbosity options shared by every restic invocation. The flags apply to
+  /// both execution modes by design (the passthrough terminal and the captured
+  /// consumer). No progress option is ever requested: restic's interactive progress
+  /// bar self-gates on stderr being a terminal, and the captured mode merges stderr
+  /// into the pipe, turning the bar off.
   private static List<String> commonOptions(Manager manager) {
     List<String> opts = new ArrayList<>();
     if (manager.verbose()) opts.add("--verbose");

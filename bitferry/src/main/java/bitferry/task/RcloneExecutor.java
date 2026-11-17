@@ -252,7 +252,10 @@ final class RcloneExecutor {
   }
 
   List<List<String>> commands(Rclone rclone) {
-    // The preview reflects the CLI passthrough form (the only execution mode today)
+    // The preview renders the passthrough form: it is displayed by the CLI surfaces
+    // only (info --commands, the task breakdown) mirroring what the CLI executes;
+    // the GUI executes captured (no --progress under the verbose mode) and never
+    // shows the command lines
     return List.of(ExecutorSupport.displayCommand(command(rclone, true)));
   }
 

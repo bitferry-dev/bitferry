@@ -17,12 +17,25 @@ import java.util.function.Consumer;
 /// runner.
 ///
 /// <p>The output lines are buffered per tab and flushed on the application thread
-/// in batches (the backend utilities emit the progress lines densely); the oldest
-/// lines are dropped once a tab exceeds the line cap keeping the memory bounded.
+/// in budgeted batches (the backend utilities emit the progress lines densely);
+/// the oldest lines are dropped once a tab exceeds the line cap keeping the memory
+/// bounded. Both the pending buffer and the displayed text are capped: the
+/// flood-shaped backend failures (the retry storms emitting tens of thousands of
+/// lines within seconds) must not stall the application thread with the oversized
+/// parse-and-layout batches — the unbounded draining was freezing the whole
+/// window for the duration of the dense failures.
 public final class LogController {
 
-  /// The per-tab line buffer cap; the overflow drops the oldest lines.
+  /// The per-tab line buffer cap; the overflow drops the oldest lines. The cap
+  /// applies at the append time (the pending buffer) and at the display time
+  /// (the text flow), so the flood output never accumulates beyond it.
   private static final int LINE_CAP = 5000;
+
+  /// The per-flush line budget: a flush processes at most this many buffered lines
+  /// per application-thread pulse and reschedules itself for the remainder. The
+  /// budget keeps the pulses short so the input, layout and rendering events
+  /// interleave with the log drain.
+  private static final int FLUSH_BUDGET = 500;
 
   /// A single log stream: the buffered lines plus the tab they belong to.
   private static final class Stream {
@@ -166,79 +179,102 @@ public final class LogController {
       follow = true;
     }
 
-    // Append on the emitting thread; the flush marshals the buffer to the UI
-    private synchronized void append(String line) {
-      buffer.add(line);
-      if (!flushPending) {
-        flushPending = true;
-        Platform.runLater(this::flush);
-      }
+  // Append on the emitting thread; the flush marshals the buffer to the UI. The
+  // pending buffer is capped right here: the flood-shaped producers must not
+  // accumulate an oversized batch (nor grow the memory) ahead of the draining.
+  private synchronized void append(String line) {
+    buffer.add(line);
+    if (buffer.size() > LINE_CAP) {
+      buffer.subList(0, buffer.size() - LINE_CAP).clear();
     }
+    if (!flushPending) {
+      flushPending = true;
+      Platform.runLater(this::flush);
+    }
+  }
 
-    // Flush the pending buffer into the text flow on the application thread (also caps lines)
-    private void flush() {
-      List<String> lines;
-      synchronized (this) {
+  // Flush the pending buffer into the text flow on the application thread in
+  // budgeted batches (also caps the displayed lines): the backlog beyond the
+  // budget reschedules the flush for the following pulse leaving the application
+  // thread free to process the input, layout and rendering events in between
+  private void flush() {
+    List<String> lines;
+    boolean drained;
+    synchronized (this) {
+      if (buffer.isEmpty()) {
         flushPending = false;
-        if (buffer.isEmpty() && flow == null) return;
-        lines = new ArrayList<>(buffer);
-        buffer.clear();
+        return;
       }
-      if (flow == null) attach();
-      if (lines.isEmpty()) return;
-
-      List<Text> newNodes = new ArrayList<>();
-      List<Integer> counts = new ArrayList<>(lines.size());
-      for (String line : lines) {
-        List<Text> parsed = AnsiParser.parseLine(line);
-        counts.add(parsed.size());
-        newNodes.addAll(parsed);
-      }
-
-      updating++;
-      try {
-        flow.getChildren().addAll(newNodes);
-        lineNodeCounts.addAll(counts);
-        lineCount += lines.size();
-
-        if (lineCount > LINE_CAP) {
-          int drop = lineCount - LINE_CAP;
-          int nodesToRemove = 0;
-          for (int i = 0; i < drop; i++) {
-            Integer c = lineNodeCounts.pollFirst();
-            if (c != null) nodesToRemove += c;
-          }
-          if (nodesToRemove > 0) {
-            flow.getChildren().subList(0, Math.min(nodesToRemove, flow.getChildren().size())).clear();
-          }
-          lineCount -= drop;
-        }
-
-        if (follow) {
-          flow.applyCss();
-          flow.layout();
-          scroll.layout();
-          scroll.setVvalue(scroll.getVmax());
-          Platform.runLater(() -> {
-            try {
-              if (follow) {
-                flow.applyCss();
-                flow.layout();
-                scroll.layout();
-                scroll.setVvalue(scroll.getVmax());
-              }
-            } finally {
-              updating--;
-            }
-          });
-        } else {
-          updating--;
-        }
-      } catch (Throwable t) {
-        updating--;
-        throw t;
+      int count = Math.min(buffer.size(), FLUSH_BUDGET);
+      lines = new ArrayList<>(buffer.subList(0, count));
+      buffer.subList(0, count).clear();
+      if (buffer.isEmpty()) {
+        flushPending = false;
+        drained = true;
+      } else {
+        // The backlog remains: the re-scheduled run doubles as the continuation drain
+        Platform.runLater(this::flush);
+        drained = false;
       }
     }
+    if (flow == null) attach();
+    if (lines.isEmpty()) return;
+
+    List<Text> newNodes = new ArrayList<>();
+    List<Integer> counts = new ArrayList<>(lines.size());
+    for (String line : lines) {
+      List<Text> parsed = AnsiParser.parseLine(line);
+      counts.add(parsed.size());
+      newNodes.addAll(parsed);
+    }
+
+    updating++;
+    try {
+      flow.getChildren().addAll(newNodes);
+      lineNodeCounts.addAll(counts);
+      lineCount += lines.size();
+
+      if (lineCount > LINE_CAP) {
+        int drop = lineCount - LINE_CAP;
+        int nodesToRemove = 0;
+        for (int i = 0; i < drop; i++) {
+          Integer c = lineNodeCounts.pollFirst();
+          if (c != null) nodesToRemove += c;
+        }
+        if (nodesToRemove > 0) {
+          flow.getChildren().subList(0, Math.min(nodesToRemove, flow.getChildren().size())).clear();
+        }
+        lineCount -= drop;
+      }
+
+      // The tail pinning runs on the drained batches only: the CSS/layout pass
+      // over the capped text flow is expensive, and the mid-drain pins would run
+      // it per pulse; the height listener keeps the grow-phase following meanwhile
+      if (follow && drained) {
+        flow.applyCss();
+        flow.layout();
+        scroll.layout();
+        scroll.setVvalue(scroll.getVmax());
+        Platform.runLater(() -> {
+          try {
+            if (follow) {
+              flow.applyCss();
+              flow.layout();
+              scroll.layout();
+              scroll.setVvalue(scroll.getVmax());
+            }
+          } finally {
+            updating--;
+          }
+        });
+      } else {
+        updating--;
+      }
+    } catch (Throwable t) {
+      updating--;
+      throw t;
+    }
+  }
 
     /// Whether the view rests at the tail of the text; the not-yet-laid-out (and the
     /// non-scrollable) area counts as the tail.

@@ -314,6 +314,21 @@ class SystemExecutorTest {
   }
 
   @Test
+  void rcloneVerboseCapturedModeOmitsProgress() {
+    RecordingCommandExecutor recorder = new RecordingCommandExecutor();
+    SystemExecutor executor = new SystemExecutor(recorder);
+
+    manager.verbose(true);
+
+    Replicate task = new Replicate(manager, source(), destination(), null, List.of(), List.of());
+    executor.run(task, line -> {});
+
+    List<String> cmd = recorder.invocations.get(0).command();
+    assertTrue(cmd.contains("--verbose"));
+    assertFalse(cmd.contains("--progress"));
+  }
+
+  @Test
   void resticBackupSetsWorkingDirectoryAndRunsCheckAndForget() {
     RecordingCommandExecutor recorder = new RecordingCommandExecutor();
     SystemExecutor executor = new SystemExecutor(recorder);
