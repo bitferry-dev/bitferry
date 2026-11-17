@@ -67,6 +67,25 @@ class VolumeTest {
   }
 
   @Test
+  void failedInitialCommitDeregistersVolume() throws IOException {
+    Path readOnlyRoot = dir.resolve("readonly");
+    Files.createDirectories(readOnlyRoot);
+    assertTrue(readOnlyRoot.toFile().setReadOnly());
+    try {
+      Manager manager = new Manager();
+      Volume volume = new Volume(manager, readOnlyRoot);
+      assertThrows(BitferryError.class, manager::commit);
+      // The volume whose initial creation failed must deregister from manager
+      assertFalse(manager.volumes().containsKey(volume.tag()));
+      assertFalse(manager.liveVolumes().containsKey(volume.tag()));
+      assertFalse(volume.isLive());
+      assertDoesNotThrow(manager::commit);
+    } finally {
+      readOnlyRoot.toFile().setWritable(true);
+    }
+  }
+
+  @Test
   void simulationModeWritesNothing() {
     Manager manager = new Manager();
     manager.simulate = true;

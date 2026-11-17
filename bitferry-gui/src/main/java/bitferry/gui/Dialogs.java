@@ -24,6 +24,9 @@ final class Dialogs {
 
   private Dialogs() {}
 
+  /// Hook for tests to intercept dialogs instead of blocking on user interaction.
+  static java.util.function.Function<Alert, Optional<ButtonType>> dialogPrompter = Dialog::showAndWait;
+
   /// Center the dialog on the screen hosting the specified owner window (the primary
   /// screen when ownerless): the dialog size is only known after the showing layout
   /// pass, hence the shown-hook positioning. The owner-based screen resolution keeps
@@ -50,34 +53,67 @@ final class Dialogs {
   /// Show the new volume dialog; the creation is asynchronous.
   static void newVolume(AppContext context, LogController logs) {
     DirectoryChooser chooser = new DirectoryChooser();
-    chooser.setTitle("Select the volume root directory");
+    chooser.setTitle("Select Bitferry volume root directory");
     File initial = new File(System.getProperty("user.home"));
     if (initial.isDirectory()) chooser.setInitialDirectory(initial);
     File root = chooser.showDialog(context.ownerWindow);
     if (root == null) return;
-    Path path = root.toPath();
-    confirmAndRun(context, "Create volume", "Create a volume with the root\n  " + path + " ?", () -> {
+    createVolume(context, logs, root.toPath());
+  }
+
+  /// Create a volume at the specified path with confirmation or overwrite warning dialog.
+  static void createVolume(AppContext context, LogController logs, Path path) {
+    Path canonical = Bitferry.canonicalize(path);
+    Path storage = canonical.resolve(Bitferry.STORAGE);
+    Manager currentManager = context.manager();
+    Volume occupied = currentManager.liveVolumes().values().stream()
+      .filter(v -> v.root().equals(canonical))
+      .findFirst().orElse(null);
+    boolean exists = Files.exists(storage) || Files.exists(path.resolve(Bitferry.STORAGE)) || occupied != null;
+
+    if (exists) {
+      Alert alert = new Alert(Alert.AlertType.WARNING,
+        "Overwrite existing Bitferry volume storage file at " + path + " ?",
+        ButtonType.YES, ButtonType.NO);
+      alert.setTitle("Overwrite Bitferry volume");
+      alert.setHeaderText(null);
+      if (context.ownerWindow != null) alert.initOwner(context.ownerWindow);
+      centerOnScreen(alert, context.ownerWindow);
+      Optional<ButtonType> result = dialogPrompter.apply(alert);
+      if (result.isEmpty() || result.get() != ButtonType.YES) return;
+    }
+
+    runAsync(context, "Create Bitferry volume", () -> {
       Manager manager = context.manager();
-      // The occupied-root guard raised before any registration happens. The core
-      // pristine commit would refuse on its own, but its message advises the CLI's
-      // --force flag which makes no sense in the GUI - here the old volume deletion
-      // (the Volumes tab) and the manual leftover removal are the actual remedies.
-      Path canonical = Bitferry.canonicalize(path);
-      Volume occupied = manager.liveVolumes().values().stream()
+      Volume occ = manager.liveVolumes().values().stream()
         .filter(v -> v.root().equals(canonical))
         .findFirst().orElse(null);
-      if (occupied != null) {
-        throw new BitferryError("a volume is already registered at this root: " + occupied.tag()
-          + " - delete the old volume first (select it in the Volumes tab and press Delete) or choose another directory");
+      if (occ != null) {
+        occ.delete();
+        for (Task t : occ.tasks().values()) {
+          if (t.referredVolumes().stream().allMatch(vtag -> vtag.equals(occ.tag()))) {
+            manager.deregisterTask(t);
+          }
+        }
+        manager.deregisterVolume(occ);
       }
-      if (Files.exists(path.resolve(Bitferry.STORAGE))) {
-        throw new BitferryError("an unregistered volume storage '" + path.resolve(Bitferry.STORAGE) + "' occupies this root"
-          + " - reload the manager to pick the old volume up and delete it via the Volumes tab, or remove the file manually if it is a leftover");
+      boolean oldForce = manager.force;
+      manager.force = exists;
+      Volume volume = null;
+      try {
+        volume = new Volume(manager, path);
+        manager.commit();
+        logs.log("Bitferry volume " + volume.tag() + " created at " + volume.root());
+        context.fireModelChanged();
+      } catch (RuntimeException e) {
+        if (volume != null) {
+          manager.deregisterVolume(volume);
+        }
+        context.fireModelChanged();
+        throw e;
+      } finally {
+        manager.force = oldForce;
       }
-      Volume volume = new Volume(manager, path);
-      manager.commit();
-      logs.log("volume " + volume.tag() + " created at " + volume.root());
-      context.fireModelChanged();
     }, logs);
   }
 
@@ -88,7 +124,7 @@ final class Dialogs {
       alert(context, Alert.AlertType.WARNING, "Busy", "A run is in progress — wait for it to finish.");
       return;
     }
-    showTaskDialog(context, logs, "New task", "Create a new data processing task", "Create",
+    showTaskDialog(context, logs, "New Bitferry task", "Create a new data processing task", "Create",
       TaskFormController.load(context, null), null);
   }
 
@@ -99,7 +135,7 @@ final class Dialogs {
       alert(context, Alert.AlertType.WARNING, "Busy", "A run is in progress — wait for it to finish.");
       return;
     }
-    showTaskDialog(context, logs, "Modify task " + task.tag(), "Modify task " + task.tag() + " parameters", "Save",
+    showTaskDialog(context, logs, "Modify Bitferry task " + task.tag(), "Modify existing data procssing task " + task.tag() + " parameters", "Save",
       TaskFormController.load(context, task), task);
   }
 
@@ -278,6 +314,21 @@ final class Dialogs {
     return patterns;
   }
 
+  /// Run an action on the context's operations thread surfacing failures into the log and the error alert.
+  static void runAsync(AppContext context, String title, Runnable action, LogController logs) {
+    context.operations().execute(() -> {
+      try {
+        action.run();
+      } catch (RuntimeException e) {
+        // The whole unchecked family surfaces (the BitferryError along with the
+        // invalid-path/security-style failures): neither the log nor the alert
+        // may be silently skipped
+        logs.log(title + " failed: " + e.getMessage());
+        Platform.runLater(() -> errorAlert(context, title + " failed", e.getMessage()));
+      }
+    });
+  }
+
   /// Confirm the action and run it on the context's operations thread surfacing
   /// the failures into the log and the error alert. Shared by the dialogs and the
   /// per-tab management actions.
@@ -287,18 +338,8 @@ final class Dialogs {
     confirm.setHeaderText(null);
     if (context.ownerWindow != null) confirm.initOwner(context.ownerWindow);
     centerOnScreen(confirm, context.ownerWindow);
-    confirm.showAndWait().filter(ButtonType.OK::equals).ifPresent(x ->
-      context.operations().execute(() -> {
-        try {
-          action.run();
-        } catch (RuntimeException e) {
-          // The whole unchecked family surfaces (the BitferryError along with the
-          // invalid-path/security-style failures): neither the log nor the alert
-          // may be silently skipped
-          logs.log(title + " failed: " + e.getMessage());
-          Platform.runLater(() -> errorAlert(context, title + " failed", e.getMessage()));
-        }
-      }));
+    dialogPrompter.apply(confirm).filter(ButtonType.OK::equals).ifPresent(x ->
+      runAsync(context, title, action, logs));
   }
 
   /// The error alert dialog (the failures also travel into the general log).

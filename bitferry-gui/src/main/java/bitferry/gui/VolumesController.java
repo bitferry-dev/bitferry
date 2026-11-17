@@ -7,6 +7,7 @@ import javafx.collections.*;
 import javafx.fxml.FXML;
 import javafx.scene.control.*;
 
+import java.nio.file.Path;
 import java.util.*;
 
 /// The volumes tab controller: the management actions (create, delete) confirmed
@@ -129,20 +130,18 @@ public final class VolumesController {
     Row row = selected();
     if (row == null) return;
     Volume volume = row.volume;
-    String title = "Delete volume";
-    String text = "Delete volume " + volume.tag() + " at\n  " + volume.root()
-      + "\n(the directory contents are kept)?"
-      + "\n\nThe referring tasks are deleted with it:"
-      + "\ntheir deletion tombstones propagate to the surviving storages.";
+    String title = "Delete Bitferry volume";
+    String text = "Delete volume " + volume.tag() + " at " + volume.root() + " ?";
     Dialogs.confirmAndRun(context, title, text, () -> {
       // Re-resolve the volume on the current manager: the captured row's volume may
       // belong to a manager swapped out by a concurrent reload
       Manager manager = context.manager();
       Volume current = manager.volume(volume.tag());
-      if (current == null) throw new BitferryError("volume " + volume.tag() + " is no longer registered");
+      if (current == null) throw new BitferryError("Bitferry volume " + volume.tag() + " is no longer registered");
+      Path root = current.root();
       current.delete();
       manager.commit();
-      logs.log("volume " + current.tag() + " deleted");
+      logs.log("Bitferry volume " + current.tag() + " deleted at " + root);
       // The removal is a filesystem-level change the media watcher cannot observe
       // (the mount set is unchanged): re-probe the manager explicitly. The reload
       // restores the fresh-CLI consistency (the tasks carried only by the deleted

@@ -21,7 +21,7 @@
       </BorderPane.margin>
       <Button fx:id="create" text="New Volume" onAction="#onCreate" maxWidth="Infinity"/>
       <Region VBox.vgrow="ALWAYS"/>
-      <Button fx:id="delete" text="Delete" onAction="#onDelete" maxWidth="Infinity"/>
+      <Button fx:id="delete" text="Delete" onAction="#onDelete" style="-fx-base: #ffebee;" maxWidth="Infinity"/>
     </VBox>
   </left>
   <center>
