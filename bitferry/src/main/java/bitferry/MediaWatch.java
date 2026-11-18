@@ -101,6 +101,10 @@ public final class MediaWatch {
     MediaWatch watch = new MediaWatch(onChange, gate, snapshot, fastTickMs, slowTickMs, coalesceMs);
     watch.lastReported = snapshot.get();
     if (withEventSource) watch.startEventSource();
+    // The sourceAlive read is deliberately racy: the event source connects on its
+    // background thread, so it is practically never alive yet here - the first tick
+    // lands on the fast interval, which is desirable anyway (the early-change
+    // detection before the source takes over); tick() re-reads the flag afterwards.
     watch.scheduler.schedule(watch::tick, watch.sourceAlive ? slowTickMs : fastTickMs, TimeUnit.MILLISECONDS);
     return watch;
   }

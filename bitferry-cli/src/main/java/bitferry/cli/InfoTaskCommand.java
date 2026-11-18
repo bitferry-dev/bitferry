@@ -43,7 +43,9 @@ public class InfoTaskCommand implements Callable<Integer>, HasCommonOptions {
     for (Task t : tasks.values()) {
       if (commandsOnly) {
         for (List<String> cmd : t.commands()) {
-          out.println(String.join(" ", cmd));
+          // The display form quotes the tokens carrying whitespace: the echoed line
+          // stays pasteable into a shell (mirroring ExecutorSupport.echoCommandLine)
+          out.println(ExecutorSupport.displayCommandLine(cmd));
         }
       } else {
         if (!first) {

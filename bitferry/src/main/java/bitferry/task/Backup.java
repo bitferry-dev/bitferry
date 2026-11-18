@@ -60,7 +60,10 @@ public class Backup extends Restic {
 
   /// Jackson creator restoring an existing task from the storage descriptor;
   /// the manager is injected as it is not a part of the descriptor. The repository
-  /// is not re-initialized (nor attached) upon the restoration.
+  /// is not re-initialized (nor attached) upon the restoration. The legacy storages
+  /// may carry the include filters on the backup tasks (the pre-restriction format):
+  /// they are dropped at the restore - the backup filters by exclusion only, and
+  /// [setInclude] rejects them everywhere else.
   @JsonCreator
   Backup(
     @JacksonInject("manager") Manager manager,
@@ -73,7 +76,7 @@ public class Backup extends Restic {
     @JsonProperty("exclude") List<String> exclude,
     @JsonProperty("restic") Backend backendOpts
   ) {
-    super(manager, source, destination, tag, modified, include, exclude, backendOpts, PROCESS);
+    super(manager, source, destination, tag, modified, dropLegacyIncludes(include, tag), exclude, backendOpts, PROCESS);
     if (backend != null && !BACKEND.equals(backend)) {
       throw new BitferryError("Invalid task backend: expected " + BACKEND + " but got " + backend);
     }
@@ -83,6 +86,17 @@ public class Backup extends Restic {
     this.cadence = backendOpts == null || backendOpts.serve() == null
       ? Cadence.PROFILES.get("default")
       : Cadence.parse(backendOpts.serve());
+  }
+
+  /// The restore-time include normalization: the legacy storages may carry the include
+  /// filters on the backup tasks (the pre-restriction format). They are dropped with
+  /// a warning - the backup filters by exclusion only, and [setInclude] rejects them
+  /// everywhere else; the smuggled filters would otherwise ride the task and round-trip
+  /// back into the storage on the next commit. Returns null unconditionally.
+  private static List<String> dropLegacyIncludes(List<String> include, String tag) {
+    if (include == null || include.isEmpty()) return null;
+    LOG.log(System.Logger.Level.WARNING, "The backup task " + tag + " storage carries the legacy include filters - dropping them (the backup tasks filter by exclusion only)");
+    return null;
   }
 
   @Override
@@ -144,8 +158,8 @@ public class Backup extends Restic {
 
   /// The backup tasks filter by exclusion only: restic backup has no include patterns
   /// (unlike restic restore), so the include filters would be silently ignored. The
-  /// stored legacy filters, if any, are removable via [clearInclude].
-  /// FIXME should not come to backup in the first place
+  /// legacy storages carrying them have the filters dropped at the restore; the
+  /// [clearInclude] stays available for the explicit cleanup requests.
   @Override
   public void setInclude(Collection<String> include) {
     throw new BitferryError("Include filters are not applicable to backup tasks (restic backup filters by exclusion only)");

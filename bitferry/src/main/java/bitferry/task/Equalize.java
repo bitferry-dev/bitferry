@@ -216,11 +216,6 @@ public class Equalize extends Rclone {
     invalidateBaseline();
   }
 
-  @Override
-  public void delete() {
-    super.delete();
-  }
-
   /// Flags specific to rclone bisync that are not recognized by rclone check.
   private static final Set<String> BISYNC_ONLY_FLAGS = Set.of(
     "--recover", "--resilient", "--force", "--resync",

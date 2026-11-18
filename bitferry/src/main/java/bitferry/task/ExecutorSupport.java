@@ -16,7 +16,7 @@ import java.util.function.Function;
 /// Shared plumbing for the backend executors: the command line echo, the command
 /// execution through the executor seam with the outcome mapping, and the backend
 /// executable resolution.
-final class ExecutorSupport {
+public final class ExecutorSupport {
 
   private static final System.Logger LOG = System.getLogger(ExecutorSupport.class.getName());
 
@@ -33,9 +33,20 @@ final class ExecutorSupport {
     else System.err.println(commandLine);
   }
 
-  /// Format the command line for display, replacing bundled backend paths with generic names.
-  static String displayCommandLine(List<String> command) {
-    return String.join(" ", displayCommand(command));
+  /// Format the command line for display, replacing bundled backend paths with generic
+  /// names. The tokens carrying whitespace (or quotes, or empty) are quoted so the
+  /// echoed line stays unambiguous and pasteable into a shell - the filter patterns
+  /// ('+ *.png' style) and the spaced paths are everyday occurrences.
+  public static String displayCommandLine(List<String> command) {
+    return displayCommand(command).stream().map(ExecutorSupport::displayToken).collect(java.util.stream.Collectors.joining(" "));
+  }
+
+  /// Quote a single display token when it cannot survive a bare join with spaces.
+  /// Only the embedded double quotes are escaped: inside the double quotes of the
+  /// POSIX shells the backslashes stay literal, keeping the Windows paths readable.
+  private static String displayToken(String token) {
+    boolean bare = !token.isEmpty() && token.chars().noneMatch(Character::isWhitespace) && !token.contains("\"");
+    return bare ? token : "\"" + token.replace("\"", "\\\"") + "\"";
   }
 
   /// Return a command line tokens copy with bundled backend paths replaced with generic names.

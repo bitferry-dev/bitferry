@@ -4,13 +4,10 @@ import bitferry.BitferryError;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
-import java.util.regex.*;
 
 /// Service cadence dual-threshold specifier: elapsed time and backup count.
 /// Service is triggered whenever either threshold is crossed ("whichever wins").
 public record Cadence(Duration duration, int count) {
-
-  private static final Pattern SPEC_PATTERN = Pattern.compile("^([0-9]+[smhdw])?(?:,([0-9]+))?$|^([0-9]+)$");
 
   /// Predefined profiles; the default profile is 7 days or 5 backups.
   public static final Map<String, Cadence> PROFILES = Map.of(

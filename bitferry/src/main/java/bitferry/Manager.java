@@ -118,7 +118,7 @@ public class Manager {
     // Volumes are probed in the longest root first order so that the nested volumes are matched before the enclosing ones
     List<Volume> sorted = volumes().values().stream()
       .filter(Volume::isLive)
-      .sorted(java.util.Comparator.comparing((Volume v) -> v.root().toString().length()).reversed())
+        .sorted(java.util.Comparator.comparing((Volume v) -> v.root().getNameCount()).reversed())
       .toList();
     for (Volume v : sorted) {
       try {

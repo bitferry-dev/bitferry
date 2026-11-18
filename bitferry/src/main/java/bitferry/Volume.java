@@ -275,7 +275,7 @@ public final class Volume {
             // (else it would re-fail every following commit) - mirroring the task's
             // rollback upon the failed pristine commit
             manager.deregisterVolume(this);
-            throw new BitferryError("Refuse to overwrite existing storage file " + storage + "; use --force to overcome this error"); // FIXME --force is for CLI only
+            throw new BitferryError("Refuse to overwrite existing storage file " + storage + " without the force option enabled");
           }
           commitState = CommitState.LIVE;
         }
@@ -397,27 +397,25 @@ public final class Volume {
   }
 
   // Linux: a block device source is fixed when the kernel's removable flag is unset;
-  // the network/virtual sources (nfs, cifs, fuse, tmpfs...) and the devices without
-  // the sysfs counterpart (device mapper, loops) are not fixed
+  // the network/virtual sources (nfs, cifs, fuse, tmpfs...) are not fixed, and the
+  // sources without the resolvable block device (the plain file-backed stores) are
+  // not fixed either
   private static boolean isFixedLinux(Path directory) throws IOException {
     FileStore store = Files.getFileStore(directory);
     String source = store.name();
     if (!source.startsWith("/dev/")) return false;
-    String device = source.substring("/dev/".length());
-    Path sysdev = Path.of("/sys/class/block", device);
-    // The removable flag rides on the whole disk only: resolve the partition to its
-    // holding disk (the partitions carry the 'partition' attribute and the kernel
-    // names them <disk> or <disk>p<N> for the multiplexed names)
     try {
-      if (Files.exists(sysdev.resolve("partition"))) {
-        String disk = device.replaceAll("[0-9]+$", "");
-        // Strip the multiplexing 'p' separator (nvme0n1p1, mmcblk0p1) only when it is
-        // preceded by a digit: the base disk names may legitimately end with 'p' (the
-        // 16th SCSI disk sdp, the sdaa..sdaz series) and the blind strip would resolve
-        // the wrong (or nonexistent) disk
-        if (disk.matches(".*[0-9]p")) disk = disk.substring(0, disk.length() - 1);
-        sysdev = Path.of("/sys/class/block", disk);
-      }
+      // The real block device name: the device nodes are symlinks for the mapper
+      // stacks (/dev/mapper/vg-root -> ../dm-0), so the name-based sysfs lookup must
+      // ride the resolved node - the LUKS/LVM volumes are classified by their dm-N
+      // device, not misread as removable through the missing 'mapper' path
+      String device = Path.of(source).toRealPath().getFileName().toString();
+      // The removable flag rides on the whole disk only: resolve the partition to its
+      // holding disk exactly via the sysfs layout (the partition's real directory is
+      // a child of its disk's one - nvme0n1p1 under nvme0n1, sda1 under sda), immune
+      // to the kernel naming schemes (the multiplexing 'p' separator, sdp, sdaa...)
+      Path sysdev = Path.of("/sys/class/block", device).toRealPath();
+      if (Files.exists(sysdev.resolve("partition"))) sysdev = sysdev.getParent();
       return Files.readString(sysdev.resolve("removable")).trim().equals("0");
     } catch (IOException e) {
       LOG.log(Level.DEBUG, () -> "No sysfs removable flag for " + source);

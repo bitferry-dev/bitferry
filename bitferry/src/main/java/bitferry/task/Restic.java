@@ -192,18 +192,30 @@ public abstract class Restic extends Task {
   /// the source of the restore ones).
   public abstract Endpoint repoEndpoint();
 
-  /// Whether the two repo path strings denote the same repository: the paths are
-  /// compared in the normalized absolute form, folding the case on the case-insensitive
-  /// file systems (the trailing separators, the relative segments and the letter case
+  /// Whether the two repo path strings denote the same repository: when both paths
+  /// exist on disk, the file system is the authority (Files.isSameFile resolves the
+  /// letter case, the symlinks and the bind mounts exactly - the case-insensitive
+  /// APFS/HFS+ of the macOS hosts and the FAT/exFAT/NTFS mounts of the Linux ones
   /// must not defeat the paired-task password propagation nor the co-repository task
-  /// discovery). The non-parseable forms (the remote protocol specs) fall back to the
-  /// exact string equality.
+  /// discovery regardless of the host OS). The not-yet-created or unresolvable paths
+  /// fall back to the normalized absolute textual form, folding the case on the
+  /// case-insensitive host platforms (the trailing separators, the relative segments
+  /// and the letter case must not split the repository identities). The non-parseable
+  /// forms (the remote protocol specs) fall back to the exact string equality.
   public static boolean sameRepository(String a, String b) {
     String na = normalizeRepoPath(a);
     String nb = normalizeRepoPath(b);
     if (na == null || nb == null) return a.equals(b);
-    boolean windows = System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT).contains("windows");
-    return windows ? na.equalsIgnoreCase(nb) : na.equals(nb);
+    try {
+      if (java.nio.file.Files.exists(java.nio.file.Path.of(na)) && java.nio.file.Files.exists(java.nio.file.Path.of(nb))) {
+        return java.nio.file.Files.isSameFile(java.nio.file.Path.of(na), java.nio.file.Path.of(nb));
+      }
+    } catch (java.io.IOException e) {
+      // The stat failure (an unreadable parent, a broken mount): the textual form decides
+    }
+    String os = System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT);
+    boolean caseInsensitive = os.contains("windows") || os.contains("mac os") || os.contains("darwin");
+    return caseInsensitive ? na.equalsIgnoreCase(nb) : na.equals(nb);
   }
 
   private static String normalizeRepoPath(String path) {

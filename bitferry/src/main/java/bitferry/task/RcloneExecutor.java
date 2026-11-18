@@ -188,15 +188,21 @@ final class RcloneExecutor {
   /// Assemble the rclone command line. The passthrough flag reflects the execution
   /// mode (true: stdout inherited - the real terminal; false: captured for a consumer):
   /// the interactive progress display travels only with the passthrough runs, while
-  /// the verbosity applies to both modes.
-  List<String> command(Rclone rclone, boolean passthrough) {
+  /// the verbosity applies to both modes. The prepare flag gates the endpoint
+  /// preparation side effects (the equalize bisync workdir creation, the stale
+  /// session listing renames): the actual runs (and the dry-run simulations, which
+  /// execute the real command shape) carry them, the command previews stay read-only
+  /// - 'info task' must not touch the disk.
+  List<String> command(Rclone rclone, boolean passthrough, boolean prepare) {
     Manager manager = rclone.manager();
     List<String> cmd = new ArrayList<>();
     cmd.add(ExecutorSupport.resolveExecutable("rclone"));
 
     // Endpoints
     List<String> endpoints = rclone.encryption().processOpts(rclone);
-    rclone.prepare(endpoints);
+    if (prepare) {
+      rclone.prepare(endpoints);
+    }
 
     // The backend operation arguments: the rclone subcommand and its modifiers
     cmd.addAll(rclone.operationArgs());
@@ -262,12 +268,12 @@ final class RcloneExecutor {
     // only (info --commands, the task breakdown) mirroring what the CLI executes;
     // the GUI executes captured (no --progress under the verbose mode) and never
     // shows the command lines
-    return List.of(ExecutorSupport.displayCommand(command(rclone, true)));
+    return List.of(ExecutorSupport.displayCommand(command(rclone, true, false)));
   }
 
   /// Process the rclone-backed task. Return true on success.
   boolean run(Rclone rclone, Consumer<String> output) {
-    List<String> cmd = command(rclone, output == null);
+    List<String> cmd = command(rclone, output == null, true);
     return ExecutorSupport.execute(commandExecutor, rclone.manager(), cmd, null, rclone.processEnvironment(), rclone.tag(), output);
   }
 

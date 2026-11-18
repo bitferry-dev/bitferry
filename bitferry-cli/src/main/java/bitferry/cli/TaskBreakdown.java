@@ -282,7 +282,9 @@ public final class TaskBreakdown {
       if (cmds != null && !cmds.isEmpty()) {
         sb.append("  ").append(header).append(System.lineSeparator());
         for (List<String> cmd : cmds) {
-          sb.append("    ").append(String.join(" ", cmd)).append(System.lineSeparator());
+          // The display form quotes the tokens carrying whitespace (mirroring
+          // ExecutorSupport.echoCommandLine and the info --commands output)
+          sb.append("    ").append(ExecutorSupport.displayCommandLine(cmd)).append(System.lineSeparator());
         }
       }
     } catch (Exception e) {

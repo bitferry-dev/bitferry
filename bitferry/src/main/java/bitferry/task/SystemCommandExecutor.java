@@ -54,8 +54,9 @@ public final class SystemCommandExecutor implements CommandExecutor {
         Process process = builder.start();
         BackendProcesses.register(process);
         Thread pump = new Thread(() -> {
-          try {
-            InputStreamReader reader = new InputStreamReader(process.getErrorStream(), StandardCharsets.UTF_8);
+          // The explicit stream release: the pipe descriptor must not wait for the
+          // finalization of the unreachable reader
+          try (InputStreamReader reader = new InputStreamReader(process.getErrorStream(), StandardCharsets.UTF_8)) {
             char[] chunk = new char[512];
             int read;
             while ((read = reader.read(chunk)) != -1) {

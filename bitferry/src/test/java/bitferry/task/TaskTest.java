@@ -453,6 +453,22 @@ class TaskTest {
   }
 
   @Test
+  void backupDropsTheLegacyIncludeFiltersAtRestore() {
+    Backup backup = new Backup(manager, volumeSource(), destination(), "secret", null, null, null, null, List.of(), List.of());
+    // The hand-edited (or legacy) storage descriptor carrying the include filters:
+    // the creator must not smuggle them past the setInclude rejection
+    ObjectNode data = backup.serialize();
+    ArrayNode legacy = data.putArray("include");
+    legacy.add("legacy/**");
+    legacy.add("smuggled/**");
+    Task restored = Task.restore(manager, data);
+    assertInstanceOf(Backup.class, restored);
+    assertTrue(restored.include().isEmpty());
+    // The dropped filters do not round-trip back into the storage
+    assertFalse(restored.serialize().has("include"));
+  }
+
+  @Test
   void rcloneDeleteCleansUpWorkdirEvenIfMorphed() throws IOException {
     Equalize task = new Equalize(manager, source(), destination(), null, List.of(), List.of());
     Path workdir = task.workdir();
@@ -471,6 +487,68 @@ class TaskTest {
 
     morphed.delete();
     assertFalse(Files.exists(workdir));
+  }
+
+  @Test
+  void commandPreviewLeavesTheDiskUntouched() throws IOException {
+    Equalize task = new Equalize(manager, source(), destination(), null, List.of(), List.of());
+
+    // The fresh task: the preview builds the command line without creating the workdir
+    // ('info task' must stay read-only - the workdir creation, the stale listings'
+    // cleanup and the renames ride with the runs only)
+    assertEquals(1, task.commands().size());
+    assertFalse(Files.exists(task.workdir()));
+
+    // The pre-seeded stale session listings: the preview neither renames nor deletes them
+    Path workdir = task.workdir();
+    Files.createDirectories(workdir);
+    Files.writeString(workdir.resolve("stale-session.path1.lst"), "one");
+    Files.writeString(workdir.resolve("stale-session.path2.lst"), "two");
+    Files.writeString(workdir.resolve("stale-session.path1.lst-err"), "err");
+    task.commands();
+    List<String> names = new ArrayList<>();
+    try (var stream = Files.list(workdir)) {
+      stream.forEach(p -> names.add(p.getFileName().toString()));
+    }
+    Collections.sort(names);
+    assertEquals(List.of("stale-session.path1.lst", "stale-session.path1.lst-err", "stale-session.path2.lst"), names);
+
+    // In contrast, the run preparation renames the listings to the expected session:
+    // the fixture proves the preview assertions are live (the files are renamable)
+    task.prepareWorkdir("/src", "/dst");
+    assertFalse(Files.exists(workdir.resolve("stale-session.path1.lst")));
+    boolean renamed = false;
+    try (var stream = Files.list(workdir)) {
+      renamed = stream.anyMatch(p -> p.getFileName().toString().endsWith(".path1.lst") && !p.getFileName().toString().startsWith("stale-session"));
+    }
+    assertTrue(renamed);
+  }
+
+  @Test
+  void sameRepositoryUsesTheFileSystemForTheExistingPaths() throws IOException {
+    Path one = Files.createDirectories(dir.resolve("repo-one"));
+    Path two = Files.createDirectories(dir.resolve("repo-two"));
+    assertFalse(Restic.sameRepository(one.toString(), two.toString()));
+
+    // The textual variants of the same existing directory resolve identically
+    assertTrue(Restic.sameRepository(one.toString(), one.resolve("..").resolve(one.getFileName().toString()).toString()));
+
+    // The symlink alias: the file system identity decides, not the textual form
+    Path alias = dir.resolve("repo-alias");
+    try {
+      Files.createSymbolicLink(alias, one);
+    } catch (UnsupportedOperationException | IOException e) {
+      org.junit.jupiter.api.Assumptions.assumeTrue(false, "symbolic links are not available: " + e);
+    }
+    assertTrue(Restic.sameRepository(alias.toString(), one.toString()));
+
+    // The not-yet-created paths fall back to the normalized textual form
+    assertFalse(Restic.sameRepository(dir.resolve("ghost-a").toString(), dir.resolve("ghost-b").toString()));
+    assertTrue(Restic.sameRepository(dir.resolve("ghost").toString(), dir.resolve("ghost").toString()));
+
+    // The remote protocol specs keep the exact string equality
+    assertTrue(Restic.sameRepository("b2:bucket:dir", "b2:bucket:dir"));
+    assertFalse(Restic.sameRepository("b2:bucket:dir", "b2:bucket:other"));
   }
 
   private static List<String> toStringList(JsonNode node) {

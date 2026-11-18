@@ -3,6 +3,8 @@ package bitferry.task;
 import bitferry.*;
 import java.io.*;
 import java.lang.System.Logger.Level;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 import java.nio.file.*;
 import java.nio.file.attribute.*;
 import java.util.*;
@@ -260,8 +262,16 @@ final class ResticExecutor {
   private void rotateKey(Manager manager, String repo, String oldPassword, String newPassword) {
     Path tempFile = null;
     try {
-      tempFile = Files.createTempFile("bitferry-pw-", ".tmp");
-      restrictToOwner(tempFile);
+      // The owner-only mode rides the creation call on the POSIX file systems: no
+      // window exists between the creation and the restriction (the plain form +
+      // restrictToOwner covers the non-POSIX platforms)
+      try {
+        tempFile = Files.createTempFile("bitferry-pw-", ".tmp",
+          PosixFilePermissions.asFileAttribute(Set.of(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE)));
+      } catch (UnsupportedOperationException e) {
+        tempFile = Files.createTempFile("bitferry-pw-", ".tmp");
+        restrictToOwner(tempFile);
+      }
       Files.writeString(tempFile, newPassword);
       // The crash-resistant cleanup fallback: a graceful exit removes the file even
       // when the rotation aborted before reaching the finally block
@@ -289,6 +299,24 @@ final class ResticExecutor {
     } finally {
       if (tempFile != null) {
         final Path leaked = tempFile;
+        // The plaintext scrubbing before the unlink: the deletion releases the blocks
+        // without erasing their stale contents, and the plain temporary directories
+        // (e.g. the Windows %TEMP%) are not memory-backed - the wipe shrinks the
+        // recovery window of the old password on the journaled/spinning media.
+        // Best-effort: the cleanup must not mask the rotation outcome.
+        try {
+          // The password files are tiny (<100 bytes): the bound only guards the pathological sizes
+          int size = (int) Math.min(Files.size(leaked), 1 << 16);
+          if (size > 0) {
+            try (FileChannel channel = FileChannel.open(leaked, StandardOpenOption.WRITE)) {
+              ByteBuffer zeros = ByteBuffer.allocate(size);
+              while (zeros.hasRemaining()) channel.write(zeros);
+              channel.force(true);
+            }
+          }
+        } catch (IOException e) {
+          LOG.log(Level.DEBUG, () -> "Failed to scrub the temporary password file '" + leaked + "': " + e.getMessage());
+        }
         try {
           Files.deleteIfExists(leaked);
         } catch (IOException e) {
