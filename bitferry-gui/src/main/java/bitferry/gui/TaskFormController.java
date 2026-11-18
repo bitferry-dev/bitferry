@@ -4,6 +4,7 @@ import bitferry.*;
 import bitferry.task.Backup;
 import bitferry.task.Copy;
 import bitferry.task.Equalize;
+import bitferry.task.IncludeFilters;
 import bitferry.task.Replicate;
 import bitferry.task.Rclone;
 import bitferry.task.Restore;
@@ -353,8 +354,10 @@ public final class TaskFormController {
       destination.setText(existing.destination().describe());
       destination.setDisable(true);
 
-      if (!existing.include().isEmpty()) {
-        include.setText(String.join(", ", existing.include()));
+      // The include field exists on the capable tasks only (the capability is
+      // structural): the form mirrors the task's actual state
+      if (existing instanceof IncludeFilters includable && !includable.include().isEmpty()) {
+        include.setText(String.join(", ", includable.include()));
       }
       if (!existing.exclude().isEmpty()) {
         exclude.setText(String.join(", ", existing.exclude()));

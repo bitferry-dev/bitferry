@@ -49,7 +49,7 @@ class TaskTest {
     assertEquals("update", new Update(manager, source(), destination(), null, List.of(), List.of()).operation());
     assertEquals("replicate", new Replicate(manager, source(), destination(), null, List.of(), List.of()).operation());
     assertEquals("equalize", new Equalize(manager, source(), destination(), null, List.of(), List.of()).operation());
-    assertEquals("backup", new Backup(manager, volumeSource(), destination(), "secret", null, null, null, null, List.of(), List.of()).operation());
+    assertEquals("backup", new Backup(manager, volumeSource(), destination(), "secret", null, null, null, null, List.of()).operation());
     assertEquals("restore", new Restore(manager, destination(), volumeRestored(), "secret", null, List.of(), List.of()).operation());
     // The tasks own their backend operation arguments
     assertEquals(List.of("copy"), new Copy(manager, source(), destination(), null, List.of(), List.of()).operationArgs());
@@ -103,7 +103,7 @@ class TaskTest {
 
   @Test
   void resticProfilesFlowIntoTheDescriptors() {
-    Backup backup = new Backup(manager, volumeSource(), destination(), "secret", null, null, "@default", "@full", List.of(), List.of());
+    Backup backup = new Backup(manager, volumeSource(), destination(), "secret", null, null, "@default", "@full", List.of());
     JsonNode data = backup.serialize();
     assertEquals("restic", data.get("backend").asString());
     assertNull(data.get("restic").get("execute"));
@@ -126,7 +126,7 @@ class TaskTest {
     // The stray bean properties leak into the persisted storages (e.g. an is-getter
     // without @JsonIgnore): the descriptor shape is pinned here as the regression guard
     // (the field order is not asserted - the discriminator/section placement may vary)
-    Backup backup = new Backup(manager, volumeSource(), destination(), "secret", null, null, "@default", "@full", List.of(), List.of());
+    Backup backup = new Backup(manager, volumeSource(), destination(), "secret", null, null, "@default", "@full", List.of());
     assertIterableEquals(
       List.of("backend", "destination", "modified", "operation", "restic", "source", "task"),
       sortedNames(backup.serialize()));
@@ -220,7 +220,7 @@ class TaskTest {
   @Test
   void unknownOptionsProfilesAreRejected() {
     assertThrows(BitferryError.class, () -> new Copy(manager, source(), destination(), "@nonexistent", List.of(), List.of()));
-    assertThrows(BitferryError.class, () -> new Backup(manager, volumeSource(), destination(), "secret", null, null, "@nonexistent", null, List.of(), List.of()));
+    assertThrows(BitferryError.class, () -> new Backup(manager, volumeSource(), destination(), "secret", null, null, "@nonexistent", null, List.of()));
   }
 
   @Test
@@ -251,7 +251,7 @@ class TaskTest {
       public boolean run(Task task, java.util.function.Consumer<String> output) { return false; }
       public void format(Task task) { throw new BitferryError("repository initialization failure"); }
     });
-    Backup backup = new Backup(manager, volumeSource(), destination(), "secret", null, null, null, null, List.of(), List.of());
+    Backup backup = new Backup(manager, volumeSource(), destination(), "secret", null, null, null, null, List.of());
 
     // The commit raises the initialization failure and aborts the registration
     BitferryError error = assertThrows(BitferryError.class, volume::commit);
@@ -270,7 +270,7 @@ class TaskTest {
       public boolean run(Task task, java.util.function.Consumer<String> output) { return false; }
       public void conform(Task task) { throw new BitferryError("encryption conformance failure"); }
     });
-    Backup backup = new Backup(manager, volumeSource(), destination(), "secret", null, null, null, null, List.of(), List.of());
+    Backup backup = new Backup(manager, volumeSource(), destination(), "secret", null, null, null, null, List.of());
 
     BitferryError error = assertThrows(BitferryError.class, volume::commit);
     assertTrue(error.getMessage().contains("encryption conformance failure"), error.getMessage());
@@ -443,29 +443,39 @@ class TaskTest {
   }
 
   @Test
-  void backupRejectsTheIncludeFilters() {
-    Backup backup = new Backup(manager, volumeSource(), destination(), "secret", null, null, null, null, List.of(), List.of());
-    // restic backup filters by exclusion only: the include filters would be silently ignored
-    assertThrows(BitferryError.class, () -> backup.setInclude(List.of("*.txt")));
-    assertTrue(backup.include().isEmpty());
-    // The legacy cleanup path stays available
-    assertDoesNotThrow(backup::clearInclude);
+  void theIncludeCapabilityIsStructural() {
+    // The rclone family and the restore tasks carry the include filters
+    assertTrue(new Replicate(manager, source(), destination(), null, List.of(), List.of()) instanceof IncludeFilters);
+    assertTrue(new Restore(manager, destination(), volumeRestored(), "secret", null, List.of(), List.of()) instanceof IncludeFilters);
+    // The backup carries neither the state nor the accessors: the type check decides
+    Backup backup = new Backup(manager, volumeSource(), destination(), "secret", null, null, null, null, List.of());
+    assertFalse(backup instanceof IncludeFilters);
   }
 
   @Test
-  void backupDropsTheLegacyIncludeFiltersAtRestore() {
-    Backup backup = new Backup(manager, volumeSource(), destination(), "secret", null, null, null, null, List.of(), List.of());
+  void backupIgnoresTheIncludeFiltersCarriedByTheDescriptor() {
+    Backup backup = new Backup(manager, volumeSource(), destination(), "secret", null, null, null, null, List.of());
     // The hand-edited (or legacy) storage descriptor carrying the include filters:
-    // the creator must not smuggle them past the setInclude rejection
+    // the creator holds no such property, so the mapper's lenient unknown-section
+    // policy ignores the node - and the next commit heals it out of the storage
     ObjectNode data = backup.serialize();
     ArrayNode legacy = data.putArray("include");
     legacy.add("legacy/**");
     legacy.add("smuggled/**");
     Task restored = Task.restore(manager, data);
     assertInstanceOf(Backup.class, restored);
-    assertTrue(restored.include().isEmpty());
-    // The dropped filters do not round-trip back into the storage
+    // The filters do not round-trip back into the storage
     assertFalse(restored.serialize().has("include"));
+  }
+
+  @Test
+  void restoreRoundTripsTheIncludeFilters() {
+    Restore restore = new Restore(manager, destination(), volumeRestored(), "secret", null, List.of("keep/**"), List.of("skip/**"));
+    Task restored = Task.restore(manager, restore.serialize());
+    assertInstanceOf(Restore.class, restored);
+    assertInstanceOf(IncludeFilters.class, restored);
+    assertEquals(List.of("keep/**"), ((IncludeFilters) restored).include());
+    assertEquals(List.of("skip/**"), restored.exclude());
   }
 
   @Test

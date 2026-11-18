@@ -25,6 +25,9 @@ import tools.jackson.databind.node.*;
   @JsonSubTypes.Type(value = Backup.class, name = "backup"),
   @JsonSubTypes.Type(value = Restore.class, name = "restore")
 })
+// The 'include' ordering entry is unused by the capability-less tasks (the absent
+// property entries are ignored) and pins the historical descriptor layout for the
+// includable ones (the storeInclude declarations of the Rclone/Restore classes)
 @JsonPropertyOrder({"task", "operation", "backend", "source", "destination", "modified", "include", "exclude", "deleted", "manual"})
 public abstract class Task {
 
@@ -42,7 +45,6 @@ public abstract class Task {
   @JsonProperty
   protected final Endpoint destination;
 
-  protected final List<String> include;
   protected final List<String> exclude;
 
   @JsonProperty("modified")
@@ -93,12 +95,11 @@ public abstract class Task {
   // creation (mirroring the reference implementation). The registration reads back only the
   // tag and the timestamp assigned above, so no uninitialized subclass state is observable.
   @SuppressWarnings("this-escape")
-  protected Task(Manager manager, Endpoint source, Endpoint destination, Collection<String> include, Collection<String> exclude) {
+  protected Task(Manager manager, Endpoint source, Endpoint destination, Collection<String> exclude) {
     this.manager = manager;
     this.tag = Tags.newTag();
     this.source = source;
     this.destination = destination;
-    this.include = new ArrayList<>(include);
     this.exclude = new ArrayList<>(exclude);
     this.commitState = CommitState.PRISTINE;
     touch();
@@ -112,13 +113,12 @@ public abstract class Task {
   /// creators return, and the registration's conflict resolution (the tombstone winning
   /// the equal-timestamp ties) must observe it. The deferral also keeps the tasks failing
   /// their creator validation (e.g. the unsupported backend) unregistered.
-  protected Task(Manager manager, Endpoint source, Endpoint destination, String tag, OffsetDateTime modified, List<String> include, List<String> exclude) {
+  protected Task(Manager manager, Endpoint source, Endpoint destination, String tag, OffsetDateTime modified, List<String> exclude) {
     if (manager == null || source == null || destination == null || tag == null || modified == null) throw new BitferryError("invalid task descriptor");
     this.manager = manager;
     this.tag = tag;
     this.source = source;
     this.destination = destination;
-    this.include = include == null ? new ArrayList<>() : new ArrayList<>(include);
     this.exclude = exclude == null ? new ArrayList<>() : new ArrayList<>(exclude);
     this.mtime = modified;
     this.commitState = CommitState.LIVE;
@@ -208,20 +208,8 @@ public abstract class Task {
     return generation;
   }
 
-  public List<String> include() {
-    return java.util.Collections.unmodifiableList(include);
-  }
-
   public List<String> exclude() {
     return java.util.Collections.unmodifiableList(exclude);
-  }
-
-  public void setInclude(Collection<String> include) {
-    this.include.clear();
-    if (include != null) {
-      this.include.addAll(include);
-    }
-    touch();
   }
 
   public void setExclude(Collection<String> exclude) {
@@ -229,11 +217,6 @@ public abstract class Task {
     if (exclude != null) {
       this.exclude.addAll(exclude);
     }
-    touch();
-  }
-
-  public void clearInclude() {
-    this.include.clear();
     touch();
   }
 
@@ -320,12 +303,6 @@ public abstract class Task {
   @JsonIgnore
   public java.util.Optional<String> encryptionSummary() {
     return java.util.Optional.empty();
-  }
-
-  /// Whether the task accepts the include filters (the backup tasks filter by
-  /// exclusion only — the include filters would be silently ignored by restic).
-  public boolean acceptsIncludeFilters() {
-    return true;
   }
 
   /// Whether the task supports altering its operation type.
@@ -431,12 +408,8 @@ public abstract class Task {
     return Storage.mapper().valueToTree(this);
   }
 
-  // The include/exclude filters are omitted when empty
-  @JsonProperty("include")
-  List<String> storeInclude() {
-    return include.isEmpty() ? null : include;
-  }
-
+  // The exclude filter is omitted when empty (the include one rides the
+  // [IncludeFilters]-capable classes' storeInclude declarations)
   @JsonProperty("exclude")
   List<String> storeExclude() {
     return exclude.isEmpty() ? null : exclude;

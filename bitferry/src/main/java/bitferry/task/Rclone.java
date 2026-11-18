@@ -15,7 +15,9 @@ import java.util.*;
 /// write the encrypted replica into the destination while the [Decrypt] mode makes
 /// rclone read the encrypted source. The crypt passwords are obscured and stored
 /// within the vault of the volume hosting the unencrypted end of the task.
-public abstract class Rclone extends Task {
+/// The rclone operations filter by inclusion and exclusion both (the [IncludeFilters]
+/// capability carrying class; the include state rides this base covering the family).
+public abstract class Rclone extends Task implements IncludeFilters {
 
   public static final String BACKEND = "rclone";
   public static final String DIRECTOR = "-->";
@@ -26,6 +28,11 @@ public abstract class Rclone extends Task {
 
   protected Encryption encryption = NoCrypt.INSTANCE;
 
+  // The [IncludeFilters] backing state: the rclone operations filter by inclusion and
+  // exclusion both, the list riding this base class across the family (the interface
+  // default methods carry the behavior over [includeState])
+  protected final List<String> include = new ArrayList<>();
+
   /// Constructor for a new task instance.
   protected Rclone(Manager manager, Endpoint source, Endpoint destination, String process, Collection<String> include, Collection<String> exclude) {
     this(manager, source, destination, process, PROCESS, include, exclude);
@@ -33,7 +40,8 @@ public abstract class Rclone extends Task {
 
   /// Constructor for a new task instance with a custom processing options route.
   protected Rclone(Manager manager, Endpoint source, Endpoint destination, String process, Map<String, List<String>> route, Collection<String> include, Collection<String> exclude) {
-    super(manager, source, destination, include, exclude);
+    super(manager, source, destination, exclude);
+    this.include.addAll(include);
     this.processRoute = route != null ? route : PROCESS;
     this.processOptions = optional(process, processRoute);
   }
@@ -52,7 +60,8 @@ public abstract class Rclone extends Task {
   /// Constructor for restoring an existing task with a custom processing options route.
   @SuppressWarnings("this-escape")
   protected Rclone(Manager manager, Endpoint source, Endpoint destination, String tag, OffsetDateTime modified, List<String> include, List<String> exclude, Backend backend, Map<String, List<String>> route) {
-    super(manager, source, destination, tag, modified, include, exclude);
+    super(manager, source, destination, tag, modified, exclude);
+    this.include.addAll(include == null ? List.of() : include);
     this.processRoute = route != null ? route : PROCESS;
     this.processOptions = optional(backend == null ? null : backend.execute(), processRoute);
     this.encryption = Encryption.restore(this, backend);
@@ -61,6 +70,12 @@ public abstract class Rclone extends Task {
   /// The rclone backend descriptor section. Exactly one of the encryption
   /// descriptors may be present.
   public record Backend(List<String> execute, List<String> encrypt, List<String> decrypt) {}
+
+  /// The [IncludeFilters] backing state (the behavior rides the interface defaults).
+  @Override
+  public List<String> includeState() {
+    return include;
+  }
 
   /// The crypt filename encoding profiles; the null key denotes no default profile.
   public static final Map<String, List<String>> PROFILE = route(Map.of(

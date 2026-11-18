@@ -61,10 +61,13 @@ public final class TaskBreakdown {
       appendServiceSection(sb, backup);
     }
 
-    // 3. Filters
+    // 3. Filters (the include row rides the capability: the backup tasks carry no
+    // include state, so their breakdown lists the exclusions only)
     sb.append(System.lineSeparator());
     sb.append(Ansi.AUTO.string("@|bold # Filters|@")).append(System.lineSeparator());
-    appendProperty(sb, "Include:", task.include().isEmpty() ? "(none)" : String.join(", ", task.include()));
+    if (task instanceof IncludeFilters includable) {
+      appendProperty(sb, "Include:", includable.include().isEmpty() ? "(none)" : String.join(", ", includable.include()));
+    }
     appendProperty(sb, "Exclude:", task.exclude().isEmpty() ? "(none)" : String.join(", ", task.exclude()));
 
     // 4. Commands

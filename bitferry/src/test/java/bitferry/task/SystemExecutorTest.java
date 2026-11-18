@@ -195,7 +195,7 @@ class SystemExecutorTest {
       // Restic backup task: commands() uses generic "restic"
       recorder.invocations.clear();
       output.clear();
-      Backup backup = new Backup(manager, volumeSource(), destination(), "secret", null, null, null, null, List.of(), List.of());
+      Backup backup = new Backup(manager, volumeSource(), destination(), "secret", null, null, null, null, List.of());
       List<List<String>> backupCmds = backup.commands();
       assertFalse(backupCmds.isEmpty());
       assertEquals("restic", backupCmds.get(0).get(0));
@@ -393,7 +393,7 @@ class SystemExecutorTest {
     RecordingCommandExecutor recorder = new RecordingCommandExecutor();
     SystemExecutor executor = new SystemExecutor(recorder);
 
-    Backup backup = new Backup(manager, volumeSource(), destination(), "secret", null, null, "@default", "@default", List.of(), List.of("*.tmp"));
+    Backup backup = new Backup(manager, volumeSource(), destination(), "secret", null, null, "@default", "@default", List.of("*.tmp"));
     boolean result = executor.run(backup, null);
 
     assertTrue(result);
@@ -498,7 +498,7 @@ class SystemExecutorTest {
     assertTrue(rcmd.contains(Bitferry.STORAGE + "*/**"));
 
     // Backup commands return routine backup command
-    Backup backupDefault = new Backup(manager, volumeSource(), destination(), "secret", null, null, "@default", "@default", List.of(), List.of("*.tmp"));
+    Backup backupDefault = new Backup(manager, volumeSource(), destination(), "secret", null, null, "@default", "@default", List.of("*.tmp"));
     List<List<String>> backupCmds = backupDefault.commands();
     assertEquals(1, backupCmds.size());
     assertEquals("backup", backupCmds.get(0).get(1));
@@ -513,7 +513,7 @@ class SystemExecutorTest {
     assertEquals("prune", serveCmds.get(2).get(1));
 
     // Backup skipping check and forget
-    Backup backupSkip = new Backup(manager, volumeSource(), destination(), "secret", null, null, "-", "-", List.of(), List.of());
+    Backup backupSkip = new Backup(manager, volumeSource(), destination(), "secret", null, null, "-", "-", List.of());
     List<List<String>> backupSkipCmds = backupSkip.commands();
     assertEquals(1, backupSkipCmds.size());
     assertEquals("backup", backupSkipCmds.get(0).get(1));
@@ -630,7 +630,7 @@ class SystemExecutorTest {
     RecordingCommandExecutor recorder = new RecordingCommandExecutor();
     SystemExecutor executor = new SystemExecutor(recorder);
 
-    Backup backup = new Backup(manager, volumeSource(), destination(), "secret", null, null, null, null, List.of(), List.of());
+    Backup backup = new Backup(manager, volumeSource(), destination(), "secret", null, null, null, null, List.of());
     executor.format(backup);
 
     assertEquals(1, recorder.invocations.size());
@@ -647,7 +647,7 @@ class SystemExecutorTest {
     RecordingCommandExecutor recorder = new RecordingCommandExecutor();
     manager.backendExecutor(new SystemExecutor(recorder));
 
-    Backup backup = new Backup(manager, volumeSource(), destination(), "secret", null, null, null, null, List.of(), List.of());
+    Backup backup = new Backup(manager, volumeSource(), destination(), "secret", null, null, null, null, List.of());
     manager.commit();
 
     List<List<String>> initInvocations = recorder.invocations.stream()
@@ -665,7 +665,7 @@ class SystemExecutorTest {
 
     Path repoDir = dir.resolve("outside-repo");
     Endpoint repo = Endpoints.parse(manager, "local:" + repoDir);
-    Backup backup = new Backup(manager, volumeSource(), repo, "secret", null, null, null, null, List.of(), List.of());
+    Backup backup = new Backup(manager, volumeSource(), repo, "secret", null, null, null, null, List.of());
     manager.commit();
 
     List<List<String>> initInvocations = recorder.invocations.stream()
@@ -684,7 +684,7 @@ class SystemExecutorTest {
     RecordingCommandExecutor recorder = new RecordingCommandExecutor();
     manager.backendExecutor(new SystemExecutor(recorder));
 
-    Backup backup = new Backup(manager, volumeSource(), destination(), "secret", null, null, null, null, List.of(), List.of());
+    Backup backup = new Backup(manager, volumeSource(), destination(), "secret", null, null, null, null, List.of());
     manager.commit();
     assertTrue(recorder.invocations.isEmpty(), "Simulation must not spawn any commands");
 
@@ -706,7 +706,7 @@ class SystemExecutorTest {
     RecordingCommandExecutor recorder = new RecordingCommandExecutor();
     manager.backendExecutor(new SystemExecutor(recorder));
 
-    Backup backup = new Backup(manager, volumeSource(), destination(), "secret", null, null, null, null, List.of(), List.of());
+    Backup backup = new Backup(manager, volumeSource(), destination(), "secret", null, null, null, null, List.of());
     manager.commit();
     assertTrue(recorder.invocations.isEmpty(), "Simulation must not spawn any commands");
 
@@ -739,7 +739,7 @@ class SystemExecutorTest {
     RecordingCommandExecutor recorder = new RecordingCommandExecutor();
     manager.backendExecutor(new SystemExecutor(recorder));
 
-    Backup backup = new Backup(manager, volumeSource(), destination(), "secret", null, null, null, null, List.of(), List.of());
+    Backup backup = new Backup(manager, volumeSource(), destination(), "secret", null, null, null, null, List.of());
     manager.commit();
     assertTrue(manager.process(backup.tag()), "The simulated run must succeed");
     // The simulated run exercises the backend in the dry-run form (the check, the
@@ -757,7 +757,7 @@ class SystemExecutorTest {
   // overrides it via the arguments.
   private Backup sharedRepoTask(String sourcePath, String forget, String serve) {
     Endpoint source = sourcePath == null ? volumeSource() : Endpoints.parse(manager, ":" + volume.tag() + ":" + sourcePath);
-    return new Backup(manager, source, destination(), "secret", null, null, forget, null, serve, List.of(), List.of());
+    return new Backup(manager, source, destination(), "secret", null, null, forget, null, serve, List.of());
   }
 
   // Seed the per-task repository state file: fresh for task a, due for task b when
@@ -1057,7 +1057,7 @@ class SystemExecutorTest {
     RecordingCommandExecutor recorder = new RecordingCommandExecutor();
     SystemExecutor executor = new SystemExecutor(recorder);
 
-    Backup backup = new Backup(manager, volumeSource(), destination(), "secret", null, null, null, null, List.of(), List.of());
+    Backup backup = new Backup(manager, volumeSource(), destination(), "secret", null, null, null, null, List.of());
     executor.conform(backup);
 
     assertEquals(0, recorder.invocations.size());
@@ -1072,7 +1072,7 @@ class SystemExecutorTest {
     Files.createDirectories(repo);
     Files.writeString(repo.resolve("config"), "dummy-config");
 
-    Backup backup = new Backup(manager, volumeSource(), Endpoints.parse(manager, "local:" + repo), "secret", null, null, null, null, List.of(), List.of());
+    Backup backup = new Backup(manager, volumeSource(), Endpoints.parse(manager, "local:" + repo), "secret", null, null, null, null, List.of());
     executor.conform(backup);
 
     assertEquals(1, recorder.invocations.size());
@@ -1094,7 +1094,7 @@ class SystemExecutorTest {
     Files.createDirectories(repo);
     Files.writeString(repo.resolve("config"), "dummy-config");
 
-    Backup backup = new Backup(manager, volumeSource(), Endpoints.parse(manager, "local:" + repo), "secret", true, null, null, null, List.of(), List.of());
+    Backup backup = new Backup(manager, volumeSource(), Endpoints.parse(manager, "local:" + repo), "secret", true, null, null, null, List.of());
     executor.conform(backup);
 
     assertEquals(0, recorder.invocations.size());
@@ -1110,7 +1110,7 @@ class SystemExecutorTest {
     Files.createDirectories(repo);
     Files.writeString(repo.resolve("config"), "dummy-config");
 
-    Backup backup = new Backup(manager, volumeSource(), Endpoints.parse(manager, "local:" + repo), "secret", null, null, null, null, List.of(), List.of());
+    Backup backup = new Backup(manager, volumeSource(), Endpoints.parse(manager, "local:" + repo), "secret", null, null, null, null, List.of());
     BitferryError error = assertThrows(BitferryError.class, () -> executor.conform(backup));
     assertTrue(error.getMessage().contains("does not accept the provided password"));
     assertFalse(error.getMessage().contains("--attach"));
@@ -1155,7 +1155,7 @@ class SystemExecutorTest {
     Files.createDirectories(repo);
     Files.writeString(repo.resolve("config"), "dummy-config");
 
-    Backup backup = new Backup(manager, volumeSource(), Endpoints.parse(manager, "local:" + repo), "secret", null, null, null, null, List.of(), List.of());
+    Backup backup = new Backup(manager, volumeSource(), Endpoints.parse(manager, "local:" + repo), "secret", null, null, null, null, List.of());
     executor.format(backup);
 
     assertEquals(1, recorder.invocations.size());
@@ -1327,14 +1327,14 @@ class SystemExecutorTest {
     Endpoint repo = Endpoints.parse(manager, "local:" + repoDir);
 
     // 1. Wrong password backup creation is refused and task is deregistered
-    Backup wrongBackup = new Backup(manager, src, repo, "wrong-password", null, null, null, null, List.of(), List.of());
+    Backup wrongBackup = new Backup(manager, src, repo, "wrong-password", null, null, null, null, List.of());
     BitferryError err = assertThrows(BitferryError.class, vol::commit);
     assertTrue(err.getMessage().contains("does not accept the provided password"), err.getMessage());
     assertFalse(err.getMessage().contains("--attach"), err.getMessage());
     assertFalse(manager.tasks().containsKey(wrongBackup.tag()));
 
     // 2. Correct password backup creation succeeds and persists
-    Backup correctBackup = new Backup(manager, src, repo, "correct-password", null, null, null, null, List.of(), List.of());
+    Backup correctBackup = new Backup(manager, src, repo, "correct-password", null, null, null, null, List.of());
     vol.commit();
     assertTrue(manager.tasks().containsKey(correctBackup.tag()));
 
@@ -1342,7 +1342,7 @@ class SystemExecutorTest {
     assertTrue(restored.tasks().containsKey(correctBackup.tag()));
 
     // 4. Force (--force) skips conformance, wipes and reinitializes with new password
-    Backup forceBackup = new Backup(manager, src, repo, "new-force-password", true, null, null, null, List.of(), List.of());
+    Backup forceBackup = new Backup(manager, src, repo, "new-force-password", true, null, null, null, List.of());
     vol.commit();
     assertTrue(manager.tasks().containsKey(forceBackup.tag()));
 
@@ -1368,7 +1368,7 @@ class SystemExecutorTest {
     Files.createDirectories(repoDir);
     Endpoint repo = Endpoints.parse(manager, "local:" + repoDir);
 
-    Backup backup = new Backup(manager, volumeSource(), repo, "secret", null, null, "@default", "@default", "7d,5", List.of(), List.of());
+    Backup backup = new Backup(manager, volumeSource(), repo, "secret", null, null, "@default", "@default", "7d,5", List.of());
 
     // Baseline state: service done recently, count low
     ResticRepositoryState state = new ResticRepositoryState();
@@ -1398,7 +1398,7 @@ class SystemExecutorTest {
     Files.createDirectories(repoDir);
     Endpoint repo = Endpoints.parse(manager, "local:" + repoDir);
 
-    Backup backup = new Backup(manager, volumeSource(), repo, "secret", null, null, "@default", "@default", "7d,5", List.of(), List.of());
+    Backup backup = new Backup(manager, volumeSource(), repo, "secret", null, null, "@default", "@default", "7d,5", List.of());
 
     // Threshold crossed: 5 backups done since service
     ResticRepositoryState state = new ResticRepositoryState();
@@ -1432,7 +1432,7 @@ class SystemExecutorTest {
     Files.createDirectories(repoDir);
     Endpoint repo = Endpoints.parse(manager, "local:" + repoDir);
 
-    Backup backup = new Backup(manager, volumeSource(), repo, "secret", null, null, "@default", "@default", "7d,5", List.of(), List.of());
+    Backup backup = new Backup(manager, volumeSource(), repo, "secret", null, null, "@default", "@default", "7d,5", List.of());
     boolean ok = executor.serve(backup, null);
     assertFalse(ok);
 
@@ -1472,8 +1472,8 @@ class SystemExecutorTest {
     Files.createDirectories(repo1);
     Files.createDirectories(repo2);
 
-    Backup b1 = new Backup(manager, volumeSource(), Endpoints.parse(manager, "local:" + repo1), "sec1", null, null, null, null, "7d,5", List.of(), List.of());
-    Backup b2 = new Backup(manager, volumeSource(), Endpoints.parse(manager, "local:" + repo2), "sec2", null, null, null, null, "7d,5", List.of(), List.of());
+    Backup b1 = new Backup(manager, volumeSource(), Endpoints.parse(manager, "local:" + repo1), "sec1", null, null, null, null, "7d,5", List.of());
+    Backup b2 = new Backup(manager, volumeSource(), Endpoints.parse(manager, "local:" + repo2), "sec2", null, null, null, null, "7d,5", List.of());
 
     boolean overall = manager.serve(List.of(b1.tag(), b2.tag()), null);
     assertFalse(overall);
@@ -1521,7 +1521,7 @@ class SystemExecutorTest {
     };
 
     SystemExecutor executor = new SystemExecutor(dynamicExecutor);
-    Backup backup = new Backup(manager, volumeSource(), Endpoints.parse(manager, "local:" + repoDir), "old-secret", null, null, null, null, List.of(), List.of());
+    Backup backup = new Backup(manager, volumeSource(), Endpoints.parse(manager, "local:" + repoDir), "old-secret", null, null, null, null, List.of());
 
     executor.passwd(backup, "new-secret");
 
@@ -1550,7 +1550,7 @@ class SystemExecutorTest {
     recorder.returnCode = 0; // Probing with new password immediately succeeds
     SystemExecutor executor = new SystemExecutor(recorder);
 
-    Backup backup = new Backup(manager, volumeSource(), Endpoints.parse(manager, "local:" + repoDir), "old-secret", null, null, null, null, List.of(), List.of());
+    Backup backup = new Backup(manager, volumeSource(), Endpoints.parse(manager, "local:" + repoDir), "old-secret", null, null, null, null, List.of());
 
     executor.passwd(backup, "new-secret");
 
@@ -1570,7 +1570,7 @@ class SystemExecutorTest {
     recorder.returnCode = 1; // Both fail
     SystemExecutor executor = new SystemExecutor(recorder);
 
-    Backup backup = new Backup(manager, volumeSource(), Endpoints.parse(manager, "local:" + repoDir), "old-secret", null, null, null, null, List.of(), List.of());
+    Backup backup = new Backup(manager, volumeSource(), Endpoints.parse(manager, "local:" + repoDir), "old-secret", null, null, null, null, List.of());
 
     BitferryError err = assertThrows(BitferryError.class, () -> executor.passwd(backup, "new-secret"));
     assertTrue(err.getMessage().contains("is not accepted by the Restic repository"));
@@ -1604,7 +1604,7 @@ class SystemExecutorTest {
     SystemExecutor executor = new SystemExecutor(recorder);
 
     Endpoint repoEndpoint = Endpoints.parse(manager, "local:" + repoDir);
-    Backup backup = new Backup(manager, volumeSource(), repoEndpoint, "old-secret", null, null, null, null, List.of(), List.of());
+    Backup backup = new Backup(manager, volumeSource(), repoEndpoint, "old-secret", null, null, null, null, List.of());
     Restore restore = new Restore(manager, repoEndpoint, volumeRestored(), "old-secret", null, List.of(), List.of());
 
     executor.passwd(backup, "new-secret");

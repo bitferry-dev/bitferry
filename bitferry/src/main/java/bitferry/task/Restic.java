@@ -46,17 +46,20 @@ public abstract class Restic extends Task {
   // The this-escape is deliberate mirroring the Task constructors: the vault provider
   // merely receives the task reference for the token storage keyed by the task tag
   @SuppressWarnings("this-escape")
-  protected Restic(Manager manager, Endpoint source, Endpoint destination, String password, String process, Map<String, List<String>> processRoute, Collection<String> include, Collection<String> exclude) {
-    this(manager, source, destination, password, process, processRoute, include, exclude, false);
+  protected Restic(Manager manager, Endpoint source, Endpoint destination, String password, String process, Map<String, List<String>> processRoute, Collection<String> exclude) {
+    this(manager, source, destination, password, process, processRoute, exclude, false);
   }
 
   /// The creation constructor with the explicit keyring storage request: the token
   /// travels to the OS keyring when the keyring is usable on the host; the per-volume
   /// vault keeps serving otherwise (the fixedness of the vault volume only hints the
-  /// sensible default — see [Vault.select]).
+  /// sensible default — see [Vault.select]). The include filters do not ride the base:
+  /// the restic operations diverge on the inclusion support (the restore carries the
+  /// [IncludeFilters] capability, the backup omits it), so the capable concrete
+  /// classes hold their own include state.
   @SuppressWarnings("this-escape")
-  protected Restic(Manager manager, Endpoint source, Endpoint destination, String password, String process, Map<String, List<String>> processRoute, Collection<String> include, Collection<String> exclude, boolean keyring) {
-    super(manager, source, destination, include, exclude);
+  protected Restic(Manager manager, Endpoint source, Endpoint destination, String password, String process, Map<String, List<String>> processRoute, Collection<String> exclude, boolean keyring) {
+    super(manager, source, destination, exclude);
     this.vault = Vault.select(this, keyring);
     this.processRoute = processRoute;
     this.processOptions = optional(process, processRoute);
@@ -66,8 +69,8 @@ public abstract class Restic extends Task {
   /// Constructor for restoring an existing task from the descriptor's fields;
   /// serves the concrete subclasses' Jackson creators. The password is not a part
   /// of the descriptor and is retrieved from the vault lazily upon the processing.
-  protected Restic(Manager manager, Endpoint source, Endpoint destination, String tag, OffsetDateTime modified, List<String> include, List<String> exclude, Backend backend, Map<String, List<String>> processRoute) {
-    super(manager, source, destination, tag, modified, include, exclude);
+  protected Restic(Manager manager, Endpoint source, Endpoint destination, String tag, OffsetDateTime modified, List<String> exclude, Backend backend, Map<String, List<String>> processRoute) {
+    super(manager, source, destination, tag, modified, exclude);
     // The retrieval chain resolves the token regardless of the provider holding it
     this.vault = Vault.volume();
     this.processRoute = processRoute;

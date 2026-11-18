@@ -1444,7 +1444,9 @@ class CliTest {
     assertEquals(Backup.CHECK.get("default"), unchanged.check());
     assertEquals(Cadence.PROFILES.get("default"), unchanged.cadence());
     assertEquals(Backup.PROCESS.get("default"), unchanged.processOptions());
-    assertTrue(unchanged.include().isEmpty());
+    // The backup carries no include state (the capability is structural): the
+    // descriptor holds no such section
+    assertFalse(unchanged.serialize().has("include"));
 
     // The exclude filters still apply
     cmd = Main.createCommandLine();
@@ -1477,7 +1479,7 @@ class CliTest {
     assertNull(updated3.check());
     assertNull(updated3.cadence());
     assertTrue(updated3.processOptions().isEmpty());
-    assertTrue(updated3.include().isEmpty());
+    assertFalse(updated3.serialize().has("include"));
     assertTrue(updated3.exclude().isEmpty());
   }
 

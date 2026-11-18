@@ -98,15 +98,18 @@ class PasswordsTest {
     }
   }
 
+  // The token travels after the '--' end-of-options marker: the base64url alphabet
+  // makes a '-'-leading (or '_' -leading) form a roughly one-in-32 outcome of the
+  // randomized obscuring, and the bare token would be parsed as a flag cluster then
   private static String obscureWithRclone(String secret) throws Exception {
-    Process process = new ProcessBuilder("rclone", "obscure", secret).start();
+    Process process = new ProcessBuilder("rclone", "obscure", "--", secret).start();
     String output = new String(process.getInputStream().readAllBytes()).trim();
     assertTrue(process.waitFor() == 0);
     return output;
   }
 
   private static String revealWithRclone(String token) throws Exception {
-    Process process = new ProcessBuilder("rclone", "reveal", token).start();
+    Process process = new ProcessBuilder("rclone", "reveal", "--", token).start();
     String output = new String(process.getInputStream().readAllBytes()).trim();
     assertTrue(process.waitFor() == 0, () -> "rclone reveal failed for " + token);
     return output;

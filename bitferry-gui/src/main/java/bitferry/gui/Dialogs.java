@@ -202,8 +202,10 @@ final class Dialogs {
           case "update" -> new Update(manager, source, destination, execute, include, exclude);
           case "replicate" -> new Replicate(manager, source, destination, execute, include, exclude);
           case "equalize" -> new Equalize(manager, source, destination, execute, include, exclude);
+          // The backup carries no include filters (the capability is structurally
+          // absent - restic backup filters by exclusion only)
           case "backup" -> new Backup(manager, source, destination, form.password(), form.format(),
-            execute, form.forget(), form.check(), form.serve(), include, exclude, keyring);
+            execute, form.forget(), form.check(), form.serve(), exclude, keyring);
           case "restore" -> new Restore(manager, source, destination, form.password(), execute, include, exclude, keyring);
           default -> throw new BitferryError("Unknown task type " + form.type());
         };
@@ -288,17 +290,16 @@ final class Dialogs {
         // editor (the grid checkbox mirrors it)
         current.setManual(form.manual());
 
-        // Include filters. The backup tasks filter by exclusion only (restic backup
-        // carries no include patterns): the handling is skipped and the form field is
-        // disabled — the stored legacy filters, if any, are managed via the CLI
-        // --clear-include
-        // FIXME get rid of the selector by defining include on the restore task only
-        if (current.acceptsIncludeFilters()) {
+        // Include filters: the capability is structural ([IncludeFilters] on the rclone
+        // family and the restore tasks), so the type test replaces the runtime
+        // predicate — the backup tasks carry neither the state nor the accessors,
+        // and the form field is disabled for them
+        if (current instanceof IncludeFilters includable) {
           List<String> include = patterns(form.include());
           if (include.isEmpty()) {
-            current.clearInclude();
+            includable.clearInclude();
           } else {
-            current.setInclude(include);
+            includable.setInclude(include);
           }
         }
 

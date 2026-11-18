@@ -114,9 +114,11 @@ public class ModifyTaskCommand implements Callable<Integer>, HasCommonOptions {
       }
     }
 
-    // The include filters are rejected upfront (before any mutation): restic backup
-    // has no include patterns (the exclusion only), so they would be silently ignored
-    if ((include != null || includeExts != null) && !task.acceptsIncludeFilters()) {
+    // The include filters are rejected upfront (before any mutation): the capability
+    // is structural (the [IncludeFilters] mixin on the rclone family and the restore
+    // tasks), so the filter-less operations (the backup ones - restic backup filters
+    // by exclusion only) carry neither the state nor the accessors
+    if ((include != null || includeExts != null) && !(task instanceof IncludeFilters)) {
       throw new BitferryError("Include filters are not applicable to backup tasks (restic backup filters by exclusion only)");
     }
 
@@ -148,10 +150,12 @@ public class ModifyTaskCommand implements Callable<Integer>, HasCommonOptions {
       defaultCheck ? "@default" : check,
       defaultServe ? "@default" : serve);
 
+    // The clear is the tolerated no-op for the capability-less tasks (the upfront
+    // guard above has already rejected the set requests)
     if (clearInclude) {
-      task.clearInclude();
+      if (task instanceof IncludeFilters includable) includable.clearInclude();
     } else if (include != null || includeExts != null) {
-      task.setInclude(CliUtils.parsePatterns(include, includeExts));
+      ((IncludeFilters) task).setInclude(CliUtils.parsePatterns(include, includeExts));
     }
 
     if (clearExclude) {

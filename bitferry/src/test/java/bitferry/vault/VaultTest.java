@@ -44,7 +44,7 @@ class VaultTest {
 
   @Test
   void backupPasswordIsStoredInTheSourceVolumeStorage() throws IOException {
-    Backup backup = new Backup(manager, volumeSource(), volumeRepo(), "Our secret password", null, null, null, null, List.of(), List.of());
+    Backup backup = new Backup(manager, volumeSource(), volumeRepo(), "Our secret password", null, null, null, null, List.of());
     manager.commit();
 
     // The obscured token travels in the storage file's vault section
@@ -66,7 +66,7 @@ class VaultTest {
 
   @Test
   void passwordSurvivesTheManagerRoundTrip() throws IOException {
-    Backup backup = new Backup(manager, volumeSource(), volumeRepo(), "Our secret password", null, null, null, null, List.of(), List.of());
+    Backup backup = new Backup(manager, volumeSource(), volumeRepo(), "Our secret password", null, null, null, null, List.of());
     manager.commit();
 
     // A fresh manager restores the task and its password from the vault section lazily
@@ -82,7 +82,7 @@ class VaultTest {
   void localBackupSourceIsRejected() {
     Endpoint local = Endpoints.parse(manager, "local:" + dir.resolve("plain"));
     BitferryError error = assertThrows(BitferryError.class,
-      () -> new Backup(manager, local, volumeRepo(), "secret", null, null, null, null, List.of(), List.of()));
+      () -> new Backup(manager, local, volumeRepo(), "secret", null, null, null, null, List.of()));
     assertTrue(error.getMessage().contains("backup directory endpoint must reside within a Bitferry volume"));
   }
 
@@ -96,13 +96,13 @@ class VaultTest {
 
   @Test
   void passwordsMustBeSpecified() {
-    assertThrows(BitferryError.class, () -> new Backup(manager, volumeSource(), volumeRepo(), null, null, null, null, null, List.of(), List.of()));
-    assertThrows(BitferryError.class, () -> new Backup(manager, volumeSource(), volumeRepo(), "", null, null, null, null, List.of(), List.of()));
+    assertThrows(BitferryError.class, () -> new Backup(manager, volumeSource(), volumeRepo(), null, null, null, null, null, List.of()));
+    assertThrows(BitferryError.class, () -> new Backup(manager, volumeSource(), volumeRepo(), "", null, null, null, null, List.of()));
   }
 
   @Test
   void vaultEntriesOfTheDeletedTasksArePurged() throws IOException {
-    Backup backup = new Backup(manager, volumeSource(), volumeRepo(), "Our secret password", null, null, null, null, List.of(), List.of());
+    Backup backup = new Backup(manager, volumeSource(), volumeRepo(), "Our secret password", null, null, null, null, List.of());
     manager.commit();
     assertTrue(Storage.readJson(dir.resolve("volume").resolve(Bitferry.STORAGE)).has("vault"));
 

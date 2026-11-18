@@ -7,14 +7,21 @@ import java.time.*;
 import java.util.function.Consumer;
 import java.util.*;
 
-/// Latest snapshot restore (Restic).
-public class Restore extends Restic {
+/// Latest snapshot restore (Restic). The restore filters by inclusion and exclusion
+/// both (the [IncludeFilters] capability carrying class): restic restore narrows the
+/// snapshot content with the include patterns before applying the exclusions.
+public class Restore extends Restic implements IncludeFilters {
 
   public static final String OPERATION = "restore";
 
   /// Processing options profiles; the null key denotes the default profile.
   public static final Map<String, List<String>> PROCESS =
     route(Map.of("default", List.of("--sparse")), List.of("--sparse"));
+
+  // The [IncludeFilters] backing state: the restic restore filters by inclusion and
+  // exclusion both (unlike the backup, which filters by exclusion only) - the behavior
+  // rides the interface defaults over [includeState]
+  protected final List<String> include = new ArrayList<>();
 
   /// Constructor for a new task instance.
   public Restore(Manager manager, Endpoint source, Endpoint destination, String password, String process, Collection<String> include, Collection<String> exclude) {
@@ -24,7 +31,8 @@ public class Restore extends Restic {
   /// Constructor for a new task instance with the explicit keyring storage request:
   /// the repository password travels to the OS keyring when the keyring is usable.
   public Restore(Manager manager, Endpoint source, Endpoint destination, String password, String process, Collection<String> include, Collection<String> exclude, boolean keyring) {
-    super(manager, source, destination, password, process, PROCESS, include, exclude, keyring);
+    super(manager, source, destination, password, process, PROCESS, exclude, keyring);
+    this.include.addAll(include);
   }
 
   /// Jackson creator restoring an existing task from the storage descriptor;
@@ -41,10 +49,17 @@ public class Restore extends Restic {
     @JsonProperty("exclude") List<String> exclude,
     @JsonProperty("restic") Backend backendOpts
   ) {
-    super(manager, source, destination, tag, modified, include, exclude, backendOpts, PROCESS);
+    super(manager, source, destination, tag, modified, exclude, backendOpts, PROCESS);
+    this.include.addAll(include == null ? List.of() : include);
     if (backend != null && !BACKEND.equals(backend)) {
       throw new BitferryError("Invalid task backend: expected " + BACKEND + " but got " + backend);
     }
+  }
+
+  /// The [IncludeFilters] backing state (the behavior rides the interface defaults).
+  @Override
+  public List<String> includeState() {
+    return include;
   }
 
   @Override

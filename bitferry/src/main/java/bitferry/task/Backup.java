@@ -10,6 +10,9 @@ import java.util.*;
 /// Incremental encrypted backup with snapshotting (Restic). The repository is initialized
 /// upon the task creation unless attached to the existing one. The repository password is
 /// kept within the vault of the volume hosting the source directory (the unencrypted end).
+/// The backup filters by exclusion only: restic backup has no include patterns (unlike
+/// the restic restore), so the [IncludeFilters] capability is structurally absent here -
+/// the class holds neither the include state nor the accessors.
 public class Backup extends Restic {
 
   public static final String OPERATION = "backup";
@@ -36,17 +39,15 @@ public class Backup extends Restic {
   protected List<String> check;
   protected Cadence cadence;
 
-  private static final System.Logger LOG = System.getLogger(Backup.class.getName());
-
   /// Constructor for a new task instance with an explicit service cadence.
-  public Backup(Manager manager, Endpoint source, Endpoint destination, String password, Boolean format, String process, String forget, String check, String serve, Collection<String> include, Collection<String> exclude) {
-    this(manager, source, destination, password, format, process, forget, check, serve, include, exclude, false);
+  public Backup(Manager manager, Endpoint source, Endpoint destination, String password, Boolean format, String process, String forget, String check, String serve, Collection<String> exclude) {
+    this(manager, source, destination, password, format, process, forget, check, serve, exclude, false);
   }
 
   /// Constructor for a new task instance with the explicit keyring storage request:
   /// the repository password travels to the OS keyring when the keyring is usable.
-  public Backup(Manager manager, Endpoint source, Endpoint destination, String password, Boolean format, String process, String forget, String check, String serve, Collection<String> include, Collection<String> exclude, boolean keyring) {
-    super(manager, source, destination, password, process, PROCESS, include, exclude, keyring);
+  public Backup(Manager manager, Endpoint source, Endpoint destination, String password, Boolean format, String process, String forget, String check, String serve, Collection<String> exclude, boolean keyring) {
+    super(manager, source, destination, password, process, PROCESS, exclude, keyring);
     this.format = format;
     this.forget = optional(forget, FORGET);
     this.check = optional(check, CHECK);
@@ -54,16 +55,13 @@ public class Backup extends Restic {
   }
 
   /// Constructor for a new task instance (cadence defaults to @default).
-  public Backup(Manager manager, Endpoint source, Endpoint destination, String password, Boolean format, String process, String forget, String check, Collection<String> include, Collection<String> exclude) {
-    this(manager, source, destination, password, format, process, forget, check, null, include, exclude);
+  public Backup(Manager manager, Endpoint source, Endpoint destination, String password, Boolean format, String process, String forget, String check, Collection<String> exclude) {
+    this(manager, source, destination, password, format, process, forget, check, null, exclude);
   }
 
   /// Jackson creator restoring an existing task from the storage descriptor;
   /// the manager is injected as it is not a part of the descriptor. The repository
-  /// is not re-initialized (nor attached) upon the restoration. The legacy storages
-  /// may carry the include filters on the backup tasks (the pre-restriction format):
-  /// they are dropped at the restore - the backup filters by exclusion only, and
-  /// [setInclude] rejects them everywhere else.
+  /// is not re-initialized (nor attached) upon the restoration.
   @JsonCreator
   Backup(
     @JacksonInject("manager") Manager manager,
@@ -72,11 +70,10 @@ public class Backup extends Restic {
     @JsonProperty("task") String tag,
     @JsonProperty("backend") String backend,
     @JsonProperty("modified") OffsetDateTime modified,
-    @JsonProperty("include") List<String> include,
     @JsonProperty("exclude") List<String> exclude,
     @JsonProperty("restic") Backend backendOpts
   ) {
-    super(manager, source, destination, tag, modified, dropLegacyIncludes(include, tag), exclude, backendOpts, PROCESS);
+    super(manager, source, destination, tag, modified, exclude, backendOpts, PROCESS);
     if (backend != null && !BACKEND.equals(backend)) {
       throw new BitferryError("Invalid task backend: expected " + BACKEND + " but got " + backend);
     }
@@ -86,17 +83,6 @@ public class Backup extends Restic {
     this.cadence = backendOpts == null || backendOpts.serve() == null
       ? Cadence.PROFILES.get("default")
       : Cadence.parse(backendOpts.serve());
-  }
-
-  /// The restore-time include normalization: the legacy storages may carry the include
-  /// filters on the backup tasks (the pre-restriction format). They are dropped with
-  /// a warning - the backup filters by exclusion only, and [setInclude] rejects them
-  /// everywhere else; the smuggled filters would otherwise ride the task and round-trip
-  /// back into the storage on the next commit. Returns null unconditionally.
-  private static List<String> dropLegacyIncludes(List<String> include, String tag) {
-    if (include == null || include.isEmpty()) return null;
-    LOG.log(System.Logger.Level.WARNING, "The backup task " + tag + " storage carries the legacy include filters - dropping them (the backup tasks filter by exclusion only)");
-    return null;
   }
 
   @Override
@@ -154,20 +140,6 @@ public class Backup extends Restic {
   public void setCadence(String serve) {
     this.cadence = Cadence.parse(serve);
     touch();
-  }
-
-  /// The backup tasks filter by exclusion only: restic backup has no include patterns
-  /// (unlike restic restore), so the include filters would be silently ignored. The
-  /// legacy storages carrying them have the filters dropped at the restore; the
-  /// [clearInclude] stays available for the explicit cleanup requests.
-  @Override
-  public void setInclude(Collection<String> include) {
-    throw new BitferryError("Include filters are not applicable to backup tasks (restic backup filters by exclusion only)");
-  }
-
-  @Override
-  public boolean acceptsIncludeFilters() {
-    return false;
   }
 
   @Override

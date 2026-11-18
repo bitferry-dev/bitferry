@@ -5,6 +5,7 @@ import bitferry.Volume;
 import bitferry.endpoint.Endpoints;
 import bitferry.task.Backup;
 import bitferry.task.Copy;
+import bitferry.task.IncludeFilters;
 import bitferry.task.Replicate;
 import bitferry.task.Task;
 import javafx.application.Platform;
@@ -220,7 +221,7 @@ class TaskFormControllerTest {
         Task task = new Backup(manager,
             Endpoints.parse(manager, ":" + volume.tag() + ":backup-src"),
             Endpoints.parse(manager, "local:" + Files.createTempDirectory("bitferry-backup-repo")),
-            "secret", false, null, null, null, null, List.of(), List.of(), false);
+            "secret", false, null, null, null, null, List.of(), false);
         try {
             TaskFormController form = load(task);
             assertEquals("backup", form.type());
@@ -256,7 +257,10 @@ class TaskFormControllerTest {
             assertEquals(task.tag(), morphed.tag());
             assertEquals(task.source().describe(), morphed.source().describe());
             assertEquals(task.destination().describe(), morphed.destination().describe());
-            assertEquals(List.of("data/**"), morphed.include());
+            // The filters ride the [IncludeFilters] capability (the static type of the
+            // morph result is the base Task)
+            assertTrue(morphed instanceof IncludeFilters);
+            assertEquals(List.of("data/**"), ((IncludeFilters) morphed).include());
             assertEquals(List.of("*.tmp"), morphed.exclude());
             manager.commit();
 
@@ -266,7 +270,7 @@ class TaskFormControllerTest {
             assertNotNull(restored);
             assertInstanceOf(Replicate.class, restored);
             assertEquals("replicate", restored.operation());
-            assertEquals(List.of("data/**"), restored.include());
+            assertEquals(List.of("data/**"), ((IncludeFilters) restored).include());
             assertEquals(List.of("*.tmp"), restored.exclude());
         } finally {
             task.delete();
