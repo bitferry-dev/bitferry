@@ -9,3 +9,5 @@
 - rollback architectural issue (GLM full)
 
 - secure the temp password file management on restic password change
+
+- get rid of legacy mirror, replicate refs; 1-way sync -- replicate (r) in cli

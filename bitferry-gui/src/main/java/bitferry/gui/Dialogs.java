@@ -271,11 +271,21 @@ final class Dialogs {
           }
         }
 
-        // The mutations run BEFORE the morph: the morph is destructive (an equalize
-        // task loses its bisync baseline on disk), so a failing mutation after it
-        // used to leave the half-applied morph behind. The morph carries the mutated
-        // state over (the process options, the filters, the flags), so the ordering
-        // is equivalent for the successful path
+        // The execution options are value-checked against the effective (the post-morph)
+        // profile route BEFORE the destructive morph: the morph is irreversible on disk
+        // (the equalize baseline deletion), so a failing set after it would strand the
+        // half-applied morph with the storage uncommitted
+        if (!current.operation().equals(form.type())) {
+          Task.checkProcessOptions(form.execute(), Task.processRouteFor(form.type()));
+        }
+
+        // The applicability guards and the value validation run BEFORE the morph (the
+        // password rotation above included): the morph is destructive (an equalize task
+        // loses its bisync baseline on disk), so a failing mutation after it would
+        // leave the half-applied morph behind. The mutation calls themselves ride the
+        // morphed task: the morph carries the prior state over (the process options,
+        // the filters, the flags), so the resolution against the target operation's
+        // profile route matches the user's selection
         if (!current.operation().equals(form.type())) {
           current = current.morph(form.type());
         }

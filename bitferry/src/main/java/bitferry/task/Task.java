@@ -394,6 +394,35 @@ public abstract class Task {
     touch();
   }
 
+  /// The processing options profile route of the specified operation name (the
+  /// pre-validation source for the frontends: the options ride the effective -
+  /// the post-morph - route, so a profile accepted for the target operation may
+  /// be rejected for the current one). The unknown operation names yield null:
+  /// the morph itself rejects them with its own clean error.
+  public static Map<String, List<String>> processRouteFor(String operation) {
+    return switch (operation) {
+      case Copy.OPERATION, Update.OPERATION, Replicate.OPERATION, "mirror", "synchronize" -> Rclone.PROCESS;
+      case Equalize.OPERATION -> Equalize.PROCESS;
+      case Backup.OPERATION -> Backup.PROCESS;
+      case Restore.OPERATION -> Restore.PROCESS;
+      default -> null;
+    };
+  }
+
+  /// Value-check the processing options specification against the given profile
+  /// route without applying it: the '@'-references must resolve (mirroring
+  /// [optional]'s error), the disable marker and the raw option lists pass as-is.
+  /// The null route (the unknown operation) skips the check. The frontends run it
+  /// before the destructive mutations so a rejected value cannot strand a
+  /// half-applied change.
+  public static void checkProcessOptions(String process, Map<String, List<String>> route) {
+    if (process == null || route == null || !process.startsWith("@")) return;
+    String name = process.substring(1);
+    if (!"-".equals(name) && !route.containsKey(name)) {
+      throw new BitferryError("Unknown options profile " + process);
+    }
+  }
+
   /// Return the tags of the volumes the task refers to through its endpoints.
   public List<String> referredVolumes() {
     Set<String> vtags = new LinkedHashSet<>();

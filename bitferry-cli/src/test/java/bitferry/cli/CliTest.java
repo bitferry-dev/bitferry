@@ -1636,6 +1636,92 @@ class CliTest {
   }
 
   @Test
+  void modifyTaskManualFlagsAndMorphOrdering() throws IOException {
+    Path volDir = tempDir.resolve("mod_manual_vol");
+    Path dataDir = tempDir.resolve("mod_manual_data");
+    Files.createDirectories(volDir);
+    Files.createDirectories(dataDir);
+
+    assertEquals(0, cmd.execute("create", "volume", volDir.toString()));
+    String vtag = volumeTag(managerFor(volDir), volDir);
+
+    // 1. Creating with --manual marks the task manual-only in the descriptor
+    int code = cmd.execute("--path", volDir.toString(),
+      "create", "task", "equalize", ":" + vtag + ":data", "local:" + dataDir, "--manual");
+    assertEquals(0, code, () -> "stderr: " + err + " out: " + out);
+    Manager probed = managerFor(volDir);
+    Equalize task = (Equalize) probed.liveTasks().values().iterator().next();
+    assertTrue(task.serialize().has("manual"), () -> task.serialize().toPrettyString());
+    // The manual-only task is invisible for the mass-run selection (by-tag lookup
+    // still reaches it)
+    assertTrue(probed.selectTasks().isEmpty(), () -> "mass selection: " + probed.selectTasks().keySet());
+    assertFalse(probed.liveTasks().isEmpty());
+
+    // 2. The created baseline (the listings seeded into the workdir): the following
+    // morph-failure scenario relies on it being destructible-but-intact
+    Path workdir = dataDir.resolve(".bitferry." + task.tag());
+    Files.createDirectories(workdir);
+    Files.writeString(workdir.resolve("baseline.path1.lst"), "listing");
+    Manager m = managerFor(volDir);
+    assertTrue(((Equalize) m.selectTasks(task.tag()).get(task.tag())).resynced());
+
+    // 3. The failing value mutation must not strand the destructive morph: the type
+    // change is rejected upfront (the '@'-profile does not resolve against the target
+    // operation's route), so the bisync baseline survives untouched
+    cmd = Main.createCommandLine();
+    err = new StringWriter();
+    cmd.setErr(new PrintWriter(err));
+    code = cmd.execute("--path", volDir.toString(), "m", "t", task.tag(), "-t", "copy", "-X", "@nonexistent");
+    assertNotEquals(0, code);
+    assertTrue(err.toString().contains("Unknown options profile @nonexistent"), () -> "stderr: " + err);
+    assertTrue(Files.exists(workdir.resolve("baseline.path1.lst")), "the morph must not run before the value validation");
+    assertInstanceOf(Equalize.class, managerFor(volDir).selectTasks(task.tag()).get(task.tag()));
+
+    // 4. The tri-state manual flags: set, then clear
+    cmd = Main.createCommandLine();
+    out = new StringWriter();
+    err = new StringWriter();
+    cmd.setOut(new PrintWriter(out));
+    cmd.setErr(new PrintWriter(err));
+    code = cmd.execute("--path", volDir.toString(), "m", "t", task.tag(), "--no-manual");
+    assertEquals(0, code, () -> "stderr: " + err);
+    assertFalse(managerFor(volDir).selectTasks(task.tag()).get(task.tag()).serialize().has("manual"));
+
+    cmd = Main.createCommandLine();
+    out = new StringWriter();
+    err = new StringWriter();
+    cmd.setOut(new PrintWriter(out));
+    cmd.setErr(new PrintWriter(err));
+    code = cmd.execute("--path", volDir.toString(), "m", "t", task.tag(), "--manual");
+    assertEquals(0, code, () -> "stderr: " + err);
+    assertTrue(managerFor(volDir).selectTasks(task.tag()).get(task.tag()).serialize().has("manual"));
+
+    // 5. The flag pair is mutually exclusive
+    cmd = Main.createCommandLine();
+    err = new StringWriter();
+    cmd.setErr(new PrintWriter(err));
+    code = cmd.execute("--path", volDir.toString(), "m", "t", task.tag(), "--manual", "--no-manual");
+    assertNotEquals(0, code);
+    assertTrue(err.toString().contains("Cannot specify both --manual and --no-manual"), () -> "stderr: " + err);
+  }
+
+  @Test
+  void restoreManagerProbesTheBitferryPathSystemProperty() throws IOException {
+    Path volDir = tempDir.resolve("sysprop_vol");
+    Files.createDirectories(volDir);
+    assertEquals(0, cmd.execute("create", "volume", volDir.toString()));
+
+    System.setProperty("bitferry.path", volDir.toString());
+    try {
+      Manager m = CliUtils.restoreManager(new CommonOptions());
+      assertTrue(m.volumes().values().stream()
+        .anyMatch(v -> v.root().equals(Bitferry.canonicalize(volDir))), () -> "volumes: " + m.volumes().keySet());
+    } finally {
+      System.clearProperty("bitferry.path");
+    }
+  }
+
+  @Test
   void modifyTaskValidationFailures() throws IOException {
     Path volDir = tempDir.resolve("mod_val_vol");
     Path dataDir = tempDir.resolve("mod_val_data");

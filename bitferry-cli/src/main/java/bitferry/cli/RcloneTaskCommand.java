@@ -69,6 +69,9 @@ public abstract class RcloneTaskCommand implements Callable<Integer>, HasCommonO
   @Option(names = {"-k", "--keyring"}, description = "Store the encryption password in the OS keyring (fixed volumes only).")
   boolean keyring;
 
+  @Option(names = "--manual", description = "Exclude the task from the mass runs (run it by its tag only).")
+  boolean manual;
+
   @Override
   public CommonOptions commonOptions() {
     return options;
@@ -110,6 +113,9 @@ public abstract class RcloneTaskCommand implements Callable<Integer>, HasCommonO
         rclone.decrypt(password, null, Rclone.Encryption.options(profile), keyring);
       }
       CliUtils.noteKeyringStorage(spec, task, keyring);
+    }
+    if (manual) {
+      task.setManual(true);
     }
     if (m.volumes().values().stream().noneMatch(v -> task.refersVolume(v.tag()))) {
       throw new BitferryError("Task " + task.tag() + " does not belong to any registered volume; it cannot be persisted");

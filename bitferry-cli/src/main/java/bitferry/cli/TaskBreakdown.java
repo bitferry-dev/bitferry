@@ -133,47 +133,6 @@ public final class TaskBreakdown {
     return null;
   }
 
-  private static void appendRcloneDetails(StringBuilder sb, Rclone rclone) {
-    Rclone.Encryption enc = rclone.encryption();
-    if (enc instanceof Rclone.Encrypt e) {
-      String opts = e.options().isEmpty() ? "" : " (options: " + String.join(" ", e.options()) + ")";
-      appendProperty(sb, "Encryption:", "encrypt" + opts);
-    } else if (enc instanceof Rclone.Decrypt d) {
-      String opts = d.options().isEmpty() ? "" : " (options: " + String.join(" ", d.options()) + ")";
-      appendProperty(sb, "Encryption:", "decrypt" + opts);
-    } else {
-      appendProperty(sb, "Encryption:", "none");
-    }
-
-    appendProperty(sb, "Source:", formatEndpoint(rclone.source()));
-    appendProperty(sb, "Destination:", formatEndpoint(rclone.destination()));
-
-    if (!rclone.processOptions().isEmpty()) {
-      appendProperty(sb, "Execute Opts:", String.join(" ", rclone.processOptions()));
-    }
-  }
-
-  private static void appendBackupEndpoints(StringBuilder sb, Backup backup) {
-    appendProperty(sb, "Source:", formatEndpoint(backup.source()));
-    appendProperty(sb, "Repository:", formatEndpoint(backup.destination()));
-    if (!backup.processOptions().isEmpty()) {
-      appendProperty(sb, "Execute Opts:", String.join(" ", backup.processOptions()));
-    }
-  }
-
-  private static void appendRestoreEndpoints(StringBuilder sb, Restore restore) {
-    appendProperty(sb, "Repository:", formatEndpoint(restore.source()));
-    appendProperty(sb, "Target:", formatEndpoint(restore.destination()));
-    if (!restore.processOptions().isEmpty()) {
-      appendProperty(sb, "Execute Opts:", String.join(" ", restore.processOptions()));
-    }
-  }
-
-  private static void appendDefaultEndpoints(StringBuilder sb, Task task) {
-    appendProperty(sb, "Source:", formatEndpoint(task.source()));
-    appendProperty(sb, "Destination:", formatEndpoint(task.destination()));
-  }
-
   private static void appendServiceSection(StringBuilder sb, Backup backup) {
     sb.append(System.lineSeparator());
     sb.append(Ansi.AUTO.string("@|bold # Service & Retention|@")).append(System.lineSeparator());

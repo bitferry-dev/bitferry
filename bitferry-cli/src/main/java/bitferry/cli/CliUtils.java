@@ -145,13 +145,18 @@ public final class CliUtils {
 
   /// Create, configure and restore a Manager instance by probing available volumes.
   /// The probing policy of the CLI: the explicit --path roots, the BITFERRY_PATH
-  /// directories, the user's home directory and all the mounted file systems.
+  /// directories, the bitferry.path system property (the JVM-level injection mirroring
+  /// the GUI's AppContext), the user's home directory and all the mounted file systems.
   public static Manager restoreManager(CommonOptions opts) {
     Manager m = createManager(opts);
     List<Path> roots = opts.paths == null ? new ArrayList<>() : new ArrayList<>(opts.paths);
     String env = System.getenv("BITFERRY_PATH");
     if (env != null && !env.isBlank()) {
       for (String entry : env.split(Pattern.quote(File.pathSeparator))) roots.add(Path.of(entry));
+    }
+    String prop = System.getProperty("bitferry.path");
+    if (prop != null && !prop.isBlank()) {
+      for (String entry : prop.split(Pattern.quote(File.pathSeparator))) roots.add(Path.of(entry));
     }
     roots.add(Path.of(System.getProperty("user.home")));
     roots.addAll(Manager.mountPoints());
@@ -211,5 +216,96 @@ public final class CliUtils {
   /// Format a task with the picocli color markup (the shared presentation rules).
   public static String formatTask(Task task) {
     return AnsiFormat.task(task, AnsiFormat.Markup.PICOCLI);
+  }
+
+  /// The batch runner seam: the per-task backend operation (the [Task#process] run
+  /// or the [Task#serve] service) the batch commands dispatch over.
+  @FunctionalInterface
+  public interface BatchOperation {
+    boolean run(Task task);
+  }
+
+  /// Run the batch over the tasks matched by the specified (partial) tags (or all
+  /// the intact tasks when no tags given): the stale-volume and the manual-only
+  /// verbose advisories, the numbered per-task dispatch with the isolated failures,
+  /// the ✓/✗ marks and the summary, then the conditional post-batch commit. The
+  /// textual variants (the advisory verb, the summary templates carrying the '%d'
+  /// count, the commit-failure label) travel in verbatim from the callers keeping
+  /// the output byte-identical between the execute and the serve surfaces. Returns
+  /// the process exit code (0: every task succeeded).
+  public static int runBatch(CommandSpec spec, CommonOptions options, List<String> tags, BatchOperation operation,
+                             String advisoryVerb, String allSummary, String someSummary, String commitFailureLabel) {
+    PrintWriter out = spec != null ? spec.commandLine().getOut() : new PrintWriter(System.out, true);
+    PrintWriter err = spec != null ? spec.commandLine().getErr() : new PrintWriter(System.err, true);
+    CommonOptions opts = resolveOptions(spec, options);
+    Manager m = restoreManager(opts);
+    // The tasks skipped due to the absent volumes are surfaced in verbose mode
+    List<Task> stale = m.liveTasks().values().stream().filter(t -> !t.isIntact()).toList();
+    if (!stale.isEmpty() && m.verbose()) {
+      err.println(Ansi.AUTO.string("@|faint " + stale.size() + " task(s) skipped: their volumes are currently absent (see 'bitferry info -v')|@"));
+    }
+    // The mass-excluded tasks (manual-only) are surfaced in verbose mode
+    if (tags == null || tags.isEmpty()) {
+      long manual = m.liveTasks().values().stream().filter(Task::isIntact).filter(Task::isManual).count();
+      if (manual > 0 && m.verbose()) {
+        err.println(Ansi.AUTO.string("@|faint " + manual + " task(s) excluded from the mass run (manual-only; " + advisoryVerb + " them by their tags)|@"));
+      }
+    }
+    Map<String, Task> tasks = m.selectTasks(tags);
+    // An empty selection succeeds silently
+    if (tasks.isEmpty()) return 0;
+    int n = tasks.size();
+    boolean outcome = true;
+    int i = 0;
+    for (Task t : tasks.values()) {
+      i++;
+      if (!m.quiet) {
+        String line = String.format(Locale.ROOT, "@|bold [%d/%d]|@ @|cyan %s|@  %s", i, n, t.tag(), formatTask(t));
+        out.println(Ansi.AUTO.string(line));
+      }
+      // The task-level failures isolate to the failing task mirroring [Manager.process]
+      // and the GUI runner: a BitferryError (a vanished volume, a dropped vault token)
+      // used to abort the whole batch here, skipping the remaining tasks, the per-task
+      // status line, the summary and the post-batch commit
+      boolean ok;
+      try {
+        ok = operation.run(t);
+      } catch (BitferryError e) {
+        ok = false;
+        if (!m.quiet) out.println(Ansi.AUTO.string("@|red     error: " + e.getMessage() + "|@"));
+      } catch (RuntimeException e) {
+        ok = false;
+        if (!m.quiet) out.println(Ansi.AUTO.string("@|red     unexpected failure: " + e + "|@"));
+      }
+      outcome = ok && outcome;
+      if (!m.quiet) {
+        // The ASCII approximations on the non-unicode consoles: the encoder would
+        // otherwise collapse the marks into the semantically lossy '?' (mirroring
+        // [TaskBreakdown.formatStatus])
+        String status = ok
+          ? Ansi.AUTO.string(Symbols.unicode() ? "@|green     ✓ success|@" : "@|green     ok success|@")
+          : Ansi.AUTO.string(Symbols.unicode() ? "@|red     ✗ failure|@" : "@|red     x failure|@");
+        out.println(status);
+      }
+    }
+    if (!m.quiet) {
+      out.println();
+      String summary = outcome
+        ? String.format(Locale.ROOT, allSummary, n)
+        : String.format(Locale.ROOT, someSummary, n);
+      out.println(Ansi.AUTO.string(summary));
+    }
+    // Persist the post-batch state (the run bookkeeping and the post-service changes):
+    // only the volumes whose state actually changed are rewritten. A failing commit
+    // warns without failing the run outcome: the unmaterialized bookkeeping flips
+    // re-materialize upon the following commits.
+    if (m.isModified()) {
+      try {
+        m.commit();
+      } catch (BitferryError e) {
+        err.println(Ansi.AUTO.string("@|red     ✗ " + commitFailureLabel + ": " + e.getMessage() + "|@"));
+      }
+    }
+    return outcome ? 0 : 1;
   }
 }

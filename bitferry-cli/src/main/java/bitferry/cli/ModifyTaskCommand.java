@@ -71,6 +71,12 @@ public class ModifyTaskCommand implements Callable<Integer>, HasCommonOptions {
   @Option(names = "--clear-exclude", description = "Clear exclude path specifications.")
   boolean clearExclude;
 
+  @Option(names = "--manual", description = "Exclude the task from the mass runs (run it by its tag only).")
+  boolean manual;
+
+  @Option(names = "--no-manual", description = "Include the task in the mass runs.")
+  boolean noManual;
+
   @Override
   public CommonOptions commonOptions() {
     return options;
@@ -86,6 +92,7 @@ public class ModifyTaskCommand implements Callable<Integer>, HasCommonOptions {
     if (defaultServe && serve != null) throw new BitferryError("Cannot specify both -s and -S");
     if (clearInclude && (include != null || includeExts != null)) throw new BitferryError("Cannot specify both --include/--include-ext and --clear-include");
     if (clearExclude && (exclude != null || excludeExts != null)) throw new BitferryError("Cannot specify both --exclude/--exclude-ext and --clear-exclude");
+    if (manual && noManual) throw new BitferryError("Cannot specify both --manual and --no-manual");
 
     boolean hasForget = defaultForget || forget != null;
     boolean hasCheck = defaultCheck || check != null;
@@ -94,8 +101,9 @@ public class ModifyTaskCommand implements Callable<Integer>, HasCommonOptions {
     boolean hasExclude = clearExclude || exclude != null || excludeExts != null;
     boolean hasExecute = execute != null;
     boolean hasType = type != null;
+    boolean hasManual = manual || noManual;
 
-    if (!password && !hasForget && !hasCheck && !hasServe && !hasInclude && !hasExclude && !hasExecute && !hasType) {
+    if (!password && !hasForget && !hasCheck && !hasServe && !hasInclude && !hasExclude && !hasExecute && !hasType && !hasManual) {
       throw new BitferryError("No modifications specified for task " + tag);
     }
 
@@ -124,6 +132,14 @@ public class ModifyTaskCommand implements Callable<Integer>, HasCommonOptions {
 
     if (password && !task.supportsPasswordRotation()) {
       throw new BitferryError("Rclone crypt parameters and passwords cannot be modified on an existing task; create a new task");
+    }
+
+    // The execution options are value-checked against the effective (the post-morph)
+    // profile route BEFORE the destructive morph: the morph is irreversible on disk
+    // (the equalize baseline deletion), so a failing set after it would strand the
+    // half-applied morph with the storage uncommitted
+    if (hasExecute) {
+      Task.checkProcessOptions(execute, Task.processRouteFor(hasType ? type : task.operation()));
     }
 
     if (hasType) {
@@ -162,6 +178,14 @@ public class ModifyTaskCommand implements Callable<Integer>, HasCommonOptions {
       task.clearExclude();
     } else if (exclude != null || excludeExts != null) {
       task.setExclude(CliUtils.parsePatterns(exclude, excludeExts));
+    }
+
+    // The mass-run participation marker (the morph carries it over, so the position
+    // relative to the morph is immaterial)
+    if (manual) {
+      task.setManual(true);
+    } else if (noManual) {
+      task.setManual(false);
     }
 
     m.commit();
