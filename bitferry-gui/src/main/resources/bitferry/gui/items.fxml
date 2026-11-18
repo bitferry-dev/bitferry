@@ -62,6 +62,11 @@
     <HBox spacing="8" alignment="CENTER_LEFT">
       <Label text="Entry:" style="-fx-text-fill: #222222;"/>
       <TextField fx:id="inputField" promptText="Enter argument or pattern (press Enter to add/apply)…" HBox.hgrow="ALWAYS" onAction="#onInputEnter"/>
+      <Button fx:id="browseBtn" text="Browse…" onAction="#onBrowse">
+        <tooltip>
+          <Tooltip text="Pick a directory from the filesystem"/>
+        </tooltip>
+      </Button>
       <Button fx:id="addBtn" text="Add" onAction="#onAdd">
         <tooltip>
           <Tooltip text="Add the entry from the input field to the list (or add a new inline line)"/>

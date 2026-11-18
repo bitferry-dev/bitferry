@@ -1,13 +1,14 @@
 package bitferry.gui;
 
-import java.util.prefs.BackingStoreException;
-import java.util.prefs.Preferences;
-
 import javafx.application.Platform;
 import javafx.beans.InvalidationListener;
 import javafx.geometry.Rectangle2D;
 import javafx.stage.Screen;
 import javafx.stage.Stage;
+
+import java.lang.System.Logger.Level;
+import java.util.prefs.BackingStoreException;
+import java.util.prefs.Preferences;
 
 /// The persisted window status: the placement, the size, the maximized flag plus
 /// the log split divider position and the backend verbosity switch. Backed by the
@@ -32,6 +33,8 @@ final class WindowSettings {
   // as corrupt and clamped
   private static final double MIN_WIDTH = 320;
   private static final double MIN_HEIGHT = 240;
+
+  private static final System.Logger LOG = System.getLogger(WindowSettings.class.getName());
 
   private final Preferences prefs = Preferences.userNodeForPackage(WindowSettings.class);
 
@@ -158,7 +161,7 @@ final class WindowSettings {
     try {
       prefs.flush();
     } catch (BackingStoreException e) {
-      System.err.println("warning: the window status persistence failed: " + e);
+      LOG.log(Level.WARNING, () -> "The window status persistence failed: " + e);
     }
   }
 

@@ -402,4 +402,20 @@ final class Dialogs {
     centerOnScreen(alert, context.ownerWindow);
     alert.show();
   }
+
+  /// Show the volume search roots dialog (ItemListDialog) and persist changes if accepted.
+  static void manageSearchRoots(AppContext context, LogController logs) {
+    List<String> current = SearchRoots.load();
+    String header = "One directory per entry; merged with BITFERRY_PATH, bitferry.path, the home directory and the mount points; non-Bitferry directories are skipped.";
+    Optional<List<String>> result = ItemListDialog.show(context.ownerWindow, "Volume Search Roots", header, current, null, "Select Volume Search Root Directory");
+    if (result.isEmpty()) return;
+    List<String> updated = result.get();
+    if (updated.equals(current)) {
+      logs.log("Volume search roots unchanged");
+      return;
+    }
+    SearchRoots.save(updated);
+    logs.log("Volume search roots updated: " + updated.size() + " directory(ies)");
+    context.reload();
+  }
 }

@@ -15,6 +15,8 @@ module bitferry {
   requires org.freedesktop.dbus.transport.jre;
   // The compact console log formatter shared by the frontends
   requires java.logging;
+  // The persistent user preferences (e.g. search roots)
+  requires java.prefs;
 
   exports bitferry;
   exports bitferry.endpoint;

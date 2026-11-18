@@ -133,13 +133,75 @@ class ItemListControllerTest {
         assertEquals(List.of("trimmed", "valid"), controller.cleanedItems());
     }
 
+    @Test
+    void directoryModeControlsBrowseButtonVisibility() throws Exception {
+        // Without directory mode: browse button is hidden
+        ItemListController patternController = load(List.of("pattern"), null, null);
+        Button patternBrowse = field(patternController, "browseBtn");
+        assertFalse(patternBrowse.isVisible());
+        assertFalse(patternBrowse.isManaged());
+
+        // With directory mode: browse button is visible and managed
+        ItemListController dirController = load(List.of("/some/path"), null, "Select Root");
+        Button dirBrowse = field(dirController, "browseBtn");
+        assertTrue(dirBrowse.isVisible());
+        assertTrue(dirBrowse.isManaged());
+    }
+
+    @Test
+    void onBrowsePicksDirectoryAndAddsToList() throws Exception {
+        var originalPicker = ItemListController.directoryPicker;
+        try {
+            java.io.File picked = new java.io.File("/picked/root/dir");
+            ItemListController.directoryPicker = (window, start) -> picked;
+
+            ItemListController controller = load(List.of("/existing/dir"), null, "Select Root");
+            ListView<String> listView = field(controller, "listView");
+            TextField inputField = field(controller, "inputField");
+
+            runFx(() -> invoke(controller, "onBrowse"));
+
+            assertEquals(List.of("/existing/dir", picked.getAbsolutePath()), listView.getItems());
+            assertEquals(picked.getAbsolutePath(), inputField.getText());
+
+            // Picking the same directory again does not duplicate, but selects it
+            runFx(() -> invoke(controller, "onBrowse"));
+            assertEquals(List.of("/existing/dir", picked.getAbsolutePath()), listView.getItems());
+            assertEquals(1, listView.getSelectionModel().getSelectedIndex());
+        } finally {
+            ItemListController.directoryPicker = originalPicker;
+        }
+    }
+
+    @Test
+    void onAddWhenEmptyInDirectoryModeInvokesBrowse() throws Exception {
+        var originalPicker = ItemListController.directoryPicker;
+        try {
+            java.io.File picked = new java.io.File("/added/via/picker");
+            ItemListController.directoryPicker = (window, start) -> picked;
+
+            ItemListController controller = load(List.of(), null, "Select Root");
+            ListView<String> listView = field(controller, "listView");
+
+            runFx(() -> invoke(controller, "onAdd"));
+
+            assertEquals(List.of(picked.getAbsolutePath()), listView.getItems());
+        } finally {
+            ItemListController.directoryPicker = originalPicker;
+        }
+    }
+
     private static ItemListController load(List<String> items, Map<String, List<String>> profiles) throws Exception {
+        return load(items, profiles, null);
+    }
+
+    private static ItemListController load(List<String> items, Map<String, List<String>> profiles, String dirTitle) throws Exception {
         CountDownLatch loaded = new CountDownLatch(1);
         AtomicReference<ItemListController> ref = new AtomicReference<>();
         AtomicReference<Throwable> failure = new AtomicReference<>();
         Platform.runLater(() -> {
             try {
-                ref.set(ItemListController.load(items, profiles));
+                ref.set(ItemListController.load(items, profiles, dirTitle));
             } catch (Throwable t) {
                 failure.set(t);
             } finally {

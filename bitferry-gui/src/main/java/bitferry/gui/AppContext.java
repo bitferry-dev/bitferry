@@ -5,8 +5,8 @@ import java.io.File;
 import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.regex.*;
 import java.util.function.Consumer;
+import java.util.regex.*;
 
 /// Shared GUI state: the manager instance with its probing policy, the single-threaded
 /// executor serializing all the core (blocking) operations off the JavaFX application
@@ -176,6 +176,13 @@ public final class AppContext {
     String prop = System.getProperty("bitferry.path");
     if (prop != null && !prop.isBlank()) {
       for (String entry : prop.split(Pattern.quote(File.pathSeparator))) roots.add(Path.of(entry));
+    }
+    for (String entry : SearchRoots.load()) {
+      try {
+        roots.add(Path.of(entry));
+      } catch (InvalidPathException ignored) {
+        // Skip invalid path entries
+      }
     }
     roots.addAll(extraRoots);
     roots.add(Path.of(System.getProperty("user.home")));

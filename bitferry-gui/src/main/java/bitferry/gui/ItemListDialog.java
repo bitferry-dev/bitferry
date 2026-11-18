@@ -22,8 +22,8 @@ final class ItemListDialog {
   private ItemListDialog() {}
 
   /// Static helper to display the list editor and return the resulting items list.
-  static Optional<List<String>> show(Window owner, String title, String header, List<String> initialItems, Map<String, List<String>> profiles) {
-    ItemListController controller = ItemListController.load(initialItems, profiles);
+  static Optional<List<String>> show(Window owner, String title, String header, List<String> initialItems, Map<String, List<String>> profiles, String directoryChooserTitle) {
+    ItemListController controller = ItemListController.load(initialItems, profiles, directoryChooserTitle);
     Dialog<List<String>> dialog = new Dialog<>();
     if (owner != null) dialog.initOwner(owner);
     dialog.setTitle(title);
@@ -47,5 +47,10 @@ final class ItemListDialog {
     });
     dialog.setResultConverter(buttonType -> buttonType == ButtonType.OK ? controller.cleanedItems() : null);
     return dialog.showAndWait();
+  }
+
+  /// Static helper to display the list editor without directory chooser.
+  static Optional<List<String>> show(Window owner, String title, String header, List<String> initialItems, Map<String, List<String>> profiles) {
+    return show(owner, title, header, initialItems, profiles, null);
   }
 }

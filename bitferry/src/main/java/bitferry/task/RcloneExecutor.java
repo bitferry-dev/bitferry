@@ -2,7 +2,6 @@ package bitferry.task;
 
 import bitferry.*;
 import java.io.*;
-import java.lang.System.Logger.Level;
 import java.nio.file.*;
 import java.util.*;
 import java.util.function.*;

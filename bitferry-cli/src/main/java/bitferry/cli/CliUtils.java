@@ -158,6 +158,13 @@ public final class CliUtils {
     if (prop != null && !prop.isBlank()) {
       for (String entry : prop.split(Pattern.quote(File.pathSeparator))) roots.add(Path.of(entry));
     }
+    for (String entry : SearchRoots.load()) {
+      try {
+        roots.add(Path.of(entry));
+      } catch (InvalidPathException ignored) {
+        // Skip invalid path entries
+      }
+    }
     roots.add(Path.of(System.getProperty("user.home")));
     roots.addAll(Manager.mountPoints());
     return m.restore(roots);

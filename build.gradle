@@ -14,10 +14,16 @@ allprojects {
 subprojects {
     plugins.withId('java') {
         java {
+            def javaMajor = providers.gradleProperty('bitferry.java')
+                    .map { it as int }
+                    .orElse(25)
+                    .get()
+
+            sourceCompatibility = JavaVersion.toVersion(javaMajor)
+            targetCompatibility = JavaVersion.toVersion(javaMajor)
+
             toolchain {
-                languageVersion = providers.gradleProperty('bitferry.java')
-                        .map { JavaLanguageVersion.of(it as int) }
-                        .orElse(JavaLanguageVersion.of(25))
+                languageVersion = JavaLanguageVersion.of(javaMajor)
                 // Zulu builds are used for compiling, running, jlink and jpackage
                 vendor = JvmVendorSpec.AZUL
             }

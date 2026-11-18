@@ -3,7 +3,6 @@ package bitferry.gui;
 import bitferry.*;
 import bitferry.task.*;
 import javafx.beans.property.*;
-import javafx.collections.FXCollections;
 import javafx.fxml.FXML;
 import javafx.scene.control.*;
 import javafx.scene.control.cell.CheckBoxTableCell;

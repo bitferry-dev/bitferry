@@ -21,6 +21,9 @@ public final class MainController {
   private Button reload;
 
   @FXML
+  private Button searchRoots;
+
+  @FXML
   private CheckBox verbose;
 
   @FXML
@@ -150,6 +153,15 @@ public final class MainController {
     context.reload();
   }
 
+  @FXML
+  private void onSearchRoots() {
+    if (runner.isBusy()) {
+      logPaneController.log("Search roots management rejected: a run is in progress");
+      return;
+    }
+    Dialogs.manageSearchRoots(context, logPaneController);
+  }
+
   /// The run starter seam for the tasks panel: route into the runner choosing the
   /// execute or the service mode (the runner rejects while busy).
   private void startRun(List<String> tags, boolean serve) {
@@ -220,6 +232,7 @@ public final class MainController {
   private void setActionsDisabled(boolean disabled) {
     executeAll.setDisable(disabled);
     reload.setDisable(disabled);
+    if (searchRoots != null) searchRoots.setDisable(disabled);
     simulate.setDisable(disabled);
     // The abort is only meaningful while a run is in progress: the inverse gating
     abort.setDisable(!disabled);

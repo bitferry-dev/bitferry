@@ -1722,6 +1722,23 @@ class CliTest {
   }
 
   @Test
+  void restoreManagerProbesSearchRootsPreferences() throws IOException {
+    List<String> original = SearchRoots.load();
+    Path volDir = tempDir.resolve("prefs_vol");
+    Files.createDirectories(volDir);
+    assertEquals(0, cmd.execute("create", "volume", volDir.toString()));
+
+    SearchRoots.save(List.of(volDir.toString()));
+    try {
+      Manager m = CliUtils.restoreManager(new CommonOptions());
+      assertTrue(m.volumes().values().stream()
+        .anyMatch(v -> v.root().equals(Bitferry.canonicalize(volDir))), () -> "volumes: " + m.volumes().keySet());
+    } finally {
+      SearchRoots.save(original);
+    }
+  }
+
+  @Test
   void modifyTaskValidationFailures() throws IOException {
     Path volDir = tempDir.resolve("mod_val_vol");
     Path dataDir = tempDir.resolve("mod_val_data");

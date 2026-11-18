@@ -1,7 +1,6 @@
 package bitferry.gui;
 
 import javafx.application.Platform;
-import javafx.scene.paint.Color;
 import javafx.scene.text.*;
 import org.junit.jupiter.api.*;
 

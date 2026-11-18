@@ -7,13 +7,15 @@ import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.control.Button;
 import javafx.scene.control.ComboBox;
-import javafx.scene.control.Label;
 import javafx.scene.control.ListView;
 import javafx.scene.control.SelectionMode;
 import javafx.scene.control.TextField;
 import javafx.scene.control.cell.TextFieldListCell;
 import javafx.scene.layout.VBox;
+import javafx.stage.DirectoryChooser;
+import javafx.stage.Window;
 
+import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -42,6 +44,9 @@ public final class ItemListController {
   private TextField inputField;
 
   @FXML
+  private Button browseBtn;
+
+  @FXML
   private Button applyBtn;
 
   @FXML
@@ -59,6 +64,17 @@ public final class ItemListController {
   private final ObservableList<String> items = FXCollections.observableArrayList();
 
   private Map<String, List<String>> profiles;
+
+  private String directoryChooserTitle;
+
+  /// Seam for directory chooser dialog in tests
+  static java.util.function.BiFunction<Window, File, File> directoryPicker = (window, startDir) -> {
+    DirectoryChooser chooser = new DirectoryChooser();
+    if (startDir != null && startDir.isDirectory()) {
+      chooser.setInitialDirectory(startDir);
+    }
+    return chooser.showDialog(window);
+  };
 
   public ItemListController() {}
 
@@ -92,8 +108,9 @@ public final class ItemListController {
 
   /// Inject the initial entries and the profile presets (called by the facade before
   /// the dialog shows)
-  public void init(List<String> initialItems, Map<String, List<String>> profiles) {
+  public void init(List<String> initialItems, Map<String, List<String>> profiles, String directoryChooserTitle) {
     this.profiles = profiles;
+    this.directoryChooserTitle = directoryChooserTitle;
     items.setAll(initialItems != null ? initialItems : List.of());
     Map<String, List<String>> nonNull = filterProfiles(profiles);
     if (!nonNull.isEmpty()) {
@@ -103,7 +120,19 @@ public final class ItemListController {
       profileBar.setVisible(false);
       profileBar.setManaged(false);
     }
+    boolean isDirMode = directoryChooserTitle != null;
+    if (browseBtn != null) {
+      browseBtn.setVisible(isDirMode);
+      browseBtn.setManaged(isDirMode);
+    }
+    if (isDirMode) {
+      inputField.setPromptText("Enter directory path or pick via Browse… (press Enter to add)…");
+    }
     updateButtonStates();
+  }
+
+  public void init(List<String> initialItems, Map<String, List<String>> profiles) {
+    init(initialItems, profiles, null);
   }
 
   /// The form root for the dialog shell content.
@@ -155,6 +184,46 @@ public final class ItemListController {
   }
 
   @FXML
+  private void onBrowse() {
+    String currentText = inputField.getText().trim();
+    File start = null;
+    if (!currentText.isEmpty()) {
+      File f = new File(currentText);
+      if (f.isDirectory()) start = f;
+      else if (f.getParentFile() != null && f.getParentFile().isDirectory()) start = f.getParentFile();
+    }
+    if (start == null) {
+      int sel = listView.getSelectionModel().getSelectedIndex();
+      if (sel >= 0 && sel < items.size()) {
+        File f = new File(items.get(sel));
+        if (f.isDirectory()) start = f;
+        else if (f.getParentFile() != null && f.getParentFile().isDirectory()) start = f.getParentFile();
+      }
+    }
+    if (start == null) {
+      start = new File(System.getProperty("user.home"));
+    }
+    Window window = root.getScene() == null ? null : root.getScene().getWindow();
+    File selected = directoryPicker.apply(window, start);
+    if (selected != null) {
+      String path = selected.getAbsolutePath();
+      inputField.setText(path);
+      int existing = items.indexOf(path);
+      if (existing >= 0) {
+        listView.getSelectionModel().select(existing);
+        listView.scrollTo(existing);
+      } else {
+        int idx = listView.getSelectionModel().getSelectedIndex();
+        int insertIdx = (idx >= 0 && idx < items.size()) ? idx + 1 : items.size();
+        items.add(insertIdx, path);
+        listView.getSelectionModel().select(insertIdx);
+        listView.scrollTo(insertIdx);
+      }
+      updateButtonStates();
+    }
+  }
+
+  @FXML
   private void onAdd() {
     String text = inputField.getText().trim();
     if (!text.isEmpty()) {
@@ -165,6 +234,8 @@ public final class ItemListController {
       listView.scrollTo(insertIdx);
       inputField.clear();
       updateButtonStates();
+    } else if (directoryChooserTitle != null) {
+      onBrowse();
     } else {
       // Create empty inline cell in the list view and initiate editing immediately
       items.add("");
@@ -256,16 +327,21 @@ public final class ItemListController {
     return result;
   }
 
-  /// Load the FXML-backed form injecting the initial entries (called by the facade).
-  static ItemListController load(List<String> initialItems, Map<String, List<String>> profiles) {
+  /// Load the FXML-backed form injecting the initial entries and directory chooser title.
+  static ItemListController load(List<String> initialItems, Map<String, List<String>> profiles, String directoryChooserTitle) {
     try {
       FXMLLoader loader = new FXMLLoader(ItemListController.class.getResource("/bitferry/gui/items.fxml"));
       loader.load();
       ItemListController controller = loader.getController();
-      controller.init(initialItems, profiles);
+      controller.init(initialItems, profiles, directoryChooserTitle);
       return controller;
     } catch (IOException e) {
       throw new BitferryError("Item list editor form loading failure", e);
     }
+  }
+
+  /// Load the FXML-backed form injecting the initial entries (called by the facade).
+  static ItemListController load(List<String> initialItems, Map<String, List<String>> profiles) {
+    return load(initialItems, profiles, null);
   }
 }
