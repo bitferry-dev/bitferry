@@ -38,6 +38,9 @@ public final class ItemListController {
   private ComboBox<String> profileCombo;
 
   @FXML
+  private Button loadBtn;
+
+  @FXML
   private ListView<String> listView;
 
   @FXML
@@ -45,6 +48,9 @@ public final class ItemListController {
 
   @FXML
   private Button browseBtn;
+
+  @FXML
+  private Button addBtn;
 
   @FXML
   private Button applyBtn;
@@ -81,6 +87,15 @@ public final class ItemListController {
   // The display wiring (no data yet)
   @FXML
   private void initialize() {
+    Icons.equip(loadBtn, Icons.Symbol.LOAD);
+    Icons.equip(editBtn, Icons.Symbol.EDIT);
+    Icons.equip(removeBtn, Icons.Symbol.DELETE);
+    Icons.equip(upBtn, Icons.Symbol.CHEVRON_UP);
+    Icons.equip(downBtn, Icons.Symbol.CHEVRON_DOWN);
+    Icons.equip(browseBtn, Icons.Symbol.BROWSE);
+    Icons.equip(addBtn, Icons.Symbol.PLUS);
+    Icons.equip(applyBtn, Icons.Symbol.APPLY);
+
     listView.setItems(items);
     listView.getSelectionModel().setSelectionMode(SelectionMode.SINGLE);
     listView.setCellFactory(TextFieldListCell.forListView());

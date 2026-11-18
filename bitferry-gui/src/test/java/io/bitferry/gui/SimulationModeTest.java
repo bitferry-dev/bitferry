@@ -186,7 +186,7 @@ class SimulationModeTest {
         assertNotNull(moreMenu);
         assertEquals("⋮", moreMenu.getText());
         assertEquals(1, moreMenu.getItems().size());
-        assertEquals("Volume Search Roots…", moreMenu.getItems().get(0).getText());
+        assertEquals("Volume search paths…", moreMenu.getItems().get(0).getText());
 
         disabledMethod.invoke(controller, true);
         assertTrue(simulate.isDisable(), "simulate checkbox must be disabled during active run");
@@ -195,9 +195,10 @@ class SimulationModeTest {
         disabledMethod.invoke(controller, false);
         assertFalse(simulate.isDisable(), "simulate checkbox must be re-enabled after run");
         assertFalse(moreMenu.isDisable(), "moreMenu dropdown must be re-enabled after run");
-        locked.countDown();
       } catch (Throwable t) {
         failure.set(t);
+      } finally {
+        locked.countDown();
       }
     });
     assertTrue(locked.await(5, TimeUnit.SECONDS));

@@ -144,7 +144,22 @@ public final class TaskFormController {
   private TextField profile;
 
   @FXML
+  private Button editInclude;
+
+  @FXML
+  private Button editExclude;
+
+  @FXML
+  private Button editExecute;
+
+  @FXML
   private Button editProfile;
+
+  @FXML
+  private Button editForget;
+
+  @FXML
+  private Button editCheck;
 
   @FXML
   private PasswordField cryptPassword;
@@ -293,6 +308,20 @@ public final class TaskFormController {
     browseDestinationSmart.disableProperty().bind(destination.disableProperty());
     browseDestinationLocal.disableProperty().bind(destination.disableProperty());
     browseDestinationVolume.disableProperty().bind(destination.disableProperty());
+
+    Icons.equip(browseSourceSmart, Icons.Symbol.BROWSE);
+    Icons.equip(browseSourceLocal, Icons.Symbol.BROWSE);
+    Icons.equip(browseSourceVolume, Icons.Symbol.DRIVE);
+    Icons.equip(browseDestinationSmart, Icons.Symbol.BROWSE);
+    Icons.equip(browseDestinationLocal, Icons.Symbol.BROWSE);
+    Icons.equip(browseDestinationVolume, Icons.Symbol.DRIVE);
+
+    Icons.equip(editInclude, Icons.Symbol.EDIT);
+    Icons.equip(editExclude, Icons.Symbol.EDIT);
+    Icons.equip(editExecute, Icons.Symbol.EDIT);
+    Icons.equip(editProfile, Icons.Symbol.EDIT);
+    Icons.equip(editForget, Icons.Symbol.EDIT);
+    Icons.equip(editCheck, Icons.Symbol.EDIT);
 
     // The encryption options edit button mirrors the disabled state of the profile entry
     editProfile.disableProperty().bind(profile.disableProperty());

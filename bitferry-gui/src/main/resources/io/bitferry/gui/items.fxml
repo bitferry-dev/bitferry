@@ -47,12 +47,12 @@
           </tooltip>
         </Button>
         <Separator/>
-        <Button fx:id="upBtn" text="▲ Move Up" maxWidth="Infinity" onAction="#onMoveUp">
+        <Button fx:id="upBtn" text="Move Up" maxWidth="Infinity" onAction="#onMoveUp">
           <tooltip>
             <Tooltip text="Move the selected entry up by one position"/>
           </tooltip>
         </Button>
-        <Button fx:id="downBtn" text="▼ Move Down" maxWidth="Infinity" onAction="#onMoveDown">
+        <Button fx:id="downBtn" text="Move Down" maxWidth="Infinity" onAction="#onMoveDown">
           <tooltip>
             <Tooltip text="Move the selected entry down by one position"/>
           </tooltip>

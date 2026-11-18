@@ -62,6 +62,14 @@ public final class MainController {
 
   public MainController() {}
 
+  @FXML
+  private void initialize() {
+    Icons.equip(executeAll, Icons.Symbol.PLAY);
+    Icons.equip(abort, Icons.Symbol.STOP);
+    Icons.equip(reload, Icons.Symbol.REFRESH);
+    Icons.equip(exit, Icons.Symbol.EXIT);
+  }
+
   /// Inject the shared context once the whole window is loaded (called by the
   /// Application before the window shows). The persisted window status applies
   /// its share (the log split position and the verbosity switch).

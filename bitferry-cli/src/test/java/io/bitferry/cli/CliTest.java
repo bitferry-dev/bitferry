@@ -1723,18 +1723,18 @@ class CliTest {
 
   @Test
   void restoreManagerProbesSearchRootsPreferences() throws IOException {
-    List<String> original = SearchRoots.load();
+    List<String> original = io.bitferry.Paths.load();
     Path volDir = tempDir.resolve("prefs_vol");
     Files.createDirectories(volDir);
     assertEquals(0, cmd.execute("create", "volume", volDir.toString()));
 
-    SearchRoots.save(List.of(volDir.toString()));
+    io.bitferry.Paths.save(List.of(volDir.toString()));
     try {
       Manager m = CliUtils.restoreManager(new CommonOptions());
       assertTrue(m.volumes().values().stream()
         .anyMatch(v -> v.root().equals(Bitferry.canonicalize(volDir))), () -> "volumes: " + m.volumes().keySet());
     } finally {
-      SearchRoots.save(original);
+      io.bitferry.Paths.save(original);
     }
   }
 

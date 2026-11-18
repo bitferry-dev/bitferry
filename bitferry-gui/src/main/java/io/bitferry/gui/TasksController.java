@@ -115,6 +115,15 @@ public final class TasksController {
   // The display wiring (no context needed yet)
   @FXML
   private void initialize() {
+    Icons.equip(create, Icons.Symbol.PLUS);
+    Icons.equip(modify, Icons.Symbol.EDIT);
+    Icons.equip(massAll, Icons.Symbol.ALL_ON);
+    Icons.equip(massNone, Icons.Symbol.ALL_OFF);
+    Icons.equip(massInvert, Icons.Symbol.INVERT);
+    Icons.equip(execute, Icons.Symbol.PLAY);
+    Icons.equip(serve, Icons.Symbol.SERVE);
+    Icons.equip(delete, Icons.Symbol.DELETE);
+
     table.setEditable(true);
     // The custom cell (not CheckBoxTableCell): its bidirectional binding writes the
     // STALE visual state of a reused cell into the next row's property on every

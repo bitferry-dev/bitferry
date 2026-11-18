@@ -67,6 +67,9 @@ public final class VolumesController {
   // The display wiring (no context needed yet)
   @FXML
   private void initialize() {
+    Icons.equip(create, Icons.Symbol.DRIVE);
+    Icons.equip(delete, Icons.Symbol.DELETE);
+
     tagCol.setCellValueFactory(data -> data.getValue().tag);
     rootCol.setCellValueFactory(data -> data.getValue().root);
     tasksCol.setCellValueFactory(data -> data.getValue().tasks);
