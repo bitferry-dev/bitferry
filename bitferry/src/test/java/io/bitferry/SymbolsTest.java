@@ -1,0 +1,57 @@
+package io.bitferry;
+
+import io.bitferry.endpoint.Endpoints;
+import io.bitferry.task.Copy;
+import io.bitferry.task.Task;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import java.nio.file.Path;
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+/// The unicode axis of the rendering matrix: the glyphs when the policy allows,
+/// the canonical ASCII markers otherwise (the encoding-level '?' degradation
+/// would lose the semantics).
+class SymbolsTest {
+
+  @TempDir
+  Path dir;
+
+  @AfterEach
+  void restoreDefault() {
+    Symbols.unicode(true);
+  }
+
+  @Test
+  void directorFollowsThePolicy() {
+    assertTrue(Symbols.unicode());
+    assertEquals("→", Task.displayDirector("-->"));
+    assertEquals("↔", Task.displayDirector("<->"));
+
+    Symbols.unicode(false);
+    assertEquals("-->", Task.displayDirector("-->"));
+    assertEquals("<->", Task.displayDirector("<->"));
+    assertEquals("custom", Task.displayDirector("custom"));
+    assertNull(Task.displayDirector(null));
+  }
+
+  @Test
+  void describeFollowsThePolicy() {
+    Manager manager = new Manager();
+    Volume vol = new Volume(manager, dir.resolve("vol"));
+    Copy task = new Copy(manager,
+      Endpoints.parse(manager, ":" + vol.tag() + ":src"),
+      Endpoints.parse(manager, ":" + vol.tag() + ":dst"),
+      null, List.of(), List.of());
+
+    assertTrue(task.describe().contains("→"), "the unicode form by default: " + task.describe());
+
+    Symbols.unicode(false);
+    String ascii = task.describe();
+    assertTrue(ascii.contains("-->"), "the canonical ASCII markers: " + ascii);
+    assertFalse(ascii.contains("→"), "no unicode glyphs may remain: " + ascii);
+  }
+}

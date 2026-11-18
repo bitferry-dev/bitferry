@@ -1,0 +1,468 @@
+package io.bitferry;
+
+import io.bitferry.endpoint.*;
+import io.bitferry.task.*;
+import com.fasterxml.jackson.annotation.*;
+import java.io.*;
+import java.lang.System.Logger.Level;
+import java.nio.file.*;
+import java.time.*;
+import java.util.*;
+import java.util.stream.*;
+import tools.jackson.databind.*;
+
+/// Bitferry volume: a data file (.bitferry) placed in the volume root directory which
+/// denotes the root of the directory hierarchy. The volume converts the full (absolute)
+/// endpoints' paths into the volume-relative ones making the data position-independent.
+/// The volume state is restored from the storage file through the Jackson creator with
+/// the manager and the root injected as they are not a part of the descriptor.
+public final class Volume {
+
+  // Tags used by the commit()'s FSM
+  enum CommitState { PRISTINE, LIVE, DELETED, DEAD }
+
+  @JsonProperty("bitferry")
+  private final String version;
+
+  private final Manager manager;
+  private final Path root;
+
+  @JsonProperty("volume")
+  private final String tag;
+
+  @JsonProperty("modified")
+  private OffsetDateTime mtime;
+
+  private boolean modified;
+  private int generation;
+  private CommitState commitState;
+  private boolean live = true;
+
+  // The identity (source/type pair) of the file system the root resides on, captured
+  // at the discovery time and re-checked before every durable storage operation: the
+  // identity change means the volume has disappeared (the mount dropped) and the
+  // writes would silently materialize on the parent file system.
+  private String fileStore;
+
+  // The lazily computed fixed-media classification (null until probed)
+  private Boolean fixed;
+
+  // Password tokens of the encrypted tasks keyed by the task tags (see vault providers)
+  private final Map<String, String> vault = new LinkedHashMap<>();
+
+  private static final System.Logger LOG = System.getLogger(Volume.class.getName());
+
+  /// Constructor for a new volume instance.
+  public Volume(Manager manager, Path root) {
+    this.version = Bitferry.STORAGE_VERSION;
+    this.manager = manager;
+    this.tag = Tags.newTag();
+    this.root = Bitferry.canonicalize(root);
+    this.fileStore = fileStoreId(this.root);
+    this.modified = true;
+    this.commitState = CommitState.PRISTINE;
+    touch();
+    manager.registerVolume(this);
+  }
+
+  /// Jackson creator restoring an existing volume from the storage descriptor.
+  /// The tasks are restored and registered prior to the volume (as the nested
+  /// values are built first) each one independently so that a failing task
+  /// descriptor does not prevent the volume itself from being restored.
+  /// Raises [BitferryError] for the unsupported storage versions.
+  @JsonCreator
+  Volume(
+    @JacksonInject("manager") Manager manager,
+    @JacksonInject("root") Path root,
+    @JsonProperty("bitferry") String version,
+    @JsonProperty("volume") String tag,
+    @JsonProperty("modified") OffsetDateTime modified,
+    @JsonProperty("tasks") List<JsonNode> tasks,
+    @JsonProperty("vault") Map<String, String> vault
+  ) {
+    if (version == null) throw new BitferryError("Missing volume storage version property 'bitferry'");
+    if (!Bitferry.STORAGE_VERSION.equals(version)) throw new BitferryError("Unsupported volume storage version " + version);
+    if (tag == null) throw new IllegalArgumentException("Missing volume field 'volume'");
+    if (modified == null) throw new IllegalArgumentException("Missing volume field 'modified'");
+    this.version = version;
+    this.manager = manager;
+    this.tag = tag;
+    this.mtime = modified;
+    this.root = Bitferry.canonicalize(root);
+    this.fileStore = fileStoreId(this.root);
+    this.modified = false;
+    this.commitState = CommitState.LIVE;
+    if (vault != null) this.vault.putAll(vault);
+    manager.registerVolume(this);
+    if (tasks != null) {
+      for (JsonNode taskData : tasks) {
+        try {
+          Task.restore(manager, taskData);
+        } catch (BitferryError e) {
+          LOG.log(Level.ERROR, () -> "Failed to restore task for Bitferry volume " + tag + " from " + root + ": " + e.getMessage());
+        }
+      }
+    }
+  }
+
+  /// Restore a volume probing the specified root for the storage file.
+  public static Volume restore(Manager manager, Path root) {
+    Path storage = root.resolve(Bitferry.STORAGE);
+    try {
+      JsonNode node = Storage.readJson(storage);
+      if (node == null || !node.isObject()) {
+        throw new BitferryError("Invalid volume storage descriptor: expected a JSON object");
+      }
+      return Storage.mapper().readerFor(Volume.class)
+        .with(new InjectableValues.Std(Map.of("manager", manager, "root", root)))
+        .readValue(node);
+    } catch (BitferryError e) {
+      throw e;
+    } catch (RuntimeException e) {
+      throw BitferryError.resolve(e, "Bitferry volume reading failure from " + storage);
+    }
+  }
+
+  public Manager manager() {
+    return manager;
+  }
+
+  public String tag() {
+    return tag;
+  }
+
+  public Path root() {
+    return root;
+  }
+
+  public OffsetDateTime mtime() {
+    return mtime;
+  }
+
+  @JsonIgnore
+  public boolean isLive() {
+    return live;
+  }
+
+  /// Whether the volume is marked for deletion (pending the DELETED -> DEAD commit
+  /// transition): the deletion wins the equal-timestamp conflicts mirroring the task
+  /// tombstones. Package-private: the commit state is internal bookkeeping (not a part
+  /// of the storage descriptor).
+  boolean pendingDeletion() {
+    return commitState == CommitState.DELETED;
+  }
+
+  /// Return the volume-owned tasks referring the volume through either source or destination endpoints.
+  public Map<String, Task> tasks() {
+    return manager.tasks().entrySet().stream()
+      .filter(e -> e.getValue().refersVolume(tag))
+      .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (a, b) -> a, LinkedHashMap::new));
+  }
+
+  /// Return the volume-owned live tasks. The deletion tombstones are excluded: they are
+  /// invisible for all the operations while persisting within the storages.
+  public Map<String, Task> liveTasks() {
+    return tasks().entrySet().stream()
+      .filter(e -> e.getValue().isLive() && !e.getValue().isDeleted())
+      .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (a, b) -> a, LinkedHashMap::new));
+  }
+
+  /// Return the volume-owned intact (ready for processing) tasks.
+  public Map<String, Task> intactTasks() {
+    return liveTasks().entrySet().stream()
+      .filter(e -> e.getValue().isIntact())
+      .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (a, b) -> a, LinkedHashMap::new));
+  }
+
+  /// Return the volume-owned stale (not ready for processing) tasks.
+  public Map<String, Task> staleTasks() {
+    return liveTasks().entrySet().stream()
+      .filter(e -> !e.getValue().isIntact())
+      .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (a, b) -> a, LinkedHashMap::new));
+  }
+
+  /// Mark the volume out-of-date rewinding the generation so that every referring task gets flagged.
+  public void touch() {
+    modified = true;
+    mtime = OffsetDateTime.now().truncatedTo(java.time.temporal.ChronoUnit.MICROS);
+    var ts = tasks();
+    generation = ts.isEmpty() ? 0 : ts.values().stream().mapToInt(Task::generation).min().orElseThrow() - 1;
+  }
+
+  /// Mark the volume for deletion: the storage file is removed upon the commit while
+  /// the volume directory contents are kept.
+  public void delete() {
+    this.commitState = CommitState.DELETED;
+    // The referring tasks are tombstoned with the volume: the deletion markers ride
+    // the commit into the storages of the surviving volumes the tasks also refer to
+    // (the tasks carried only by this volume vanish along with its storage), winning
+    // the conflicting restorations over the stale plain copies - the deleted tasks
+    // never resurrect upon the following restores.
+    for (Task task : liveTasks().values()) task.delete();
+    touch();
+  }
+
+  /// Return true if the volume is out-of-date either by itself or by any of the referring tasks.
+  @JsonIgnore
+  public boolean isModified() {
+    return modified || tasks().values().stream().anyMatch(t -> t.generation() > generation);
+  }
+
+  /// Return the current volume's generation used for the out-of-date flagging.
+  public int generation() {
+    return generation;
+  }
+
+  /// Resolve the specified root with respect to the volume's root.
+  /// Raises [BitferryError] if the root is not a subpath of the volume's root.
+  public Endpoint endpoint(Path root) {
+    Path canonical = Bitferry.canonicalize(root);
+    if (!canonical.startsWith(this.root)) throw new BitferryError("Path " + root + " is outside the volume " + tag + " at " + this.root);
+    String relative = this.root.relativize(canonical).toString();
+    return new VolumeEndpoint(manager, tag, relative.isEmpty() ? "." : relative);
+  }
+
+  /// The tasks to be stored: the live ones along with the deletion tombstones (the
+  /// markers must persist until the garbage collection gathers them), omitted when
+  /// empty mirroring the reference implementation's `filter_nones` behavior.
+  @JsonProperty("tasks")
+  List<Task> storeTasks() {
+    List<Task> ts = tasks().values().stream().filter(Task::isLive).toList();
+    return ts.isEmpty() ? null : ts;
+  }
+
+  /// The vault tokens to be stored: those of the live tasks only (the entries of
+  /// the no longer existing (dead) tasks are purged), omitted when empty.
+  @JsonProperty("vault")
+  Map<String, String> storeVault() {
+    Map<String, String> kept = vault.entrySet().stream()
+      .filter(e -> {
+        Task task = manager.tasks().get(e.getKey());
+        return task != null && task.isLive() && !task.isDeleted();
+      })
+      .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (a, b) -> a, LinkedHashMap::new));
+    return kept.isEmpty() ? null : kept;
+  }
+
+  /// Commit the volume: commit the referring tasks first (their one-time initialization
+  /// may still abort the registration - the failed repository initialization - and the
+  /// storage dump below must reflect the surviving task set), then format the storage
+  /// upon creation, dump the storage contents when modified, remove the storage upon
+  /// the deletion.
+  public void commit() {
+    if (!isModified() && !manager.force && commitState == CommitState.LIVE) {
+      LOG.log(Level.DEBUG, () -> "Bitferry volume " + tag + " is up-to-date and no forced save requested; skipped");
+      return;
+    }
+    Path storage = root.resolve(Bitferry.STORAGE);
+    var ts = tasks();
+    List<String> problems = new ArrayList<>();
+    for (Task task : ts.values()) {
+      try {
+        task.commit();
+      } catch (BitferryError e) {
+        LOG.log(Level.ERROR, () -> "Commit failure(s) for task " + task.tag() + ": " + e.getMessage());
+        problems.add(e.getMessage());
+      }
+    }
+    boolean pristine = (commitState == CommitState.PRISTINE);
+    try {
+      loop:
+      while (true) switch (commitState) {
+        case PRISTINE -> { // Format the volume
+          if (Files.exists(storage) && !manager.force) {
+            // Abort the registration: the refused volume must not stay registered
+            // (else it would re-fail every following commit) - mirroring the task's
+            // rollback upon the failed pristine commit
+            manager.deregisterVolume(this);
+            throw new BitferryError("Refuse to overwrite existing storage file " + storage + " without the force option enabled");
+          }
+          commitState = CommitState.LIVE;
+        }
+        case LIVE -> { // Dump the volume storage
+          if (isModified() || manager.force) {
+            if (fileStore == null) {
+              fileStore = fileStoreId(root);
+            } else {
+              checkPresence();
+            }
+            try {
+              String contents = Storage.toJson(this);
+              if (manager.simulate) {
+                // The simulation writes nothing and consumes no durable bookkeeping:
+                // the pending mtime/generation/modified state is left for a following
+                // real commit to materialize
+                LOG.log(Level.INFO, () -> "Simulated Bitferry volume " + tag + " save to " + storage);
+              } else {
+                // The actual storage writing time is stored, not the in-memory modification time
+                mtime = OffsetDateTime.now().truncatedTo(java.time.temporal.ChronoUnit.MICROS);
+                Storage.writeText(storage, contents);
+                LOG.log(Level.INFO, () -> "Bitferry volume " + tag + " written to " + storage);
+              }
+            } catch (IOException e) {
+              throw new BitferryError("Bitferry volume " + tag + " storage saving failure", e);
+            }
+          } else {
+            LOG.log(Level.DEBUG, () -> "Bitferry volume " + tag + " is up-to-date and no forced save requested; skipped");
+          }
+          break loop;
+        }
+        case DELETED -> {
+          if (fileStore != null) checkPresence();
+          if (manager.simulate) {
+            // The simulation removes nothing and consumes no durable bookkeeping:
+            // the deletion stays pending for a following real commit
+            LOG.log(Level.INFO, () -> "Simulated Bitferry volume " + tag + " storage removal");
+            break loop;
+          } else {
+            // Both the storage file and the possibly stale intermediate
+            // image of an interrupted commit are removed
+            try {
+              Files.deleteIfExists(storage);
+              Files.deleteIfExists(root.resolve(Bitferry.STORAGE_IMAGE));
+            } catch (IOException e) {
+              throw new BitferryError("Bitferry volume " + tag + " storage removal failure", e);
+            }
+            LOG.log(Level.INFO, () -> "Bitferry volume " + tag + " storage " + storage + " deleted");
+          }
+          commitState = CommitState.DEAD;
+          live = false;
+        }
+        case DEAD -> {
+          break loop;
+        }
+      }
+    } catch (Throwable t) {
+      if (pristine) {
+        manager.deregisterVolume(this);
+        commitState = CommitState.PRISTINE;
+        live = false;
+      }
+      throw t;
+    }
+    // On successful commit advance the volume's generation so that the referring tasks
+    // won't be flagged out-of-date anymore. The simulation consumes no durable bookkeeping
+    // (the pending state is left for a following real commit), and the dead volumes
+    // (deleted or dead) skip the advance: their storages are gone, and no live tasks
+    // refer them anymore
+    if (!manager.simulate && live) {
+      var surviving = tasks();
+      generation = surviving.isEmpty() ? 0 : surviving.values().stream().mapToInt(Task::generation).max().orElseThrow() + 1;
+      modified = false;
+    }
+    if (!problems.isEmpty()) throw new BitferryError("Task commit failure(s) in volume " + tag + ": " + String.join("; ", problems));
+  }
+
+  /// The identity of the file system the specified directory resides on (the source
+  /// and type pair), or null when it cannot be resolved (e.g. the directory has
+  /// disappeared).
+  private static String fileStoreId(Path directory) {
+    try {
+      FileStore store = Files.getFileStore(directory);
+      return store.toString() + "@" + store.type();
+    } catch (IOException e) {
+      return null;
+    }
+  }
+
+  /// Whether the volume resides on a fixed (internal, non-removable) medium: a hint
+  /// for the sensible default password storage location — the keyring secrets are
+  /// machine-bound while the volume vault tokens travel with the storage media, so
+  /// the removable volumes are better served by the per-volume vault. The explicit
+  /// keyring requests are honored regardless (see [io.bitferry.vault.Vault.select]);
+  /// the fixedness only steers the defaults and the advisory notes.
+  ///
+  /// <p>The classification is conservative: anything unresolvable (the removed
+  /// media, the network or virtual file systems, the unknown devices) is reported
+  /// as not fixed.
+  // The machine-dependent classification is not a part of the storage descriptor
+  // (the Jackson getter detection would otherwise serialize it)
+  @JsonIgnore
+  public boolean isFixed() {
+    if (fixed == null) fixed = isFixedStore(root);
+    return fixed;
+  }
+
+  // Classify the directory's hosting file system per the platform conventions
+  static boolean isFixedStore(Path directory) {
+    String os = System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT);
+    try {
+      if (os.contains("windows")) return isFixedWindows(directory);
+      if (os.contains("mac os") || os.contains("darwin")) return !directory.startsWith("/Volumes");
+      return isFixedLinux(directory);
+    } catch (IOException | RuntimeException e) {
+      LOG.log(Level.DEBUG, () -> "Storage fixedness classification failed for " + directory + ": " + e);
+      return false;
+    }
+  }
+
+  // Linux: a block device source is fixed when the kernel's removable flag is unset;
+  // the network/virtual sources (nfs, cifs, fuse, tmpfs...) are not fixed, and the
+  // sources without the resolvable block device (the plain file-backed stores) are
+  // not fixed either
+  private static boolean isFixedLinux(Path directory) throws IOException {
+    FileStore store = Files.getFileStore(directory);
+    String source = store.name();
+    if (!source.startsWith("/dev/")) return false;
+    try {
+      // The real block device name: the device nodes are symlinks for the mapper
+      // stacks (/dev/mapper/vg-root -> ../dm-0), so the name-based sysfs lookup must
+      // ride the resolved node - the LUKS/LVM volumes are classified by their dm-N
+      // device, not misread as removable through the missing 'mapper' path
+      String device = Path.of(source).toRealPath().getFileName().toString();
+      // The removable flag rides on the whole disk only: resolve the partition to its
+      // holding disk exactly via the sysfs layout (the partition's real directory is
+      // a child of its disk's one - nvme0n1p1 under nvme0n1, sda1 under sda), immune
+      // to the kernel naming schemes (the multiplexing 'p' separator, sdp, sdaa...)
+      Path sysdev = Path.of("/sys/class/block", device).toRealPath();
+      if (Files.exists(sysdev.resolve("partition"))) sysdev = sysdev.getParent();
+      return Files.readString(sysdev.resolve("removable")).trim().equals("0");
+    } catch (IOException e) {
+      LOG.log(Level.DEBUG, () -> "No sysfs removable flag for " + source);
+      return false;
+    }
+  }
+
+  // Windows: the fixed drive type of the root's drive letter (the removable, network,
+  // optical and ram drives are not fixed)
+  private static boolean isFixedWindows(Path directory) {
+    String root = directory.getRoot() != null ? directory.getRoot().toString() : directory.toString();
+    return com.sun.jna.platform.win32.Kernel32.INSTANCE.GetDriveType(root)
+      == com.sun.jna.platform.win32.Kernel32.DRIVE_FIXED;
+  }
+
+  /// Detect the disappeared volume: the root resolving to a different (or no) file
+  /// system than at the discovery time. The stale mount point directories left by the
+  /// unclean removals would otherwise silently materialize the volume files on the
+  /// parent file system.
+  public void checkPresence() {
+    String current = fileStoreId(root);
+    if (fileStore != null && !fileStore.equals(current))
+      throw new BitferryError("Bitferry volume " + tag + " root " + root + " has disappeared (its file system is no longer " + fileStore + ")");
+  }
+
+
+  /// Return the obscured password token of the task stored in the volume vault
+  /// (used by the vault providers).
+  public String readVault(String tag) {
+    return vault.get(tag);
+  }
+
+  /// Store the obscured password token of the task in the volume vault
+  /// marking the volume out-of-date (used by the vault providers).
+  public void writeVault(String tag, String token) {
+    vault.put(tag, token);
+    touch();
+  }
+
+  /// Drop the obscured password token of the task from the volume vault marking
+  /// the volume out-of-date when something was dropped (used by the vault providers).
+  public void removeVault(String tag) {
+    if (vault.remove(tag) != null) touch();
+  }
+
+  @Override
+  public String toString() {
+    return "volume " + tag;
+  }
+}

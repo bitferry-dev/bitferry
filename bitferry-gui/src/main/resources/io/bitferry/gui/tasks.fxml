@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.cell.CheckBoxTableCell?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.Separator?>
+<?import javafx.scene.control.TableColumn?>
+<?import javafx.scene.control.TableView?>
+<?import javafx.scene.layout.BorderPane?>
+<?import javafx.scene.layout.Region?>
+<?import javafx.scene.layout.VBox?>
+
+<!-- The tasks tab: the framed vertical management panel (create, execute, serve,
+     delete) docked to the left of the tasks listing; the listing is padded to
+     align with the panel's outer edges. -->
+<BorderPane xmlns="http://javafx.com/javafx/17" xmlns:fx="http://javafx.com/fxml/1"
+            fx:controller="io.bitferry.gui.TasksController">
+  <left>
+    <VBox spacing="8" style="-fx-border-color: #c9c9c9; -fx-background-color: rgba(0,0,0,0.03); -fx-padding: 12;">
+      <BorderPane.margin>
+        <Insets top="8" right="8" bottom="8" left="8"/>
+      </BorderPane.margin>
+      <Button fx:id="create" text="New Task" onAction="#onCreate" maxWidth="Infinity"/>
+      <Button fx:id="modify" text="Modify" onAction="#onModify" maxWidth="Infinity"/>
+      <Button fx:id="massAll" text="All On" onAction="#onMassAll" maxWidth="Infinity"/>
+      <Button fx:id="massNone" text="All Off" onAction="#onMassNone" maxWidth="Infinity"/>
+      <Button fx:id="massInvert" text="Invert" onAction="#onMassInvert" maxWidth="Infinity"/>
+      <Separator orientation="HORIZONTAL"/>
+      <Button fx:id="execute" text="Execute" onAction="#onExecute" maxWidth="Infinity"/>
+      <Button fx:id="serve" text="Serve" onAction="#onServe" maxWidth="Infinity"/>
+      <Region VBox.vgrow="ALWAYS"/>
+      <Separator orientation="HORIZONTAL"/>
+      <Button fx:id="delete" text="Delete" onAction="#onDelete" style="-fx-base: #ffebee;" maxWidth="Infinity"/>
+    </VBox>
+  </left>
+  <center>
+    <TableView fx:id="table">
+      <BorderPane.margin>
+        <Insets top="8" right="8" bottom="8" left="0"/>
+      </BorderPane.margin>
+      <columns>
+        <TableColumn fx:id="runnableColumn" text="Execute" prefWidth="70"/>
+        <TableColumn fx:id="tagColumn" text="Tag" prefWidth="90"/>
+        <TableColumn fx:id="operationColumn" text="Operation" prefWidth="110"/>
+        <TableColumn fx:id="sourceColumn" text="Source" prefWidth="240"/>
+        <TableColumn fx:id="destinationColumn" text="Destination" prefWidth="240"/>
+        <TableColumn fx:id="statusColumn" text="Status" prefWidth="90"/>
+        <TableColumn fx:id="vaultColumn" text="Vault volume" prefWidth="160"/>
+      </columns>
+      <columnResizePolicy>
+        <TableView fx:constant="UNCONSTRAINED_RESIZE_POLICY"/>
+      </columnResizePolicy>
+      <placeholder>
+        <Label text="No tasks registered — create one via the panel on the left"/>
+      </placeholder>
+    </TableView>
+  </center>
+</BorderPane>

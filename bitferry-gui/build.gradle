@@ -49,8 +49,8 @@ tasks.named('test') {
 }
 
 application {
-    mainModule = 'bitferry.gui'
-    mainClass = 'bitferry.gui.Main'
+    mainModule = 'io.bitferry.gui'
+    mainClass = 'io.bitferry.gui.Main'
     // The JavaFX graphics, the jansi console and the JNA dispatch native load via
     // System::load (a restricted method) - enabled here so the installed distribution
     // stays warning-free and keeps working on the future JDKs with the integrity by

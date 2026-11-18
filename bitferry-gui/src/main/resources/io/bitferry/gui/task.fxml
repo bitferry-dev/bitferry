@@ -1,0 +1,201 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.collections.FXCollections?>
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.CheckBox?>
+<?import javafx.scene.control.ComboBox?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.PasswordField?>
+<?import javafx.scene.control.RadioButton?>
+<?import javafx.scene.control.TextField?>
+<?import javafx.scene.control.Tooltip?>
+<?import javafx.scene.control.ScrollPane?>
+<?import javafx.scene.control.ToggleGroup?>
+<?import javafx.scene.layout.ColumnConstraints?>
+<?import javafx.scene.layout.GridPane?>
+<?import javafx.scene.layout.HBox?>
+<?import java.lang.String?>
+
+<!-- The unified task form (the creation and the modification): all rows declared
+     statically; the controller toggles the row visibility per the operation type
+     and re-lays the visible rows out consecutively (assigning the grid indices
+     dynamically - the indices below are the declaration-order placeholders pinned
+     by the controller's relayout). The immutable fields and the per-row visibility
+     are controller concerns. -->
+<ScrollPane fx:id="scroller" fitToWidth="true" hbarPolicy="AS_NEEDED" vbarPolicy="AS_NEEDED"
+            maxHeight="480" style="-fx-background-color: transparent; -fx-padding: 0;"
+            xmlns="http://javafx.com/javafx/17" xmlns:fx="http://javafx.com/fxml/1"
+            fx:controller="io.bitferry.gui.TaskFormController">
+  <content>
+    <GridPane fx:id="grid" hgap="8" vgap="8">
+      <padding>
+        <Insets top="10" right="10" bottom="10" left="10"/>
+      </padding>
+      <columnConstraints>
+        <ColumnConstraints fx:id="labelColumn" halignment="RIGHT"/>
+        <ColumnConstraints hgrow="ALWAYS"/>
+      </columnConstraints>
+      <fx:define>
+        <ToggleGroup fx:id="passwordStorage"/>
+      </fx:define>
+      <children>
+        <Label fx:id="typeLabel" text="Type:" style="-fx-text-fill: #222222;"/>
+        <ComboBox fx:id="type">
+          <items>
+            <FXCollections fx:factory="observableArrayList">
+              <String fx:value="copy"/>
+              <String fx:value="update"/>
+              <String fx:value="replicate"/>
+              <String fx:value="equalize"/>
+              <String fx:value="backup"/>
+              <String fx:value="restore"/>
+            </FXCollections>
+          </items>
+        </ComboBox>
+
+        <Label fx:id="sourceLabel" text="Source:" style="-fx-text-fill: #222222;"/>
+        <HBox spacing="6">
+          <TextField fx:id="source" promptText="directory | local:directory | ::directory | :tag:directory" prefColumnCount="40" HBox.hgrow="ALWAYS"/>
+          <Button fx:id="browseSourceSmart" text="Smart…" onAction="#onBrowseSourceSmart">
+            <tooltip>
+              <Tooltip text="Browse the local filesystem — the engine picks the specifier: the bare volume-attached path inside the volumes, the explicit local: form outside them"/>
+            </tooltip>
+          </Button>
+          <Button fx:id="browseSourceLocal" text="Local…" onAction="#onBrowseSourceLocal">
+            <tooltip>
+              <Tooltip text="Browse the local filesystem — fills the explicit 'local:' form referencing the path outside the volumes"/>
+            </tooltip>
+          </Button>
+          <Button fx:id="browseSourceVolume" text="Volume…" onAction="#onBrowseSourceVolume">
+            <tooltip>
+              <Tooltip text="Browse within a registered volume — starts at the volume root, fills the volume-relative ':tag:path' specifier"/>
+            </tooltip>
+          </Button>
+        </HBox>
+
+        <Label fx:id="destinationLabel" text="Destination:" style="-fx-text-fill: #222222;"/>
+        <HBox spacing="6">
+          <TextField fx:id="destination" promptText="directory | local:directory | ::directory | :tag:directory" prefColumnCount="40" HBox.hgrow="ALWAYS"/>
+          <Button fx:id="browseDestinationSmart" text="Smart…" onAction="#onBrowseDestinationSmart">
+            <tooltip>
+              <Tooltip text="Browse the local filesystem — the engine picks the specifier: the bare volume-attached path inside the volumes, the explicit local: form outside them"/>
+            </tooltip>
+          </Button>
+          <Button fx:id="browseDestinationLocal" text="Local…" onAction="#onBrowseDestinationLocal">
+            <tooltip>
+              <Tooltip text="Browse the local filesystem — fills the explicit 'local:' form referencing the path outside the volumes"/>
+            </tooltip>
+          </Button>
+          <Button fx:id="browseDestinationVolume" text="Volume…" onAction="#onBrowseDestinationVolume">
+            <tooltip>
+              <Tooltip text="Browse within a registered volume — starts at the volume root, fills the volume-relative ':tag:path' specifier"/>
+            </tooltip>
+          </Button>
+        </HBox>
+
+        <Label fx:id="includeLabel" text="Include:" style="-fx-text-fill: #222222;"/>
+        <HBox fx:id="includeControl" spacing="6">
+          <TextField fx:id="include" promptText="comma-separated patterns (optional)" HBox.hgrow="ALWAYS"/>
+          <Button text="Edit…" onAction="#onEditInclude">
+            <tooltip>
+              <Tooltip text="Open list editor for item-by-item editing, reordering, and profile presets"/>
+            </tooltip>
+          </Button>
+        </HBox>
+
+        <Label fx:id="excludeLabel" text="Exclude:" style="-fx-text-fill: #222222;"/>
+        <HBox spacing="6">
+          <TextField fx:id="exclude" promptText="comma-separated patterns or extensions (optional)" HBox.hgrow="ALWAYS"/>
+          <Button text="Edit…" onAction="#onEditExclude">
+            <tooltip>
+              <Tooltip text="Open list editor for item-by-item editing, reordering, and profile presets"/>
+            </tooltip>
+          </Button>
+        </HBox>
+
+        <Label fx:id="executeLabel" text="Options:" style="-fx-text-fill: #222222;"/>
+        <HBox spacing="6">
+          <TextField fx:id="execute" promptText="extra backend options, comma-separated (optional)" HBox.hgrow="ALWAYS"/>
+          <Button text="Edit…" onAction="#onEditExecute">
+            <tooltip>
+              <Tooltip text="Open list editor for item-by-item editing, reordering, and profile presets"/>
+            </tooltip>
+          </Button>
+        </HBox>
+
+        <Label fx:id="encryptionLabel" text="Encryption:" style="-fx-text-fill: #222222;"/>
+        <ComboBox fx:id="encryption">
+          <items>
+            <FXCollections fx:factory="observableArrayList">
+              <String fx:value="(none)"/>
+              <String fx:value="encrypt"/>
+              <String fx:value="decrypt"/>
+            </FXCollections>
+          </items>
+        </ComboBox>
+
+        <Label fx:id="profileLabel" text="Encryption options:" style="-fx-text-fill: #222222;"/>
+        <HBox spacing="6">
+          <TextField fx:id="profile" promptText="extra crypt options, comma-separated (optional)" prefColumnCount="14" HBox.hgrow="ALWAYS">
+            <tooltip>
+              <Tooltip text="The extra crypt options passed to rclone (comma-separated); the filename encoding presets (@default, @extended) load via Edit…"/>
+            </tooltip>
+          </TextField>
+          <Button fx:id="editProfile" text="Edit…" onAction="#onEditProfile">
+            <tooltip>
+              <Tooltip text="Open list editor for item-by-item editing, reordering, and profile presets"/>
+            </tooltip>
+          </Button>
+        </HBox>
+
+        <Label fx:id="cryptPasswordLabel" text="Password:" style="-fx-text-fill: #222222;"/>
+        <PasswordField fx:id="cryptPassword"/>
+
+        <Label fx:id="cryptPasswordConfirmLabel" text="Confirm:" style="-fx-text-fill: #222222;"/>
+        <PasswordField fx:id="cryptPasswordConfirm"/>
+
+        <Label fx:id="passwordLabel" text="Password:" style="-fx-text-fill: #222222;"/>
+        <PasswordField fx:id="password"/>
+
+        <Label fx:id="passwordConfirmLabel" text="Confirm:" style="-fx-text-fill: #222222;"/>
+        <PasswordField fx:id="passwordConfirm"/>
+
+        <Label fx:id="keyringLabel" text="Password storage:" style="-fx-text-fill: #222222;"/>
+        <HBox fx:id="keyring" spacing="12">
+          <RadioButton fx:id="keyringChoice" text="OS keyring — stays on this host" toggleGroup="$passwordStorage" style="-fx-text-fill: #222222;"/>
+          <RadioButton fx:id="vaultChoice" text="volume vault — travels with the volume" toggleGroup="$passwordStorage" selected="true" style="-fx-text-fill: #222222;"/>
+        </HBox>
+
+        <Label fx:id="forgetLabel" text="Retention:" style="-fx-text-fill: #222222;"/>
+        <HBox spacing="6">
+          <TextField fx:id="forget" promptText="retention policy (e.g. @default) (optional)" HBox.hgrow="ALWAYS"/>
+          <Button text="Edit…" onAction="#onEditForget">
+            <tooltip>
+              <Tooltip text="Open list editor for item-by-item editing, reordering, and profile presets"/>
+            </tooltip>
+          </Button>
+        </HBox>
+
+        <Label fx:id="checkLabel" text="Check:" style="-fx-text-fill: #222222;"/>
+        <HBox spacing="6">
+          <TextField fx:id="check" promptText="integrity check options (e.g. @default, @full) (optional)" HBox.hgrow="ALWAYS"/>
+          <Button text="Edit…" onAction="#onEditCheck">
+            <tooltip>
+              <Tooltip text="Open list editor for item-by-item editing, reordering, and profile presets"/>
+            </tooltip>
+          </Button>
+        </HBox>
+
+        <Label fx:id="formatLabel" text="Format:" style="-fx-text-fill: #222222;"/>
+        <CheckBox fx:id="format" text="initialize the repository over the existing data" style="-fx-text-fill: #222222;"/>
+
+        <Label fx:id="serveLabel" text="Serve:" style="-fx-text-fill: #222222;"/>
+        <TextField fx:id="serve" promptText="e.g. @default or '&lt;duration&gt;,&lt;count&gt;' (optional)"/>
+
+        <Label fx:id="manualLabel" text="Manual:" style="-fx-text-fill: #222222;"/>
+        <CheckBox fx:id="manual" text="exclude from mass runs" style="-fx-text-fill: #222222;"/>
+      </children>
+    </GridPane>
+  </content>
+</ScrollPane>
