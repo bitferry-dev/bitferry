@@ -11,6 +11,8 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -29,6 +31,61 @@ class LogControllerScrollTest {
     } catch (IllegalStateException ignored) {
     }
     Platform.setImplicitExit(false);
+  }
+
+  @Test
+  void runTabsAreCappedAndOldestEvicted() throws Exception {
+    CountDownLatch latch = new CountDownLatch(1);
+    AtomicReference<Throwable> err = new AtomicReference<>();
+    AtomicReference<List<String>> titles = new AtomicReference<>();
+    AtomicReference<Stage> stageRef = new AtomicReference<>();
+
+    Platform.runLater(() -> {
+      try {
+        FXMLLoader loader = new FXMLLoader(getClass().getResource("/bitferry/gui/log.fxml"));
+        TabPane root = loader.load();
+        LogController controller = loader.getController();
+
+        Stage stage = new Stage();
+        stage.setScene(new Scene(root, 400, 200));
+        stage.show();
+        stageRef.set(stage);
+
+        for (int i = 1; i <= 15; i++) controller.openRun("r" + i);
+        // Two pulses: the deferred attachments land on the application thread
+        Platform.runLater(() -> Platform.runLater(() -> {
+          try {
+            List<String> found = new ArrayList<>();
+            for (Tab tab : root.getTabs()) found.add(tab.getText());
+            titles.set(found);
+          } catch (Throwable t) {
+            err.set(t);
+          } finally {
+            latch.countDown();
+          }
+        }));
+      } catch (Exception e) {
+        err.set(e);
+        latch.countDown();
+      }
+    });
+    assertTrue(latch.await(10, TimeUnit.SECONDS), "the probe timed out");
+    if (err.get() != null) throw new RuntimeException(err.get());
+
+    // The general tab plus the capped run tabs: the oldest (r1-r3) evicted, the
+    // newest (r15) surviving
+    List<String> found = titles.get();
+    assertEquals(13, found.size(), "the tab inventory: " + found);
+    assertEquals("Log", found.get(0));
+    assertTrue(found.get(1).endsWith("r4"), "the oldest run tabs are evicted: " + found);
+    assertTrue(found.get(12).endsWith("r15"), "the newest run tab survives: " + found);
+
+    CountDownLatch closed = new CountDownLatch(1);
+    Platform.runLater(() -> {
+      stageRef.get().close();
+      closed.countDown();
+    });
+    assertTrue(closed.await(5, TimeUnit.SECONDS), "the stage failed to close");
   }
 
   private static boolean getFollow(Object stream) throws Exception {

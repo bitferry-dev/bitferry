@@ -111,6 +111,19 @@ public abstract class Rclone extends Task implements IncludeFilters {
     return encryption != null && encryption.operation() != null;
   }
 
+  /// The crypt token's provider (the encrypted tasks only).
+  @Override
+  public java.util.Optional<bitferry.vault.Vault> vaultProvider() {
+    return usesVault() ? java.util.Optional.of(encryption.vaultProvider()) : java.util.Optional.empty();
+  }
+
+  /// Move the stored crypt token to the requested provider (the encrypted tasks only).
+  @Override
+  public void migrateVault(boolean toKeyring) {
+    if (!usesVault()) throw new BitferryError("Task " + tag + " holds no vault token to migrate");
+    encryption.migrateVault(toKeyring);
+  }
+
   @Override
   public boolean supportsEncryption() {
     return true;
@@ -454,6 +467,31 @@ public abstract class Rclone extends Task implements IncludeFilters {
 
     Vault vault() {
       return vault;
+    }
+
+    /// The provider currently holding (or, when the token is not yet resolved, the
+    /// creation-time designated one).
+    Vault vaultProvider() {
+      return holding != null ? holding : vault;
+    }
+
+    /// Move the stored crypt token to the requested provider (the volume vault or
+    /// the OS keyring): the token is read from the provider holding it, stored with
+    /// the target one, and the stale entry is dropped from the other (mirroring the
+    /// storePasswords stale-drop). The already-there request is a no-op; migrating
+    /// to the keyring requires a usable OS keyring.
+    void migrateVault(boolean toKeyring) {
+      Vault target = toKeyring ? Vault.keyring() : Vault.volume();
+      if (target == vaultProvider()) return;
+      if (target == Vault.keyring() && !KeyringVault.INSTANCE.available()) {
+        throw new BitferryError("No usable OS keyring on this host - the password storage cannot be migrated");
+      }
+      String token = retrieveToken();
+      if (token == null) throw new BitferryError("No stored password token for task " + task().tag());
+      target.storeToken(task(), token);
+      if (target != Vault.volume()) Vault.volume().deleteToken(task());
+      if (target != Vault.keyring()) Vault.keyring().deleteToken(task());
+      holding = target;
     }
   }
 

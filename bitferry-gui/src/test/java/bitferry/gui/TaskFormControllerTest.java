@@ -5,6 +5,7 @@ import bitferry.Volume;
 import bitferry.endpoint.Endpoints;
 import bitferry.task.Backup;
 import bitferry.task.Copy;
+import bitferry.task.Equalize;
 import bitferry.task.IncludeFilters;
 import bitferry.task.Replicate;
 import bitferry.task.Task;
@@ -232,8 +233,44 @@ class TaskFormControllerTest {
         }
     }
 
-    @Test
-    void alteringOperationTypeForRcloneTasksMorphsAndPersists() throws Exception {
+  @Test
+  void editTypeSwitchSwapsTheDefaultExecutionOptionsAndKeepsTheCustomized() throws Exception {
+    // 1. The default-profile options follow the type switch: the bisync-only flags
+    // must not ride a morphed sync task
+    Equalize defaulted = new Equalize(manager,
+        Endpoints.parse(manager, "local:" + Files.createTempDirectory("bitferry-eq-form-src")),
+        Endpoints.parse(manager, ":" + volume.tag() + ":eq-form-dst"),
+        null, List.of(), List.of());
+    TaskFormController form = load(defaulted);
+    try {
+      ComboBox<String> type = field(form, "type");
+      assertEquals("equalize", form.type());
+      assertTrue(execute(form).getText().contains("--recover"), execute(form).getText());
+      runFx(() -> type.setValue("replicate"));
+      assertEquals("--metadata", execute(form).getText(), "the bisync-only defaults must be replaced by the target operation's default");
+    } finally {
+      defaulted.delete();
+    }
+
+    // 2. The customized options are user data: the switch leaves them alone
+    Equalize customized = new Equalize(manager,
+        Endpoints.parse(manager, "local:" + Files.createTempDirectory("bitferry-eq-form-src2")),
+        Endpoints.parse(manager, ":" + volume.tag() + ":eq-form-dst2"),
+        null, List.of(), List.of());
+    customized.setProcessOptions("--spare, --options");
+    TaskFormController customForm = load(customized);
+    try {
+      ComboBox<String> type = field(customForm, "type");
+      assertTrue(execute(customForm).getText().contains("--spare"), execute(customForm).getText());
+      runFx(() -> type.setValue("replicate"));
+      assertTrue(execute(customForm).getText().contains("--spare"), "the customized options must survive the type switch: " + execute(customForm).getText());
+    } finally {
+      customized.delete();
+    }
+  }
+
+  @Test
+  void alteringOperationTypeForRcloneTasksMorphsAndPersists() throws Exception {
         Task task = new Copy(manager,
             Endpoints.parse(manager, "local:" + Files.createTempDirectory("bitferry-morph-src")),
             Endpoints.parse(manager, ":" + volume.tag() + ":morph-dst"),

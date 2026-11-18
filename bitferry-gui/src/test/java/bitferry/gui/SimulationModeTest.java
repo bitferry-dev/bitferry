@@ -85,8 +85,15 @@ class SimulationModeTest {
       assertFalse(settings.simulate());
       assertFalse(settings.verbose());
     } finally {
-      // Restore clean default state
+      // Restore clean default state and release the stage (the leaked windows
+      // accumulate across the suite otherwise)
       settings.capture(stage, 0.62, false, false);
+      CountDownLatch closed = new CountDownLatch(1);
+      Platform.runLater(() -> {
+        stage.close();
+        closed.countDown();
+      });
+      assertTrue(closed.await(5, TimeUnit.SECONDS), "the stage failed to close");
     }
   }
 

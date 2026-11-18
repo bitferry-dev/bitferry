@@ -285,6 +285,21 @@ public abstract class Task {
     return false;
   }
 
+  /// The vault provider currently holding (or designated to hold) the task's token:
+  /// the storage-selection source for the frontends (e.g. the password-storage radio
+  /// pre-selection). Empty for the tasks that keep no vault token.
+  public java.util.Optional<bitferry.vault.Vault> vaultProvider() {
+    return java.util.Optional.empty();
+  }
+
+  /// Move the stored token to the requested provider (the volume vault or the OS
+  /// keyring): the token is read from the provider holding it, stored with the
+  /// target one, and the stale entry is dropped from the other. The base raises:
+  /// only the vault-backed tasks support the migration.
+  public void migrateVault(boolean toKeyring) {
+    throw new BitferryError("Task " + tag + " holds no vault token to migrate");
+  }
+
   /// Whether the task supports the crypt encryption configuration (and the password
   /// acquisition at the creation time).
   public boolean supportsEncryption() {

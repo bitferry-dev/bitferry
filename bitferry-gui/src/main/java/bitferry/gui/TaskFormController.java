@@ -12,6 +12,7 @@ import bitferry.task.Restic;
 import bitferry.task.Task;
 import bitferry.task.Update;
 import bitferry.vault.KeyringVault;
+import bitferry.vault.Vault;
 import javafx.application.Platform;
 import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
@@ -248,7 +249,9 @@ public final class TaskFormController {
     BooleanSupplier encrypted = () -> rclone.getAsBoolean() && encryption() != null;
     BooleanSupplier cryptPasswordVisible = () -> existing == null && encrypted.getAsBoolean();
     BooleanSupplier formatVisible = () -> existing == null && backup.getAsBoolean();
-    BooleanSupplier keyringVisible = () -> existing == null && (restic.getAsBoolean() || encrypted.getAsBoolean());
+    // The password-storage row rides the modify mode too: the radio selection mirrors
+    // the task's current provider, and switching it migrates the token on apply
+    BooleanSupplier keyringVisible = () -> restic.getAsBoolean() || encrypted.getAsBoolean();
 
     rows.add(new Row(typeLabel, type, () -> true));
     rows.add(new Row(sourceLabel, source.getParent(), () -> true));
@@ -365,6 +368,13 @@ public final class TaskFormController {
 
       List<String> curOpts = existing.processOptions();
       execute.setText(String.join(", ", curOpts));
+      // The options equal to the operation's default profile are treated as the
+      // auto-loaded content: the type switch replaces them with the new operation's
+      // default (the bisync-only flags must not ride a morphed sync task), while a
+      // customized set stays with the task
+      if (curOpts.equals(executeProfiles().get("default"))) {
+        autoLoaded.put(execute, String.join(", ", curOpts));
+      }
 
       if (existing instanceof Rclone rclone) {
         Rclone.Encryption enc = rclone.encryption();
@@ -384,6 +394,13 @@ public final class TaskFormController {
 
       manual.setSelected(existing.isManual());
 
+      // The password-storage radios mirror the task's actual provider: switching the
+      // selection migrates the token upon the apply (the radio gray-out from the
+      // availability probe still applies)
+      if (existing.usesVault() && existing.vaultProvider().orElse(Vault.volume()) == Vault.keyring()) {
+        keyringChoice.setSelected(true);
+      }
+
       if (existing instanceof Backup backup) {
         if (backup.forget() != null && !backup.forget().isEmpty()) {
           forget.setText(String.join(", ", backup.forget()));
@@ -395,11 +412,6 @@ public final class TaskFormController {
           serve.setText(backup.cadence().format());
         }
         format.setDisable(true);
-        keyring.setDisable(true);
-      }
-
-      if (existing instanceof Restore) {
-        keyring.setDisable(true);
       }
 
       if (existing instanceof Restic) {
@@ -556,14 +568,17 @@ public final class TaskFormController {
 
   /// Pre-load the @default profile's concrete options into an empty (or untouched
   /// auto-loaded) entry field: the new-task entries start from the operation's
-  /// defaults stated explicitly (the real entries, not the @-tags). The fields
-  /// without a non-empty @default profile (the restic backup execution options,
-  /// the empty check defaults, the exclude patterns) stay empty. The auto-loaded
-  /// content follows the operation: switching the type replaces it with the new
-  /// operation's defaults (clearing it when the new default is empty), while the
-  /// user-edited content stays intact.
+  /// defaults stated explicitly (the real entries, not the @-tags), and the edit-mode
+  /// entries whose stored options match their operation's default profile follow the
+  /// type switches the same way. The fields without a non-empty @default profile (the
+  /// restic backup execution options, the empty check defaults, the exclude patterns)
+  /// stay empty. The auto-loaded content follows the operation: switching the type
+  /// replaces it with the new operation's defaults (clearing it when the new default
+  /// is empty), while the user-edited content stays intact.
   private void loadDefaultProfile(TextField field, Map<String, List<String>> profiles) {
-    if (existing != null) return;
+    // The edit-mode fields carry user data unless seeded as the auto-loaded default
+    // (the explicit '-' cleared options stay untouched by the type switches)
+    if (existing != null && !autoLoaded.containsKey(field)) return;
     String current = field.getText().trim();
     if (!current.isBlank() && !current.equals(autoLoaded.get(field))) return;
     List<String> defaults = profiles != null ? profiles.get("default") : null;

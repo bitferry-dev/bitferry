@@ -14,7 +14,10 @@ import javafx.stage.Stage;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
+import java.io.BufferedWriter;
+import java.io.IOException;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
@@ -44,10 +47,42 @@ class FailedRunFloodTest {
     Platform.setImplicitExit(false);
   }
 
+  /// The flood child agent: 200000 failure lines into the captured stdout followed
+  /// by the exit code 6 (the retry-storm shape). Doubles as the JVM-spawned process
+  /// so the test stays portable across the platforms (no shell pipeline dependency).
+  public static void main(String[] args) throws IOException {
+    if (args.length > 0 && "flood".equals(args[0])) {
+      StringBuilder flood = new StringBuilder();
+      for (int i = 1; i <= 200000; i++) {
+        flood.append("Failed to copy: retries exhausted: ").append(i).append('\n');
+      }
+      try (BufferedWriter out = new BufferedWriter(new java.io.OutputStreamWriter(System.out))) {
+        out.write(flood.toString());
+        out.flush();
+      }
+      System.exit(6);
+    }
+  }
+
+  /// The OS-aware JVM spawn command carrying the current classpath (mirroring the
+  /// SystemCommandExecutorPassThroughTest pattern).
+  private static List<String> floodCommand() {
+    String java = Path.of(System.getProperty("java.home"), "bin",
+      System.getProperty("os.name", "").toLowerCase().contains("win") ? "java.exe" : "java").toString();
+    List<String> cmd = new ArrayList<>();
+    cmd.add(java);
+    cmd.add("-cp");
+    cmd.add(System.getProperty("java.class.path"));
+    cmd.add(FailedRunFloodTest.class.getName());
+    cmd.add("flood");
+    return cmd;
+  }
+
   @Test
   void failedRunKeepsFxResponsive() throws Exception {
     CountDownLatch sceneReady = new CountDownLatch(1);
     AtomicReference<LogController> logsRef = new AtomicReference<>();
+    AtomicReference<Stage> stageRef = new AtomicReference<>();
     Platform.runLater(() -> {
       try {
         FXMLLoader loader = new FXMLLoader(getClass().getResource("/bitferry/gui/log.fxml"));
@@ -55,6 +90,7 @@ class FailedRunFloodTest {
         Stage stage = new Stage();
         stage.setScene(new Scene(root, 600, 300));
         stage.show();
+        stageRef.set(stage);
         logsRef.set(loader.getController());
       } catch (Exception e) {
         throw new RuntimeException(e);
@@ -70,9 +106,7 @@ class FailedRunFloodTest {
     // The real captured-mode process mechanics; the fake seam substitutes the flood
     // for whatever argv the task builds (the actual rclone binary is not needed)
     manager.backendExecutor(Executor.system((command, dir, env, output) ->
-      SystemCommandExecutor.INSTANCE.execute(
-        List.of("sh", "-c", "seq 1 200000 | sed 's/^/Failed to copy: retries exhausted: /'; exit 6"),
-        null, null, output)));
+      SystemCommandExecutor.INSTANCE.execute(floodCommand(), null, null, output)));
     manager.simulate(false);
 
     // The mass-run selection aggregates the volume-owned tasks only, so the task
@@ -129,6 +163,13 @@ class FailedRunFloodTest {
       System.out.println("FailedRunFloodTest: max FX heartbeat gap " + maxGap.get() + " ms");
     } finally {
       heart.shutdownNow();
+      CountDownLatch closed = new CountDownLatch(1);
+      Platform.runLater(() -> {
+        Stage stage = stageRef.get();
+        if (stage != null) stage.close();
+        closed.countDown();
+      });
+      closed.await(5, TimeUnit.SECONDS);
     }
   }
 }

@@ -321,6 +321,19 @@ final class Dialogs {
           current.setExclude(exclude);
         }
 
+        // The password-storage migration: the radio selection (mirroring the task's
+        // current provider) differing from the actual one moves the token between the
+        // volume vault and the OS keyring. The rotation above keeps the current
+        // provider, so the migration runs after it deliberately.
+        if (current.usesVault()) {
+          boolean wantKeyring = form.keyring();
+          boolean heldKeyring = current.vaultProvider().orElse(bitferry.vault.Vault.volume()) == bitferry.vault.Vault.keyring();
+          if (wantKeyring != heldKeyring) {
+            current.migrateVault(wantKeyring);
+            logs.log("Password storage moved to the " + (wantKeyring ? "OS keyring" : "volume vault") + " for task " + AnsiFormat.tag(current.tag()));
+          }
+        }
+
         manager.commit();
         logs.log("Task " + AnsiFormat.tag(current.tag()) + " modified: " + AnsiFormat.task(current));
         context.fireModelChanged();

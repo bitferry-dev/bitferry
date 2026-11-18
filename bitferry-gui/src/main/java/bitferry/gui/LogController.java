@@ -37,6 +37,12 @@ public final class LogController {
   /// interleave with the log drain.
   private static final int FLUSH_BUDGET = 500;
 
+  /// The run-tab retention cap: the oldest run tabs beyond this count are evicted
+  /// upon the fresh attachments, keeping the long-lived sessions bounded (each tab
+  /// carries its scene-graph and up to [LINE_CAP] rendered lines). The general tab
+  /// is never evicted (and never counted).
+  private static final int MAX_RUN_TABS = 12;
+
   /// A single log stream: the buffered lines plus the tab they belong to.
   private static final class Stream {
     /// The normalized scroll position tolerance for the tail test: the vertical scrollbar
@@ -108,7 +114,20 @@ public final class LogController {
       this.flow = createdFlow;
       this.tab = new Tab(LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss")) + " — " + title, createdScroll);
       tabs.getTabs().add(this.tab);
+      evictOldestRunTabs();
       tabs.getSelectionModel().select(this.tab);
+    }
+
+    /// Drop the oldest run tabs beyond the retention cap (the just-attached tab is
+    /// the newest and survives). The general tab rides `closable == false` in the
+    /// FXML and is skipped by the eviction.
+    private void evictOldestRunTabs() {
+      var all = tabs.getTabs();
+      while (all.size() > MAX_RUN_TABS + 1) {
+        Tab oldest = all.stream().filter(Tab::isClosable).findFirst().orElse(null);
+        if (oldest == null) return;
+        all.remove(oldest);
+      }
     }
 
     private void initView(ScrollPane sp, TextFlow tf) {
@@ -119,7 +138,12 @@ public final class LogController {
       copyAll.setOnAction(e -> copyAllToClipboard());
       MenuItem clear = new MenuItem("Clear");
       clear.setOnAction(e -> clear());
-      menu.getItems().addAll(copyAll, clear);
+      MenuItem closeOthers = new MenuItem("Close Other Tabs");
+      closeOthers.setOnAction(e -> {
+        // The run tabs only: the general tab is non-closable and stays
+        tabs.getTabs().removeIf(t -> t.isClosable() && t != tab);
+      });
+      menu.getItems().addAll(copyAll, clear, closeOthers);
 
       sp.setContextMenu(menu);
       tf.setOnContextMenuRequested(e -> menu.show(tf, e.getScreenX(), e.getScreenY()));

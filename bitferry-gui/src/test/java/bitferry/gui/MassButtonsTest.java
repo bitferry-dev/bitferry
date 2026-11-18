@@ -111,56 +111,67 @@ class MassButtonsTest {
     @Test
     void theExecuteColumnRendersTheCheckboxes() throws Exception {
         // The stage hosts the table so the skin creates and lays out the real cells
+        AtomicReference<Stage> stageRef = new AtomicReference<>();
         CountDownLatch shown = new CountDownLatch(1);
+        AtomicReference<Throwable> showFailure = new AtomicReference<>();
         Platform.runLater(() -> {
             try {
                 Stage stage = new Stage();
-                stage.setTitle("ZZPROBE-WINDOW");
+                stageRef.set(stage);
                 stage.setScene(new Scene(new StackPane(table()), 800, 600));
                 stage.show();
-            } catch (Exception e) {
-                e.printStackTrace();
+            } catch (Throwable t) {
+                showFailure.set(t);
             } finally {
                 shown.countDown();
             }
         });
-        assertTrue(shown.await(5, TimeUnit.SECONDS));
-        // Two pulses: the CSS + the skin layout create and populate the cells
-        CountDownLatch pulsed = new CountDownLatch(1);
-        Platform.runLater(() -> Platform.runLater(pulsed::countDown));
-        assertTrue(pulsed.await(5, TimeUnit.SECONDS));
+        assertTrue(shown.await(5, TimeUnit.SECONDS), "the probe stage failed to show: " + showFailure.get());
+        try {
+            // Two pulses: the CSS + the skin layout create and populate the cells
+            CountDownLatch pulsed = new CountDownLatch(1);
+            Platform.runLater(() -> Platform.runLater(pulsed::countDown));
+            assertTrue(pulsed.await(5, TimeUnit.SECONDS));
 
-        CountDownLatch checked = new CountDownLatch(1);
-        AtomicReference<String> result = new AtomicReference<>();
-        Platform.runLater(() -> {
-            try {
-                var cells = table().lookupAll(".table-cell");
-                var sb = new StringBuilder();
-                int count = 0;
-                for (var node : cells) {
-                    if (node instanceof TableCell<?, ?> cell) {
-                        count++;
-                        var col = cell.getTableColumn();
-                        var graphic = cell.getGraphic();
-                        sb.append("  col=").append(col == null ? "null" : col.getText())
-                          .append(" graphic=").append(graphic == null ? "null" : graphic.getClass().getSimpleName())
-                          .append(" item=").append(cell.getItem())
-                          .append(" empty=").append(cell.isEmpty());
-                        if (count <= 8) sb.append(" [").append(count).append("]");
+            CountDownLatch checked = new CountDownLatch(1);
+            AtomicReference<String> result = new AtomicReference<>();
+            Platform.runLater(() -> {
+                try {
+                    var cells = table().lookupAll(".table-cell");
+                    var sb = new StringBuilder();
+                    int count = 0;
+                    for (var node : cells) {
+                        if (node instanceof TableCell<?, ?> cell) {
+                            count++;
+                            var col = cell.getTableColumn();
+                            var graphic = cell.getGraphic();
+                            sb.append("  col=").append(col == null ? "null" : col.getText())
+                              .append(" graphic=").append(graphic == null ? "null" : graphic.getClass().getSimpleName())
+                              .append(" item=").append(cell.getItem())
+                              .append(" empty=").append(cell.isEmpty());
+                            if (count <= 8) sb.append(" [").append(count).append("]");
+                        }
                     }
+                    result.set("totalCells=" + cells.size() + sb);
+                } catch (Throwable t) {
+                    result.set("probe failure: " + t);
+                } finally {
+                    checked.countDown();
                 }
-                result.set("totalCells=" + cells.size() + sb);
-            } catch (Throwable t) {
-                result.set("probe failure: " + t);
-            } finally {
-                checked.countDown();
-            }
-        });
-        assertTrue(checked.await(5, TimeUnit.SECONDS), "the render probe timed out");
-        System.out.println("ZZRENDER " + result.get());
-        // The Execute column rendered with the checkbox graphics (at least one per task)
-        long checkboxCount = result.get().split("graphic=CheckBox", -1).length - 1;
-        assertTrue(checkboxCount >= 2, "the Execute checkboxes: " + result.get());
+            });
+            assertTrue(checked.await(5, TimeUnit.SECONDS), "the render probe timed out");
+            // The Execute column rendered with the checkbox graphics (at least one per task)
+            long checkboxCount = result.get().split("graphic=CheckBox", -1).length - 1;
+            assertTrue(checkboxCount >= 2, "the Execute checkboxes: " + result.get());
+        } finally {
+            CountDownLatch closed = new CountDownLatch(1);
+            Platform.runLater(() -> {
+                Stage stage = stageRef.get();
+                if (stage != null) stage.close();
+                closed.countDown();
+            });
+            assertTrue(closed.await(5, TimeUnit.SECONDS), "the probe stage failed to close");
+        }
     }
 
     private static void fireAndWait(String buttonName, boolean expected) throws Exception {

@@ -160,6 +160,33 @@ public abstract class Restic extends Task {
     return null;
   }
 
+  /// The provider currently holding (or, when the token is not yet resolved, the
+  /// creation-time designated one).
+  @Override
+  public java.util.Optional<Vault> vaultProvider() {
+    return java.util.Optional.ofNullable(holding != null ? holding : vault);
+  }
+
+  /// Move the stored repository token to the requested provider (the volume vault
+  /// or the OS keyring): the token is read from the provider holding it, stored
+  /// with the target one, and the stale entry is dropped from the other (mirroring
+  /// the setPassword stale-drop). The already-there request is a no-op; migrating
+  /// to the keyring requires a usable OS keyring.
+  @Override
+  public void migrateVault(boolean toKeyring) {
+    Vault target = toKeyring ? Vault.keyring() : Vault.volume();
+    if (target == vaultProvider().orElse(null)) return;
+    if (target == Vault.keyring() && !KeyringVault.INSTANCE.available()) {
+      throw new BitferryError("No usable OS keyring on this host - the password storage cannot be migrated");
+    }
+    String token = retrieveToken();
+    if (token == null) throw new BitferryError("No stored password token for task " + tag);
+    target.storeToken(this, token);
+    if (target != Vault.volume()) Vault.volume().deleteToken(this);
+    if (target != Vault.keyring()) Vault.keyring().deleteToken(this);
+    holding = target;
+  }
+
   /// Return the environment variables to be set for the task processing.
   public Map<String, String> processEnvironment() {
     return Map.of("RESTIC_PASSWORD", password());
