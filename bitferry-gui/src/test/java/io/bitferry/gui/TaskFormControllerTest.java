@@ -21,6 +21,7 @@ import org.junit.jupiter.api.Test;
 
 import java.nio.file.Files;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -314,6 +315,15 @@ class TaskFormControllerTest {
             if (morphed != null) morphed.delete();
             manager.commit();
         }
+    }
+
+    @Test
+    void includeAndExcludePresetsContainOnlyEmptyDefaultPreset() {
+        assertEquals(Map.of("@default", List.of()), TaskFormController.INCLUDE_PROFILES);
+        assertEquals(Map.of("@default", List.of()), TaskFormController.EXCLUDE_PROFILES);
+        assertFalse(TaskFormController.EXCLUDE_PROFILES.containsKey("@common-temp"));
+        assertFalse(TaskFormController.EXCLUDE_PROFILES.containsKey("@vcs"));
+        assertFalse(TaskFormController.EXCLUDE_PROFILES.containsKey("@build"));
     }
 
     // The helpers: the FXML controller is loaded through its factory, the private

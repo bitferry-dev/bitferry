@@ -404,18 +404,17 @@ final class Dialogs {
   }
 
   /// Show the volume search roots dialog (ItemListDialog) and persist changes if accepted.
-  static void manageSearchRoots(AppContext context, LogController logs) {
-    List<String> current = SearchRoots.load();
-    String header = "One directory per entry; merged with BITFERRY_PATH, bitferry.path, the home directory and the mount points; non-Bitferry directories are skipped.";
-    Optional<List<String>> result = ItemListDialog.show(context.ownerWindow, "Volume Search Roots", header, current, null, "Select Volume Search Root Directory");
+  static void manageSearchPaths(AppContext context, LogController logs) {
+    List<String> current = io.bitferry.Paths.load();
+    Optional<List<String>> result = ItemListDialog.show(context.ownerWindow, "Volume search paths", null, current, null, "Select volume search path");
     if (result.isEmpty()) return;
     List<String> updated = result.get();
     if (updated.equals(current)) {
-      logs.log("Volume search roots unchanged");
+      logs.log("Volume search path unchanged");
       return;
     }
-    SearchRoots.save(updated);
-    logs.log("Volume search roots updated: " + updated.size() + " directory(ies)");
+    io.bitferry.Paths.save(updated);
+    logs.log("Volume search path updated: " + updated.size() + " directory(ies)");
     context.reload();
   }
 }

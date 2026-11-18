@@ -21,7 +21,10 @@ public final class MainController {
   private Button reload;
 
   @FXML
-  private Button searchRoots;
+  private MenuButton moreMenu;
+
+  @FXML
+  private MenuItem searchRootsItem;
 
   @FXML
   private CheckBox verbose;
@@ -44,9 +47,6 @@ public final class MainController {
   @FXML
   private Label status;
 
-  @FXML
-  private Label version;
-
   // The included pane controllers (injected by the fx:include fx:id naming convention)
   @FXML
   private VolumesController volumesPaneController;
@@ -61,11 +61,6 @@ public final class MainController {
   private Runner runner;
 
   public MainController() {}
-
-  @FXML
-  private void initialize() {
-    version.setText(Bitferry.VERSION);
-  }
 
   /// Inject the shared context once the whole window is loaded (called by the
   /// Application before the window shows). The persisted window status applies
@@ -156,10 +151,10 @@ public final class MainController {
   @FXML
   private void onSearchRoots() {
     if (runner.isBusy()) {
-      logPaneController.log("Search roots management rejected: a run is in progress");
+      logPaneController.log("Search paths management rejected: a run is in progress");
       return;
     }
-    Dialogs.manageSearchRoots(context, logPaneController);
+    Dialogs.manageSearchPaths(context, logPaneController);
   }
 
   /// The run starter seam for the tasks panel: route into the runner choosing the
@@ -232,7 +227,7 @@ public final class MainController {
   private void setActionsDisabled(boolean disabled) {
     executeAll.setDisable(disabled);
     reload.setDisable(disabled);
-    if (searchRoots != null) searchRoots.setDisable(disabled);
+    if (moreMenu != null) moreMenu.setDisable(disabled);
     simulate.setDisable(disabled);
     // The abort is only meaningful while a run is in progress: the inverse gating
     abort.setDisable(!disabled);

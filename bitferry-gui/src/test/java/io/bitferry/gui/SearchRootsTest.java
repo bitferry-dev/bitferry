@@ -110,7 +110,7 @@ class SearchRootsTest {
     context.operations().submit(() -> null).get(5, TimeUnit.SECONDS);
 
     assertFalse(context.manager().liveVolumes().containsKey(vol.tag()),
-        "volume should not be discovered before search roots are configured");
+        "volume should not be discovered before search paths are configured");
 
     // Configure the volume location in SearchRoots
     SearchRoots.save(List.of(sub.toString()));
@@ -119,7 +119,7 @@ class SearchRootsTest {
     CountDownLatch configuredLatch = new CountDownLatch(1);
     context.onModelChanged(configuredLatch::countDown);
     context.reload();
-    assertTrue(configuredLatch.await(5, TimeUnit.SECONDS), "reload with search roots timed out");
+    assertTrue(configuredLatch.await(5, TimeUnit.SECONDS), "reload with search paths timed out");
     context.operations().submit(() -> null).get(5, TimeUnit.SECONDS);
 
     // Verify the volume is discovered and live

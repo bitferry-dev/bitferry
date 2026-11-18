@@ -4,6 +4,8 @@
 <?import javafx.scene.control.Button?>
 <?import javafx.scene.control.CheckBox?>
 <?import javafx.scene.control.Label?>
+<?import javafx.scene.control.MenuButton?>
+<?import javafx.scene.control.MenuItem?>
 <?import javafx.scene.control.ProgressBar?>
 <?import javafx.scene.control.Separator?>
 <?import javafx.scene.control.SplitPane?>
@@ -41,11 +43,6 @@
           <Tooltip text="Re-probe the volumes and restore the manager"/>
         </tooltip>
       </Button>
-      <Button fx:id="searchRoots" text="Search Roots" onAction="#onSearchRoots">
-        <tooltip>
-          <Tooltip text="Manage the extra volume search directories (persisted per user)"/>
-        </tooltip>
-      </Button>
       <Separator orientation="VERTICAL"/>
       <CheckBox fx:id="verbose" text="Verbose" onAction="#onVerbose">
         <tooltip>
@@ -58,7 +55,14 @@
         </tooltip>
       </CheckBox>
       <Region HBox.hgrow="ALWAYS"/>
-      <Label fx:id="version" style="-fx-text-fill: gray;"/>
+      <MenuButton fx:id="moreMenu" text="&#x22EE;" style="-fx-font-weight: bold;">
+        <tooltip>
+          <Tooltip text="More options"/>
+        </tooltip>
+        <items>
+          <MenuItem fx:id="searchRootsItem" text="Volume search paths…" onAction="#onSearchRoots"/>
+        </items>
+      </MenuButton>
       <Separator orientation="VERTICAL"/>
       <Button fx:id="exit" text="Exit" onAction="#onExit">
         <tooltip>

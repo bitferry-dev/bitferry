@@ -114,8 +114,16 @@ public final class ItemListController {
     items.setAll(initialItems != null ? initialItems : List.of());
     Map<String, List<String>> nonNull = filterProfiles(profiles);
     if (!nonNull.isEmpty()) {
-      profileCombo.getItems().setAll(nonNull.keySet());
-      profileCombo.getSelectionModel().selectFirst();
+      List<String> keys = new ArrayList<>(nonNull.keySet());
+      if (keys.contains("@default")) {
+        keys.remove("@default");
+        keys.add(0, "@default");
+        profileCombo.getItems().setAll(keys);
+        profileCombo.getSelectionModel().select("@default");
+      } else {
+        profileCombo.getItems().setAll(keys);
+        profileCombo.getSelectionModel().selectFirst();
+      }
     } else {
       profileBar.setVisible(false);
       profileBar.setManaged(false);

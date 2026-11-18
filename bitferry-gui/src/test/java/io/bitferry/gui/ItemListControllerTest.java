@@ -55,6 +55,44 @@ class ItemListControllerTest {
         ComboBox<String> profileCombo = field(controller, "profileCombo");
         assertTrue(profileCombo.getItems().contains("@default"));
         assertTrue(profileCombo.getItems().contains("@full"));
+        assertEquals("@default", profileCombo.getValue());
+        assertEquals("@default", profileCombo.getItems().get(0));
+    }
+
+    @Test
+    void defaultProfileIsPreSelectedEvenWhenListedLate() throws Exception {
+        Map<String, List<String>> profiles = new java.util.LinkedHashMap<>();
+        profiles.put("@zebra", List.of("--zebra"));
+        profiles.put("@default", List.of("--default"));
+        profiles.put("@apple", List.of("--apple"));
+        ItemListController controller = load(List.of(), profiles);
+
+        ComboBox<String> profileCombo = field(controller, "profileCombo");
+        assertEquals("@default", profileCombo.getValue());
+        assertEquals("@default", profileCombo.getItems().get(0));
+    }
+
+    @Test
+    void profileKeyWithoutAtSymbolSelectsDefault() throws Exception {
+        Map<String, List<String>> profiles = Map.of(
+            "default", List.of("--std"),
+            "custom", List.of("--custom")
+        );
+        ItemListController controller = load(List.of(), profiles);
+
+        ComboBox<String> profileCombo = field(controller, "profileCombo");
+        assertEquals("@default", profileCombo.getValue());
+    }
+
+    @Test
+    void fallbackToFirstWhenNoDefaultPreset() throws Exception {
+        Map<String, List<String>> profiles = new java.util.LinkedHashMap<>();
+        profiles.put("@first", List.of("1"));
+        profiles.put("@second", List.of("2"));
+        ItemListController controller = load(List.of(), profiles);
+
+        ComboBox<String> profileCombo = field(controller, "profileCombo");
+        assertEquals("@first", profileCombo.getValue());
     }
 
     @Test

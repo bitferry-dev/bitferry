@@ -9,14 +9,14 @@ import java.lang.System.Logger.*;
 /// The persisted volume search roots: extra directories probed during manager
 /// restore, persisted per user via the Java Preferences API under the domain-level
 /// `/io/bitferry` node.
-public final class SearchRoots {
+public final class Paths {
 
-  private static final System.Logger LOG = System.getLogger(SearchRoots.class.getName());
+  private static final System.Logger LOG = System.getLogger(Paths.class.getName());
   private static final Preferences prefs = Preferences.userNodeForPackage(Bitferry.class);
   private static final Preferences legacyPrefs = Preferences.userRoot().node("bitferry");
   private static final String KEY = "path";
 
-  private SearchRoots() {}
+  private Paths() {}
 
   /// Read the persisted volume search roots (the missing or blank entry yields an empty list).
   public static List<String> load() {
@@ -66,7 +66,7 @@ public final class SearchRoots {
     try {
       prefs.flush();
     } catch (BackingStoreException e) {
-      LOG.log(Level.WARNING, () -> "The volume search roots persistence failed: " + e);
+      LOG.log(Level.WARNING, () -> "The volume search paths persistence failed: " + e);
     }
   }
 

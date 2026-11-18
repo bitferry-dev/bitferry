@@ -177,7 +177,7 @@ public final class AppContext {
     if (prop != null && !prop.isBlank()) {
       for (String entry : prop.split(Pattern.quote(File.pathSeparator))) roots.add(Path.of(entry));
     }
-    for (String entry : SearchRoots.load()) {
+    for (String entry : io.bitferry.Paths.load()) {
       try {
         roots.add(Path.of(entry));
       } catch (InvalidPathException ignored) {

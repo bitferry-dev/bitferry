@@ -62,13 +62,11 @@ public final class TaskFormController {
       ::directory      resolved against the intact volume
       :tag:directory   relative to the volume matched by (partial) tag""";
 
+  /// Presets for include pattern lists.
+  static final Map<String, List<String>> INCLUDE_PROFILES = Map.of("@default", List.of());
+
   /// Presets for exclude pattern lists.
-  private static final Map<String, List<String>> EXCLUDE_PROFILES = new LinkedHashMap<>();
-  static {
-    EXCLUDE_PROFILES.put("@common-temp", List.of("*.tmp", "*~", ".cache/**", "Thumbs.db", ".DS_Store"));
-    EXCLUDE_PROFILES.put("@vcs", List.of(".git/**", ".svn/**", ".hg/**"));
-    EXCLUDE_PROFILES.put("@build", List.of("build/**", "target/**", "node_modules/**", "*.class", "*.o"));
-  }
+  static final Map<String, List<String>> EXCLUDE_PROFILES = Map.of("@default", List.of());
 
   /// Execution options profiles per task operation type.
   private static final Map<String, Map<String, List<String>>> EXECUTE_PROFILES = Map.of(
@@ -581,7 +579,9 @@ public final class TaskFormController {
     if (existing != null && !autoLoaded.containsKey(field)) return;
     String current = field.getText().trim();
     if (!current.isBlank() && !current.equals(autoLoaded.get(field))) return;
-    List<String> defaults = profiles != null ? profiles.get("default") : null;
+    List<String> defaults = profiles != null
+      ? (profiles.containsKey("@default") ? profiles.get("@default") : profiles.get("default"))
+      : null;
     String text = defaults == null || defaults.isEmpty() ? "" : String.join(", ", defaults);
     if (text.equals(current)) return;
     field.setText(text);
@@ -646,7 +646,7 @@ public final class TaskFormController {
 
   @FXML
   private void onEditInclude() {
-    editList(include, "Include Patterns", "Edit include patterns", () -> null);
+    editList(include, "Include Patterns", "Edit include patterns", () -> INCLUDE_PROFILES);
   }
 
   @FXML

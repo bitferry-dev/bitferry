@@ -4,6 +4,7 @@ import io.bitferry.Manager;
 import javafx.application.Platform;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.control.CheckBox;
+import javafx.scene.control.MenuButton;
 import javafx.scene.layout.HBox;
 import javafx.stage.Stage;
 import org.junit.jupiter.api.AfterAll;
@@ -179,11 +180,21 @@ class SimulationModeTest {
       try {
         var disabledMethod = MainController.class.getDeclaredMethod("setActionsDisabled", boolean.class);
         disabledMethod.setAccessible(true);
+        var menuField = MainController.class.getDeclaredField("moreMenu");
+        menuField.setAccessible(true);
+        var moreMenu = (MenuButton) menuField.get(controller);
+        assertNotNull(moreMenu);
+        assertEquals("⋮", moreMenu.getText());
+        assertEquals(1, moreMenu.getItems().size());
+        assertEquals("Volume Search Roots…", moreMenu.getItems().get(0).getText());
+
         disabledMethod.invoke(controller, true);
         assertTrue(simulate.isDisable(), "simulate checkbox must be disabled during active run");
+        assertTrue(moreMenu.isDisable(), "moreMenu dropdown must be disabled during active run");
 
         disabledMethod.invoke(controller, false);
         assertFalse(simulate.isDisable(), "simulate checkbox must be re-enabled after run");
+        assertFalse(moreMenu.isDisable(), "moreMenu dropdown must be re-enabled after run");
         locked.countDown();
       } catch (Throwable t) {
         failure.set(t);
