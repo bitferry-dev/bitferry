@@ -43,18 +43,18 @@ public class DeleteTaskCommand implements Callable<Integer>, HasCommonOptions {
     }
     var selected = m.selectLiveTasks(tags);
     if (selected.isEmpty()) {
-      spec.commandLine().getErr().println(Ansi.AUTO.string("@|faint no task(s) match " + String.join(" ", tags) + "|@"));
+      spec.commandLine().getErr().println(Ansi.AUTO.string("@|faint No task(s) match " + String.join(" ", tags) + "|@"));
       return 0;
     }
     for (Task t : selected) {
       // The selection echo doubles as the promised --dry-run preview (the deletion
       // itself simulates through the commit below)
-      spec.commandLine().getOut().println(Ansi.AUTO.string("@|bold deleting|@ @|cyan " + t.tag() + "|@  " + t.describe()));
+      spec.commandLine().getOut().println(Ansi.AUTO.string("@|bold Deleting|@ @|cyan " + t.tag() + "|@  " + t.describe()));
       t.delete();
     }
     m.commit();
     if (m.simulate()) {
-      spec.commandLine().getErr().println(Ansi.AUTO.string("@|faint the deletion simulated (nothing was written); re-run without --dry-run to delete for real|@"));
+      spec.commandLine().getErr().println(Ansi.AUTO.string("@|faint The deletion simulated (nothing was written); re-run without --dry-run to delete for real|@"));
     }
     return 0;
   }

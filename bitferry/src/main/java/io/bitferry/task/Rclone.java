@@ -240,7 +240,10 @@ public abstract class Rclone extends Task implements IncludeFilters {
     if (!Set.of(Copy.OPERATION, Update.OPERATION, Replicate.OPERATION, Equalize.OPERATION).contains(newOperation)) {
       throw new BitferryError("Invalid rclone operation " + newOperation);
     }
-    if (this instanceof Equalize) {
+    if (this instanceof Equalize && !manager.simulate) {
+      // The equalize baseline removal is the destructive part of the morph: the
+      // simulation defers it like the task deletion does (the frontends promise
+      // "nothing was written" under --dry-run)
       deleteWorkdirs();
     }
     Rclone morphed = switch (newOperation) {
@@ -288,7 +291,13 @@ public abstract class Rclone extends Task implements IncludeFilters {
   @Override
   public void delete() {
     super.delete();
-    deleteWorkdirs();
+    // The per-task metadata (the equalize bisync baseline) is data-adjacent and its
+    // loss is irreversible (the re-created task would bisync --resync from scratch):
+    // the simulation defers the removal keeping the delete preview side-effect-free
+    // (the frontends promise "nothing was written" under --dry-run)
+    if (!manager.simulate) {
+      deleteWorkdirs();
+    }
   }
 
   /// The tool dispatch (the double dispatch landing on the executor's rclone slot).

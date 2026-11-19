@@ -54,7 +54,7 @@ public class CreateRestoreCommand implements Callable<Integer>, HasCommonOptions
   @Option(names = "-z", description = "Shorthand for --vault bitferry (store sensitive data in volume vault).")
   boolean bitferryVault;
 
-  @Option(names = "-k", description = "Shorthand for --vault keyring (fixed volumes only).")
+  @Option(names = "-k", description = "Shorthand for --vault keyring (intended for fixed volumes; honored on the removable ones with a portability advisory).")
   boolean keyring;
 
   @Option(names = {"-b", "--backup-task"}, description = "Backup task tag scoping the restore (the newest snapshot of that task is selected), or @|bold,cyan -|@ for the default scope (derived from the repository when unambiguous, otherwise the newest bitferry-tagged snapshot repo-wide).", paramLabel = "TAG")

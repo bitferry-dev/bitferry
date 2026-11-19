@@ -24,7 +24,7 @@ public interface Vault {
 
   /// The OS keyring provider (Windows Credential Manager, macOS Keychain, Linux
   /// libsecret/GNOME Keyring): the tokens are machine- and user-bound instead of
-  /// traveling with the volume storage; applies to the fixed volumes only.
+  /// traveling with the volume storage; naturally fits the fixed volumes.
   static Vault keyring() {
     return KeyringVault.INSTANCE;
   }

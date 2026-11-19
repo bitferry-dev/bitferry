@@ -392,12 +392,17 @@ public abstract class Task {
     // reused, so a surviving keyring entry would leak forever (the volume-vault entries
     // are purged by the commit-time storage filter anyway - this keeps them symmetric).
     // The vault-resident end may be absent (its volume is not restored): the deletion
-    // must not fail on that, the stale entries are tolerated like the keyring's own
-    for (Vault provider : List.of(Vault.volume(), Vault.keyring())) {
-      try {
-        provider.delete(this);
-      } catch (RuntimeException e) {
-        LOG.log(Level.DEBUG, () -> "The stored credentials of the deleted task " + tag + " could not be dropped: " + e.getMessage());
+    // must not fail on that, the stale entries are tolerated like the keyring's own.
+    // The simulation defers the drops (nothing is written anywhere): the keyring
+    // entries live outside the storages, so a simulated deletion must not consume
+    // them - the dropped token could never be restored by the later real commit
+    if (!manager.simulate) {
+      for (Vault provider : List.of(Vault.volume(), Vault.keyring())) {
+        try {
+          provider.delete(this);
+        } catch (RuntimeException e) {
+          LOG.log(Level.DEBUG, () -> "The stored credentials of the deleted task " + tag + " could not be dropped: " + e.getMessage());
+        }
       }
     }
   }

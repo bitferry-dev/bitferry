@@ -75,7 +75,7 @@ public abstract class RcloneTaskCommand implements Callable<Integer>, HasCommonO
   @Option(names = "-z", description = "Shorthand for --vault bitferry (store sensitive data in volume vault).")
   boolean bitferryVault;
 
-  @Option(names = "-k", description = "Shorthand for --vault keyring (fixed volumes only).")
+  @Option(names = "-k", description = "Shorthand for --vault keyring (intended for fixed volumes; honored on the removable ones with a portability advisory).")
   boolean keyring;
 
   @Option(names = {"-s", "--salt"}, description = "Prompt for a secondary password / salt (required when reusing an existing rclone crypt remote created with a custom salt).")

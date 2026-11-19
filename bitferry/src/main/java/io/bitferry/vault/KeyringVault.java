@@ -84,6 +84,9 @@ public final class KeyringVault implements Vault {
       throw new BitferryError("Keyring storage failure for task " + task.tag() + ": " + e.getMessage(), e);
     }
 
+    // The partial-failure window (the password stored, the salt add failing) leaves
+    // the salt missing while the password stays: the keyring holds no transaction, a
+    // retry repairs the pair - the salt failure must not unwind the stored password
     String sKey = saltKey(task.tag());
     if (salt != null && !salt.isEmpty()) {
       try {

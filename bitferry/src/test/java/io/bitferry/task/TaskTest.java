@@ -581,6 +581,72 @@ class TaskTest {
     assertFalse(Restic.sameRepository("b2:bucket:dir", "b2:bucket:other"));
   }
 
+  @Test
+  void simulatedDeletionKeepsTheWorkdirsAndTheVaultTokens() throws IOException {
+    Equalize task = new Equalize(manager, source(), destination(), null, List.of(), List.of());
+    Path workdir = task.workdir();
+    Files.createDirectories(workdir);
+    Files.writeString(workdir.resolve("session.path1.lst"), "listing");
+    // The restic task's repository password rides the volume vault
+    Backup backup = new Backup(manager, volumeSource(), destination(), "secret", null, null, null, null, List.of());
+    assertNotNull(volume.readVault(backup.tag()));
+
+    // The simulated deletion touches nothing: the workdir and the vault token survive
+    // (the delete commands promise "nothing was written" under --dry-run, and the
+    // keyring entries live outside the storages - consuming them is irreversible)
+    manager.simulate = true;
+    task.delete();
+    backup.delete();
+    assertTrue(Files.exists(workdir.resolve("session.path1.lst")), "the simulated delete must not destroy the bisync baseline");
+    assertNotNull(volume.readVault(backup.tag()), "the simulated delete must not drop the vault token");
+
+    // The real deletion removes both
+    manager.simulate = false;
+    task.delete();
+    backup.delete();
+    assertFalse(Files.exists(workdir));
+    assertNull(volume.readVault(backup.tag()));
+  }
+
+  @Test
+  void simulatedFilterChangeKeepsTheBaseline() throws IOException {
+    Equalize task = new Equalize(manager, source(), destination(), null, List.of(), List.of());
+    Path workdir = task.workdir();
+    Files.createDirectories(workdir);
+    Files.writeString(workdir.resolve("session.path1.lst"), "listing");
+    assertTrue(task.resynced());
+
+    // The simulated modify updates the in-memory filters without destroying the baseline
+    manager.simulate = true;
+    task.setInclude(List.of("keep/**"));
+    assertEquals(List.of("keep/**"), task.include());
+    assertTrue(Files.exists(workdir.resolve("session.path1.lst")), "the simulated modify must not destroy the bisync baseline");
+
+    // The real modify invalidates the stale baseline (the following run re-resyncs)
+    manager.simulate = false;
+    task.setExclude(List.of("drop/**"));
+    assertFalse(Files.exists(workdir.resolve("session.path1.lst")));
+    assertFalse(task.resynced());
+  }
+
+  @Test
+  void simulatedMorphKeepsTheEqualizeWorkdir() throws IOException {
+    Equalize task = new Equalize(manager, source(), destination(), null, List.of(), List.of());
+    Path workdir = task.workdir();
+    Files.createDirectories(workdir);
+    Files.writeString(workdir.resolve("session.path1.lst"), "listing");
+
+    // The simulated morph leaves the baseline in place (mirroring the deferred deletion)
+    manager.simulate = true;
+    Rclone morphed = task.morph("replicate");
+    assertTrue(Files.exists(workdir.resolve("session.path1.lst")), "the simulated morph must not destroy the bisync baseline");
+
+    // The real deletion of the morphed task cleans the workdir up
+    manager.simulate = false;
+    morphed.delete();
+    assertFalse(Files.exists(workdir));
+  }
+
   private static List<String> toStringList(JsonNode node) {
     return Task.strings(node, false);
   }

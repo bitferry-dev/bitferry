@@ -152,8 +152,12 @@ public class Equalize extends Rclone {
     }
   }
 
-  /// Invalidate the baseline by deleting listing files from the workdir.
+  /// Invalidate the baseline by deleting listing files from the workdir. The
+  /// simulation skips the removal (nothing is written anywhere): the baseline
+  /// survives until a real filter change invalidates it, and the following real
+  /// run rebuilds it (--resync) with the new filters either way.
   public void invalidateBaseline() {
+    if (manager.simulate) return;
     try {
       Path dir = workdir();
       if (Files.isDirectory(dir)) {

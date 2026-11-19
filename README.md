@@ -200,8 +200,7 @@ task (whose daemon detaches the process console), it keeps the real terminal att
 so the interactive password prompting works and the help layout adapts to the terminal.
 
 Logging: the library is logging-free (the domain returns results and errors); the CLI
-reports through `java.util.logging` (verbosity via the common options), and so does the
-GUI placeholder.
+reports through `java.util.logging` (verbosity via the common options), and so does the GUI.
 
 Dependency versions live in `gradle/libs.versions.toml`; the JavaFX version is pinned
 there too. The toolchain major version is pinned as `bitferry.java` in `gradle.properties`,

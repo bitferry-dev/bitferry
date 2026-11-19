@@ -77,6 +77,19 @@ public final class CliUtils {
   /// Resolve the requested vault provider into whether the OS keyring was selected.
   /// Defaults to [defaultKeyring] when neither option is specified.
   public static boolean resolveKeyring(String vault, boolean bitferryVault, boolean keyring, boolean defaultKeyring) {
+    return resolveVaultSelection(vault, bitferryVault, keyring, defaultKeyring);
+  }
+
+  /// Resolve the requested vault migration target, returning null when no migration was requested.
+  public static Boolean resolveVaultMigration(String vault, boolean bitferryVault, boolean keyring) {
+    return resolveVaultSelection(vault, bitferryVault, keyring, null);
+  }
+
+  // The shared vault-selection resolution: the conflicting combinations are rejected,
+  // the explicit --vault form and the -z/-k shorthands resolve to the keyring membership,
+  // and the unspecified request falls back to the supplied default (null denoting "no
+  // request" for the migration resolution)
+  private static Boolean resolveVaultSelection(String vault, boolean bitferryVault, boolean keyring, Boolean defaultKeyring) {
     if (bitferryVault && keyring) {
       throw new BitferryError("Conflicting vault storage options: cannot specify both -z and -k");
     }
@@ -91,24 +104,6 @@ public final class CliUtils {
     if (bitferryVault) return false;
     if (keyring) return true;
     return defaultKeyring;
-  }
-
-  /// Resolve the requested vault migration target, returning null when no migration was requested.
-  public static Boolean resolveVaultMigration(String vault, boolean bitferryVault, boolean keyring) {
-    if (bitferryVault && keyring) {
-      throw new BitferryError("Conflicting vault storage options: cannot combine -z and -k");
-    }
-    if (vault != null) {
-      if (bitferryVault || keyring) {
-        throw new BitferryError("Cannot combine --vault with -z or -k");
-      }
-      if ("keyring".equalsIgnoreCase(vault)) return true;
-      if ("bitferry".equalsIgnoreCase(vault) || "volume".equalsIgnoreCase(vault)) return false;
-      throw new BitferryError("Unsupported vault provider '" + vault + "'; must be 'bitferry' or 'keyring'");
-    }
-    if (bitferryVault) return false;
-    if (keyring) return true;
-    return null;
   }
 
   /// Resolve the requested mass-run participation mode, returning null when the

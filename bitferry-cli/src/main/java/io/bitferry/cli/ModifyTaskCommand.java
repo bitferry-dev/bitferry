@@ -156,8 +156,11 @@ public class ModifyTaskCommand implements Callable<Integer>, HasCommonOptions {
       throw new BitferryError("Vault storage migration is only applicable to encrypted or credential-bearing tasks");
     }
 
-    if (password && !task.supportsPasswordRotation()) {
-      throw new BitferryError("Password update is only applicable to backup tasks (rclone crypt encryption is immutable on existing tasks)");
+    // The structural restic check (not the polymorphic predicate): the rotation
+    // support is the restic backend's property, so the passwd call below can never
+    // face a non-restic task
+    if (password && !(task instanceof Restic)) {
+      throw new BitferryError("Password update is only applicable to restic tasks (rclone crypt encryption is immutable on existing tasks)");
     }
 
     // The execution options are value-checked against the effective (the post-morph)

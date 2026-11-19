@@ -1780,7 +1780,7 @@ class CliTest {
     cmd.setErr(new PrintWriter(err));
     code = cmd.execute("m", "--path", volDir.toString(), "t", task.tag(), "-p");
     assertNotEquals(0, code);
-    assertTrue(err.toString().contains("Password update is only applicable to backup tasks"));
+    assertTrue(err.toString().contains("Password update is only applicable to restic tasks"));
 
     // 3. Modifying backup options on rclone fails
     cmd = Main.createCommandLine();

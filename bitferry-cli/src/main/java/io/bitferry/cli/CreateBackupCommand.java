@@ -60,7 +60,7 @@ public class CreateBackupCommand implements Callable<Integer>, HasCommonOptions 
   @Option(names = "-z", description = "Shorthand for --vault bitferry (store sensitive data in volume vault).")
   boolean bitferryVault;
 
-  @Option(names = "-k", description = "Shorthand for --vault keyring (fixed volumes only).")
+  @Option(names = "-k", description = "Shorthand for --vault keyring (intended for fixed volumes; honored on the removable ones with a portability advisory).")
   boolean keyring;
 
   @Option(names = "-m", description = "Shorthand for --execution manual (exclude the task from the mass runs; run it by its tag only).")

@@ -14,8 +14,8 @@ import tools.jackson.databind.*;
 /// <li>{@code directory} -- bare path ({@code /data}, {@code c:\data}); resolved against the known volumes and
 /// attached to the most concrete one encompassing the path, rejected when none matches (same as {@code ::directory})</li>
 /// <li>{@code local:directory} -- explicit local form; the only way to reference the paths outside the volumes</li>
-/// <li>{@code ::directory} -- path resolved against the intact volume encompassing the directory; rejected when none matches</li>
-/// <li>{@code :tag:directory} -- path relative to the intact volume matched by (partial) tag</li>
+/// <li>{@code ::directory} -- path resolved against the registered volume encompassing the directory; rejected when none matches</li>
+/// <li>{@code :tag:directory} -- path relative to the registered volume matched by (partial) tag</li>
 /// </ul>
 public final class Endpoints {
 
@@ -50,7 +50,7 @@ public final class Endpoints {
       String part = x.group("tag");
       List<Volume> es = new ArrayList<>();
       for (Volume v : manager.volumes().values()) if (v.isLive() && Tags.matches(part, v.tag())) es.add(v);
-      if (es.isEmpty()) throw new BitferryError("No intact volume matching (partial) tag " + part);
+      if (es.isEmpty()) throw new BitferryError("No registered volume matching (partial) tag " + part);
       if (es.size() > 1) throw new BitferryError("Multiple volumes matching (partial) tag " + part + ": " + String.join(", ", es.stream().map(v -> v.tag()).toList()));
       return new VolumeEndpoint(manager, es.getFirst().tag(), x.group("path"));
     }

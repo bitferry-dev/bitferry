@@ -42,18 +42,18 @@ public class DeleteVolumeCommand implements Callable<Integer>, HasCommonOptions 
     }
     var selected = m.selectVolumes(tags);
     if (selected.isEmpty()) {
-      spec.commandLine().getErr().println(Ansi.AUTO.string("@|faint no volume(s) match " + String.join(" ", tags) + "|@"));
+      spec.commandLine().getErr().println(Ansi.AUTO.string("@|faint No volume(s) match " + String.join(" ", tags) + "|@"));
       return 0;
     }
     for (Volume v : selected) {
       // The selection echo doubles as the promised --dry-run preview (the deletion
       // itself simulates through the commit below)
-      spec.commandLine().getOut().println(Ansi.AUTO.string("@|bold deleting|@ @|cyan " + v.tag() + "|@  " + v.root()));
+      spec.commandLine().getOut().println(Ansi.AUTO.string("@|bold Deleting|@ @|cyan " + v.tag() + "|@  " + v.root()));
       v.delete();
     }
     m.commit();
     if (m.simulate()) {
-      spec.commandLine().getErr().println(Ansi.AUTO.string("@|faint the deletion simulated (nothing was written); re-run without --dry-run to delete for real|@"));
+      spec.commandLine().getErr().println(Ansi.AUTO.string("@|faint The deletion simulated (nothing was written); re-run without --dry-run to delete for real|@"));
     }
     return 0;
   }
