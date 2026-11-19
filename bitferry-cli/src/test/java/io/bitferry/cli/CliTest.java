@@ -1817,7 +1817,8 @@ class CliTest {
       cmd = Main.createCommandLine();
       StringWriter err = new StringWriter();
       cmd.setErr(new PrintWriter(err));
-      int code = cmd.execute("--path", volDir.toString(), "create", "task", "replicate", ":" + vtag + ":", "local:" + encDir, "-e", "-s");
+      // -S shorthand for specifying salt
+      int code = cmd.execute("--path", volDir.toString(), "create", "task", "replicate", ":" + vtag + ":", "local:" + encDir, "-e", "-S");
       assertEquals(0, code, () -> "stderr: " + err);
     } finally {
       CliUtils.passwordSource = origPwd;
@@ -1841,9 +1842,11 @@ class CliTest {
   @Test
   void vaultFlagAndKeyringFlagsSelectStorageProvider() throws IOException {
     Path volDir = tempDir.resolve("vault_flag_vol");
-    Path repoDir = tempDir.resolve("vault_flag_repo");
+    Path repoDir1 = tempDir.resolve("vault_flag_repo1");
+    Path repoDir2 = tempDir.resolve("vault_flag_repo2");
     Files.createDirectories(volDir);
-    Files.createDirectories(repoDir);
+    Files.createDirectories(repoDir1);
+    Files.createDirectories(repoDir2);
 
     assertEquals(0, cmd.execute("create", "volume", volDir.toString()));
     String vtag = volumeTag(managerFor(volDir), volDir);
@@ -1852,16 +1855,31 @@ class CliTest {
     cmd = Main.createCommandLine();
     err = new StringWriter();
     cmd.setErr(new PrintWriter(err));
-    int code1 = executeWithPassword("pass", "--path", volDir.toString(), "create", "task", "backup", ":" + vtag + ":", "local:" + repoDir, "-V", "invalid");
+    int code1 = executeWithPassword("pass", "--path", volDir.toString(), "create", "task", "backup", ":" + vtag + ":", "local:" + repoDir1, "--vault", "invalid");
     assertNotEquals(0, code1);
     assertTrue(err.toString().contains("Unsupported vault provider 'invalid'"));
 
-    // 2. Explicit -V bitferry stores in volume vault
+    // 2. Conflicting -V and -K flags are rejected
     cmd = Main.createCommandLine();
     err = new StringWriter();
     cmd.setErr(new PrintWriter(err));
-    int code2 = executeWithPassword("pass", "--path", volDir.toString(), "create", "task", "backup", ":" + vtag + ":", "local:" + repoDir, "-V", "bitferry");
+    int codeConflict = executeWithPassword("pass", "--path", volDir.toString(), "create", "task", "backup", ":" + vtag + ":", "local:" + repoDir1, "-V", "-K");
+    assertNotEquals(0, codeConflict);
+    assertTrue(err.toString().contains("Conflicting vault storage options"));
+
+    // 3. Explicit -V shorthand stores in volume vault
+    cmd = Main.createCommandLine();
+    err = new StringWriter();
+    cmd.setErr(new PrintWriter(err));
+    int code2 = executeWithPassword("pass", "--path", volDir.toString(), "create", "task", "backup", ":" + vtag + ":", "local:" + repoDir1, "-V");
     assertEquals(0, code2, () -> "stderr: " + err);
+
+    // 4. Explicit -K shorthand stores in keyring
+    cmd = Main.createCommandLine();
+    err = new StringWriter();
+    cmd.setErr(new PrintWriter(err));
+    int code3 = executeWithPassword("pass", "--path", volDir.toString(), "create", "task", "backup", ":" + vtag + ":", "local:" + repoDir2, "-K");
+    assertEquals(0, code3, () -> "stderr: " + err);
   }
 
   @Test
@@ -1884,7 +1902,7 @@ class CliTest {
     cmd = Main.createCommandLine();
     StringWriter err = new StringWriter();
     cmd.setErr(new PrintWriter(err));
-    int code = cmd.execute("--path", volDir.toString(), "m", "t", unencrypted.tag(), "-V", "keyring");
+    int code = cmd.execute("--path", volDir.toString(), "m", "t", unencrypted.tag(), "-V");
     assertNotEquals(0, code);
     assertTrue(err.toString().contains("Vault storage migration is only applicable to encrypted or credential-bearing tasks"));
 
@@ -1892,8 +1910,8 @@ class CliTest {
     cmd = Main.createCommandLine();
     err = new StringWriter();
     cmd.setErr(new PrintWriter(err));
-    code = cmd.execute("--path", volDir.toString(), "m", "t", unencrypted.tag(), "-K", "--no-keyring");
+    code = cmd.execute("--path", volDir.toString(), "m", "t", unencrypted.tag(), "-K", "-V");
     assertNotEquals(0, code);
-    assertTrue(err.toString().contains("Cannot specify both --keyring and --no-keyring"));
+    assertTrue(err.toString().contains("Conflicting vault storage options"));
   }
 }

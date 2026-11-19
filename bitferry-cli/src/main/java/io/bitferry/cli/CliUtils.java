@@ -70,32 +70,45 @@ public final class CliUtils {
   /// Obtain the salt by prompting from the terminal with hidden input and confirmation.
   public static String obtainSalt() {
     String salt = saltSource.get();
-    if (salt == null || salt.isEmpty()) throw new BitferryError("Salt must be specified when --salt is requested");
+    if (salt == null || salt.isEmpty()) throw new BitferryError("Salt must be specified when -S/--salt is requested");
     return salt;
   }
 
   /// Resolve the requested vault provider into whether the OS keyring was selected.
   /// Defaults to [defaultKeyring] when neither option is specified.
-  public static boolean resolveKeyring(String vault, boolean keyring, boolean defaultKeyring) {
+  public static boolean resolveKeyring(String vault, boolean bitferryVault, boolean keyring, boolean defaultKeyring) {
+    if (bitferryVault && keyring) {
+      throw new BitferryError("Conflicting vault storage options: cannot specify both -V (--vault bitferry) and -K (--keyring)");
+    }
     if (vault != null) {
+      if (bitferryVault || keyring) {
+        throw new BitferryError("Cannot combine --vault with -V or -K");
+      }
       if ("keyring".equalsIgnoreCase(vault)) return true;
       if ("bitferry".equalsIgnoreCase(vault) || "volume".equalsIgnoreCase(vault)) return false;
       throw new BitferryError("Unsupported vault provider '" + vault + "'; must be 'bitferry' or 'keyring'");
     }
-    return keyring || defaultKeyring;
+    if (bitferryVault) return false;
+    if (keyring) return true;
+    return defaultKeyring;
   }
 
   /// Resolve the requested vault migration target, returning null when no migration was requested.
-  public static Boolean resolveVaultMigration(String vault, boolean keyring, boolean noKeyring) {
+  public static Boolean resolveVaultMigration(String vault, boolean bitferryVault, boolean keyring, boolean noKeyring) {
+    boolean toBitferry = bitferryVault || noKeyring;
+    if (toBitferry && keyring) {
+      throw new BitferryError("Conflicting vault storage options: cannot combine -V / --no-keyring with -K / --keyring");
+    }
     if (vault != null) {
-      if (keyring || noKeyring) throw new BitferryError("Cannot combine --vault with --keyring or --no-keyring");
+      if (toBitferry || keyring) {
+        throw new BitferryError("Cannot combine --vault with -V, -K, --keyring, or --no-keyring");
+      }
       if ("keyring".equalsIgnoreCase(vault)) return true;
       if ("bitferry".equalsIgnoreCase(vault) || "volume".equalsIgnoreCase(vault)) return false;
       throw new BitferryError("Unsupported vault provider '" + vault + "'; must be 'bitferry' or 'keyring'");
     }
-    if (keyring && noKeyring) throw new BitferryError("Cannot specify both --keyring and --no-keyring");
+    if (toBitferry) return false;
     if (keyring) return true;
-    if (noKeyring) return false;
     return null;
   }
 

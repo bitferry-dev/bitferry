@@ -63,8 +63,11 @@ public class CreateBackupCommand implements Callable<Integer>, HasCommonOptions 
   @Option(names = "-x", split = ",", description = "Exclude file extensions (comma-separated list).")
   List<String> excludeExts;
 
-  @Option(names = {"-V", "--vault"}, description = "Vault provider for sensitive data: 'bitferry' (volume storage) or 'keyring' (OS keyring).", paramLabel = "PROVIDER")
+  @Option(names = "--vault", description = "Vault provider for sensitive data: 'bitferry' (volume storage) or 'keyring' (OS keyring).", paramLabel = "PROVIDER")
   String vault;
+
+  @Option(names = "-V", description = "Shorthand for --vault bitferry (store sensitive data in volume vault).")
+  boolean bitferryVault;
 
   @Option(names = {"-K", "-k", "--keyring"}, description = "Shorthand for --vault keyring (fixed volumes only).")
   boolean keyring;
@@ -96,7 +99,7 @@ public class CreateBackupCommand implements Callable<Integer>, HasCommonOptions 
     String c = defaultCheck ? "@default" : check;
     String sCadence = defaultServe ? "@default" : serve;
     List<String> exc = CliUtils.parsePatterns(exclude, excludeExts);
-    boolean toKeyring = CliUtils.resolveKeyring(vault, keyring, false);
+    boolean toKeyring = CliUtils.resolveKeyring(vault, bitferryVault, keyring, false);
     Backup task = new Backup(m, src, repo, password, format, execute, f, c, sCadence, exc, toKeyring);
     if (manual) {
       task.setManual(true);

@@ -69,13 +69,16 @@ public abstract class RcloneTaskCommand implements Callable<Integer>, HasCommonO
   @Option(names = "-u", description = "Apply extended (unicode) encryption profile options.")
   boolean extended;
 
-  @Option(names = {"-V", "--vault"}, description = "Vault provider for sensitive data: 'bitferry' (volume storage) or 'keyring' (OS keyring).", paramLabel = "PROVIDER")
+  @Option(names = "--vault", description = "Vault provider for sensitive data: 'bitferry' (volume storage) or 'keyring' (OS keyring).", paramLabel = "PROVIDER")
   String vault;
+
+  @Option(names = "-V", description = "Shorthand for --vault bitferry (store sensitive data in volume vault).")
+  boolean bitferryVault;
 
   @Option(names = {"-K", "-k", "--keyring"}, description = "Shorthand for --vault keyring (fixed volumes only).")
   boolean keyring;
 
-  @Option(names = {"-s", "--salt"}, description = "Prompt for a secondary password / salt (required when reusing an existing rclone crypt remote created with a custom salt).")
+  @Option(names = {"-S", "--salt"}, description = "Prompt for a secondary password / salt (required when reusing an existing rclone crypt remote created with a custom salt).")
   boolean salt;
 
   @Option(names = "--manual", description = "Exclude the task from the mass runs (run it by its tag only).")
@@ -102,8 +105,8 @@ public abstract class RcloneTaskCommand implements Callable<Integer>, HasCommonO
     if (extended && (encrypt != null || decrypt != null)) throw new BitferryError("Invalid encryption options: the extended profile modifier (-u) conflicts with the explicitly specified encryption profile");
     if (extended && !encryptRequested && !decryptRequested) throw new BitferryError("Invalid encryption options: the extended profile modifier requires the encryption to be requested");
     String profile = encrypt != null ? encrypt : decrypt != null ? decrypt : extended ? "@extended" : "@default";
-    boolean toKeyring = CliUtils.resolveKeyring(vault, keyring, false);
-    if (!encryptRequested && !decryptRequested && (vault != null || keyring)) {
+    boolean toKeyring = CliUtils.resolveKeyring(vault, bitferryVault, keyring, false);
+    if (!encryptRequested && !decryptRequested && (vault != null || bitferryVault || keyring)) {
       throw new BitferryError("Vault storage option is applicable to encrypted tasks only");
     }
     if (!encryptRequested && !decryptRequested && salt) {

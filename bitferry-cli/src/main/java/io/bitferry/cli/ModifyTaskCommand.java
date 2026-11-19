@@ -32,8 +32,11 @@ public class ModifyTaskCommand implements Callable<Integer>, HasCommonOptions {
   @Option(names = {"-p", "--password"}, description = "Update the repository password.")
   boolean password;
 
-  @Option(names = {"-V", "--vault"}, description = "Migrate sensitive data storage to 'bitferry' (volume storage) or 'keyring' (OS keyring).", paramLabel = "PROVIDER")
+  @Option(names = "--vault", description = "Migrate sensitive data storage to 'bitferry' (volume storage) or 'keyring' (OS keyring).", paramLabel = "PROVIDER")
   String vault;
+
+  @Option(names = "-V", description = "Shorthand for --vault bitferry.")
+  boolean bitferryVault;
 
   @Option(names = {"-K", "--keyring"}, description = "Shorthand for --vault keyring.")
   boolean keyring;
@@ -115,7 +118,7 @@ public class ModifyTaskCommand implements Callable<Integer>, HasCommonOptions {
     boolean hasType = type != null;
     boolean hasManual = manual || noManual;
 
-    Boolean targetKeyring = CliUtils.resolveVaultMigration(vault, keyring, noKeyring);
+    Boolean targetKeyring = CliUtils.resolveVaultMigration(vault, bitferryVault, keyring, noKeyring);
     boolean hasVault = targetKeyring != null;
 
     if (!password && !hasVault && !hasForget && !hasCheck && !hasServe && !hasInclude && !hasExclude && !hasExecute && !hasType && !hasManual) {
