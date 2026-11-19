@@ -45,4 +45,36 @@ class ExecutorSupportTest {
     // The zero exit stays a plain success (with or without the tolerances)
     assertTrue(ExecutorSupport.execute(exitingWith(0), manager, cmd, null, Map.of(), "t", line -> {}, 3));
   }
+
+  // The stub executor emitting the specified lines and exiting with the specified code
+  private static CommandExecutor reporting(List<String> lines, int code) {
+    return (command, workingDirectory, environment, output) -> {
+      if (output != null) lines.forEach(output);
+      return code;
+    };
+  }
+
+  @Test
+  void lockConflictFailuresHintAtTheRepairAction() {
+    Manager manager = new Manager();
+    List<String> cmd = List.of("restic", "backup");
+    // The restic lock-conflict report (the stderr travels the captured channel merged)
+    List<String> out = new ArrayList<>();
+    assertFalse(ExecutorSupport.execute(
+      reporting(List.of("Fatal: unable to create lock in backend at ...: repository is already locked by PID 1234 on HOST by user"), 1),
+      manager, cmd, null, Map.of(), "t", out::add));
+    assertTrue(out.stream().anyMatch(line -> line.contains("repair action")), () -> "missing lock hint: " + out);
+    // The exclusive-lock refusal wording of the other restic surfaces classifies too
+    List<String> out2 = new ArrayList<>();
+    assertFalse(ExecutorSupport.execute(
+      reporting(List.of("Fatal: repository is already locked exclusively by PID 99 on host other"), 1),
+      manager, cmd, null, Map.of(), "t", out2::add));
+    assertTrue(out2.stream().anyMatch(line -> line.contains("repair action")));
+    // The ordinary failures carry no hint (the classification must not over-fire)
+    List<String> out3 = new ArrayList<>();
+    assertFalse(ExecutorSupport.execute(
+      reporting(List.of("Fatal: repository does not exist"), 1),
+      manager, cmd, null, Map.of(), "t", out3::add));
+    assertTrue(out3.stream().noneMatch(line -> line.contains("repair action")));
+  }
 }

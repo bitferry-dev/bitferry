@@ -102,6 +102,28 @@ public class SystemExecutor implements Executor {
   }
 
   @Override
+  public boolean repair(Task task, Repair.Operation operation, boolean dryRun, Consumer<String> output) {
+    // The dispatch rides the operation id: the restic operations land on the restic
+    // executor, the future backend operations extend the mapping
+    if (!(task instanceof Restic restic)) {
+      String message = "Repair operation " + operation.id() + " is not supported for task " + task.tag() + " (" + task.backend() + ")";
+      LOG.log(Level.WARNING, () -> message);
+      if (output != null) output.accept(message);
+      return false;
+    }
+    return switch (operation.id()) {
+      case "unlock-stale" -> resticExecutor.unlock(restic, false, dryRun, output);
+      case "unlock-all" -> resticExecutor.unlock(restic, true, dryRun, output);
+      default -> {
+        String message = "Unknown repair operation " + operation.id() + " for task " + task.tag();
+        LOG.log(Level.WARNING, () -> message);
+        if (output != null) output.accept(message);
+        yield false;
+      }
+    };
+  }
+
+  @Override
   public List<List<String>> commands(Rclone rclone) {
     return rcloneExecutor.commands(rclone);
   }

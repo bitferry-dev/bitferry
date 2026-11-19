@@ -395,6 +395,33 @@ final class ResticExecutor {
     return restic.repoEndpoint().processOpts();
   }
 
+  /// Remove the repository locks (the restic unlock repair operation). The stale-only
+  /// form (the default) drops the locks restic considers stale, the explicit
+  /// remove-all variant drops every lock including the ones of the possibly running
+  /// clients (the destructive repair for the foreign-host locks restic never
+  /// auto-classifies as stale). The dry-run form (and the simulation mode) only
+  /// list the locks that would be removed.
+  boolean unlock(Restic restic, boolean removeAll, boolean dryRun, Consumer<String> output) {
+    Manager manager = restic.manager();
+    String repo = restic.repoEndpoint().processOpts();
+    List<String> cmd = new ArrayList<>();
+    cmd.add(resolveExecutable());
+    cmd.add("unlock");
+    if (removeAll) {
+      cmd.add("--remove-all");
+    }
+    cmd.addAll(commonOptions(manager));
+    if (manager.simulate || dryRun) {
+      cmd.add("--dry-run");
+    }
+    cmd.add("-r");
+    cmd.add(repo);
+    // The password rides the environment like every restic invocation: unlock may
+    // not need it (it operates on the locks directory), and a host requiring it
+    // still resolves - passing it is unconditionally harmless
+    return ExecutorSupport.execute(commandExecutor, manager, cmd, null, restic.processEnvironment(), restic.tag(), output);
+  }
+
   // Remove the repository subdirectories upon the forced re-initialization. Any wipe
   // failure aborts the caller: `restic init` over the partially wiped repository would
   // layer the new repository config over the orphaned data of the old one.

@@ -76,6 +76,13 @@ public final class Runner {
     logs.log(terminated > 0
       ? "Abort requested: terminating the backend process(es)"
       : "Abort requested: stopping before the next task");
+    if (terminated > 0) {
+      // WINDOWS: the terminated backend cannot clean its repository lock up
+      // (TerminateProcess is immediate - no signal, no graceful exit): point at
+      // the repair action so the following 'already locked' failure is not a mystery
+      logs.log("\u001B[33mThe terminated backend may leave a stale repository lock - "
+        + "use 'Repair task…' if a subsequent run reports the repository locked\u001B[0m");
+    }
   }
 
   // The shared sequential run loop over the selected tasks (execute or serve)

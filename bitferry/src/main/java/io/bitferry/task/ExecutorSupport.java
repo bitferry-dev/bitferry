@@ -6,8 +6,11 @@ import java.io.IOException;
 import java.lang.System.Logger.Level;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.Consumer;
@@ -109,6 +112,10 @@ public final class ExecutorSupport {
     }
   }
 
+  /// The size of the captured output tail kept for the failure diagnostics (the
+  /// lock-conflict classification below scans it; the restic lock reports are short)
+  private static final int DIAGNOSTIC_TAIL_LINES = 32;
+
   /// Execute the command through the executor seam echoing the command line and
   /// reporting the failures to the logger and the output consumer. Return true
   /// on the zero exit code.
@@ -124,8 +131,19 @@ public final class ExecutorSupport {
   static boolean execute(CommandExecutor executor, Manager manager, List<String> command, Path workingDirectory,
                          Map<String, String> environment, String taskTag, Consumer<String> output, int... toleratedExitCodes) {
     echoCommandLine(manager, command, output);
+    // The output tail rides along when a consumer is present: the failure handling
+    // below classifies the backend report (the lock conflicts hint at the repair
+    // action instead of surfacing a bare 'already locked' failure). The pass-through
+    // mode (the null consumer) has no channel for the hint - the backend's own
+    // terminal output carries its diagnostics there.
+    Deque<String> tail = output == null ? null : new ArrayDeque<>();
+    Consumer<String> tee = output == null ? null : line -> {
+      output.accept(line);
+      if (tail.size() >= DIAGNOSTIC_TAIL_LINES) tail.pollFirst();
+      tail.addLast(line);
+    };
     try {
-      int exitCode = executor.execute(command, workingDirectory, environment, output);
+      int exitCode = executor.execute(command, workingDirectory, environment, tee);
       if (exitCode != 0) {
         boolean tolerated = false;
         for (int code : toleratedExitCodes) {
@@ -139,7 +157,14 @@ public final class ExecutorSupport {
         }
         String message = "Command failed with exit code " + exitCode + " for task " + taskTag;
         LOG.log(Level.ERROR, () -> message);
-        if (output != null) output.accept(message);
+        if (output != null) {
+          output.accept(message);
+          String hint = lockConflictHint(tail);
+          if (hint != null) {
+            LOG.log(Level.WARNING, () -> message + ": " + hint);
+            output.accept(hint);
+          }
+        }
         return false;
       }
       return true;
@@ -150,6 +175,21 @@ public final class ExecutorSupport {
       if (output != null) output.accept(message);
       return false;
     }
+  }
+
+  /// The repair hint for a lock-conflict failure detected in the captured output
+  /// tail, or null when the failure is not a lock conflict.
+  private static String lockConflictHint(Deque<String> tail) {
+    if (tail == null) return null;
+    for (String line : tail) {
+      String l = line.toLowerCase(Locale.ROOT);
+      if (l.contains("already locked") || l.contains("unable to create lock")) {
+        return "the repository is locked by another client, or the lock is stale "
+          + "(e.g. left behind by a terminated run) - remove it via the repair action "
+          + "('Repair task…' in the GUI menu, or 'bitferry repair' in the CLI)";
+      }
+    }
+    return null;
   }
 
   /// Resolve the backend executable: the {@code bitferry.<backend>} system property

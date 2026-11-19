@@ -15,6 +15,7 @@ import java.io.File;
 import java.nio.file.*;
 import java.util.*;
 import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
 
 /// The creation and modification dialogs: the new volume and the unified task forms.
 /// The heavy lifting (endpoint parsing, task construction, mutation, commit) travels
@@ -436,5 +437,71 @@ final class Dialogs {
     }
     logs.log("Volume search path updated: " + updated.size() + " directory(ies)");
     context.reload();
+  }
+
+  /// The repair dialog flow: pick one of the repair operations the task's backend
+  /// provides ([Repair#operationsFor] - the backend-neutral registry), preview the
+  /// operation's dry-run report, confirm, and execute for real. The unlock stays
+  /// explicit and informed: a blind repair would remove the locks of the legitimately
+  /// running clients defeating the very exclusion they provide.
+  static void repairTask(AppContext context, LogController logs, Task task) {
+    List<Repair.Operation> operations = Repair.operationsFor(task);
+    if (operations.isEmpty()) {
+      alert(context, javafx.scene.control.Alert.AlertType.INFORMATION, "Repair",
+        "No repair operations are available for " + task.backend() + " tasks (yet).");
+      return;
+    }
+    ChoiceDialog<Repair.Operation> operationPicker = new ChoiceDialog<>(operations.getFirst(), operations);
+    if (context.ownerWindow != null) operationPicker.initOwner(context.ownerWindow);
+    operationPicker.setTitle("Repair task " + task.tag());
+    operationPicker.setHeaderText("Pick the repair operation");
+    operationPicker.setContentText("Operation:");
+    operationPicker.getDialogPane().setStyle("-fx-text-fill: #222222;");
+    centerOnScreen(operationPicker, context.ownerWindow);
+    operationPicker.showAndWait().ifPresent(operation -> previewRepair(context, logs, task, operation));
+  }
+
+  // The dry-run preview continuation: the captured report informs the confirmation
+  // below (the destructive operations show what they are about to remove).
+  private static void previewRepair(AppContext context, LogController logs, Task task, Repair.Operation operation) {
+    runAsync(context, "Repair preview", () -> {
+      List<String> preview = new ArrayList<>();
+      context.manager().repair(task, operation, true, preview::add);
+      Platform.runLater(() -> offerRepairExecution(context, logs, task, operation, preview));
+    }, logs);
+  }
+
+  // The confirmation + execution continuation of the repair flow. The confirm alert
+  // rides the prompter seam (the tests intercept it); the real run streams into a
+  // dedicated run tab mirroring the runner UX.
+  private static void offerRepairExecution(AppContext context, LogController logs, Task task, Repair.Operation operation, List<String> preview) {
+    StringBuilder text = new StringBuilder();
+    if (operation.destructive()) {
+      text.append("This operation removes the locks of the possibly running clients (possibly on other hosts), "
+        + "letting the exclusive operations race the repository. Proceed only when the holders are known dead.\n\n");
+    }
+    text.append("Preview (dry run):");
+    if (preview.isEmpty()) {
+      text.append("\n  (no output - nothing to remove)");
+    } else {
+      for (String line : preview) {
+        text.append("\n  ").append(line);
+      }
+    }
+    ButtonType proceed = new ButtonType("Proceed", ButtonBar.ButtonData.OK_DONE);
+    Alert confirm = new Alert(javafx.scene.control.Alert.AlertType.CONFIRMATION, text.toString(), proceed, ButtonType.CANCEL);
+    confirm.setTitle("Confirm repair");
+    confirm.setHeaderText("Repair task " + task.tag() + ": " + operation.label());
+    if (context.ownerWindow != null) confirm.initOwner(context.ownerWindow);
+    centerOnScreen(confirm, context.ownerWindow);
+    dialogPrompter.apply(confirm).filter(proceed::equals).ifPresent(x ->
+      runAsync(context, "Repair", () -> {
+        Consumer<String> sink = logs.openRun("repair " + task.tag());
+        boolean ok = context.manager().repair(task, operation, false, sink);
+        sink.accept(ok
+          ? "\u001B[32mRepair completed successfully.\u001B[0m"
+          : "\u001B[31mRepair failed.\u001B[0m");
+        logs.log("Repair " + (ok ? "completed" : "failed") + " for task " + AnsiFormat.tag(task.tag()) + ": " + operation.label());
+      }, logs));
   }
 }

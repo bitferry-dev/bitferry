@@ -12,7 +12,7 @@
 <?import javafx.scene.layout.VBox?>
 
 <!-- The tasks tab: the framed vertical management panel (create, execute, serve,
-     delete) docked to the left of the tasks listing; the listing is padded to
+     repair, delete) docked to the left of the tasks listing; the listing is padded to
      align with the panel's outer edges. -->
 <BorderPane xmlns="http://javafx.com/javafx/17" xmlns:fx="http://javafx.com/fxml/1"
             fx:controller="io.bitferry.gui.TasksController">
@@ -23,12 +23,14 @@
       </BorderPane.margin>
       <Button fx:id="create" text="New Task" onAction="#onCreate" maxWidth="Infinity"/>
       <Button fx:id="modify" text="Modify" onAction="#onModify" maxWidth="Infinity"/>
+      <Separator orientation="HORIZONTAL"/>
       <Button fx:id="massAll" text="All On" onAction="#onMassAll" maxWidth="Infinity"/>
       <Button fx:id="massNone" text="All Off" onAction="#onMassNone" maxWidth="Infinity"/>
       <Button fx:id="massInvert" text="Invert" onAction="#onMassInvert" maxWidth="Infinity"/>
       <Separator orientation="HORIZONTAL"/>
       <Button fx:id="execute" text="Execute" onAction="#onExecute" maxWidth="Infinity"/>
       <Button fx:id="serve" text="Serve" onAction="#onServe" maxWidth="Infinity"/>
+      <Button fx:id="repair" text="Repair" onAction="#onRepair" maxWidth="Infinity"/>
       <Region VBox.vgrow="ALWAYS"/>
       <Separator orientation="HORIZONTAL"/>
       <Button fx:id="delete" text="Delete" onAction="#onDelete" style="-fx-base: #ffebee;" maxWidth="Infinity"/>

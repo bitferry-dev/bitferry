@@ -90,6 +90,7 @@ class IconsTest {
                 assertButtonGraphic(tasksCtrl, "massInvert", Icons.Symbol.INVERT);
                 assertButtonGraphic(tasksCtrl, "execute", Icons.Symbol.PLAY);
                 assertButtonGraphic(tasksCtrl, "serve", Icons.Symbol.SERVE);
+                assertButtonGraphic(tasksCtrl, "repair", Icons.Symbol.WRENCH);
                 assertButtonGraphic(tasksCtrl, "delete", Icons.Symbol.DELETE);
 
                 // 3. volumes.fxml (Volumes sidebar)

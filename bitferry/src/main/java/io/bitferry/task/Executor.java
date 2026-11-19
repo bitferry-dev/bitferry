@@ -80,6 +80,17 @@ public interface Executor {
     return List.of();
   }
 
+  /// Execute the given repair operation ([Repair]) on the task (e.g. removing the
+  /// stale repository locks). The dry-run form only reports what would be done.
+  /// Return true on success. The base reports the unsupported operation: only the
+  /// backends providing the operations listed in [Repair#operationsFor] implement
+  /// the dispatch.
+  default boolean repair(Task task, Repair.Operation operation, boolean dryRun, Consumer<String> output) {
+    String message = "Repair operation " + operation.id() + " is not supported for task " + task.tag() + " (" + task.backend() + ")";
+    if (output != null) output.accept(message);
+    return false;
+  }
+
   /// Return the command lines about to execute for the task.
   default List<List<String>> commands(Task task) {
     return List.of();

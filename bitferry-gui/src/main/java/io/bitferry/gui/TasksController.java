@@ -101,6 +101,9 @@ public final class TasksController {
   private Button serve;
 
   @FXML
+  private Button repair;
+
+  @FXML
   private Button delete;
 
   private AppContext context;
@@ -122,6 +125,7 @@ public final class TasksController {
     Icons.equip(massInvert, Icons.Symbol.INVERT);
     Icons.equip(execute, Icons.Symbol.PLAY);
     Icons.equip(serve, Icons.Symbol.SERVE);
+    Icons.equip(repair, Icons.Symbol.WRENCH);
     Icons.equip(delete, Icons.Symbol.DELETE);
 
     table.setEditable(true);
@@ -240,6 +244,7 @@ public final class TasksController {
     modify.setDisable(locked || none);
     execute.setDisable(locked || none);
     serve.setDisable(locked || none);
+    repair.setDisable(locked || none);
     delete.setDisable(locked || none);
   }
 
@@ -309,6 +314,16 @@ public final class TasksController {
     Row row = selected();
     if (row == null || locked) return;
     runStarter.start(List.of(row.task.tag()), true);
+  }
+
+  // Repair the selected task's backend via the repair operations registry (e.g.
+  // removing the stale repository locks): the dialog previews the operation's
+  // dry-run report before the explicit confirmation
+  @FXML
+  private void onRepair() {
+    Row row = selected();
+    if (row == null || locked) return;
+    Dialogs.repairTask(context, logs, row.task);
   }
 
   // Delete the selected task recording the deletion tombstone into the storages

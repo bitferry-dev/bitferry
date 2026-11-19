@@ -490,6 +490,13 @@ public class Manager {
     return backendExecutor().passwd(restic, newPassword);
   }
 
+  /// Execute the given repair operation ([Repair]) on the task forwarding the backend
+  /// output to the consumer (null for CLI pass-through). The dry-run form only
+  /// reports what would be done. Return true on success.
+  public boolean repair(Task task, Repair.Operation operation, boolean dryRun, java.util.function.Consumer<String> output) {
+    return backendExecutor().repair(task, operation, dryRun, output);
+  }
+
   /// Process the intact tasks matched by the specified (partial) tags or all intact tasks with CLI pass-through.
   public boolean process(String... tags) {
     return process(Arrays.asList(tags), null);

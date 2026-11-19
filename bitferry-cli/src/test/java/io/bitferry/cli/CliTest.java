@@ -2227,4 +2227,70 @@ class CliTest {
     assertNotEquals(0, rejected);
     assertTrue(err.toString().contains("'--no-manual'"));
   }
+
+  @Test
+  void repairCommandRunsTheBackendRepairOperations() throws Exception {
+    Assumptions.assumeTrue(available("restic"), "restic not available for integration check");
+    Path volDir = tempDir.resolve("cli_repair_vol");
+    Path repoDir = tempDir.resolve("cli_repair_repo");
+    Path copyDst = tempDir.resolve("cli_repair_dst");
+    Files.createDirectories(volDir);
+
+    ProcessBuilder pb = new ProcessBuilder("restic", "init", "-r", repoDir.toString());
+    pb.environment().put("RESTIC_PASSWORD", "repairSecret");
+    Process p = pb.start();
+    assertEquals(0, p.waitFor());
+
+    assertEquals(0, cmd.execute("create", "volume", volDir.toString()));
+    probeRoot(volDir);
+    String vtag = volumeTag(managerFor(volDir), volDir);
+
+    // The tasks: a restic backup (the repair target) and a plain copy (no repair operations)
+    cmd = Main.createCommandLine();
+    out = new StringWriter();
+    err = new StringWriter();
+    cmd.setOut(new PrintWriter(out));
+    cmd.setErr(new PrintWriter(err));
+    assertEquals(0, executeWithPassword("repairSecret", "create", "task", "backup", ":" + vtag + ":", "local:" + repoDir));
+    assertEquals(0, cmd.execute("create", "task", "copy", ":" + vtag + ":", "local:" + copyDst));
+    Manager m = managerFor(volDir);
+    String backupTag = m.tasks().values().stream().filter(t -> t instanceof Backup).findFirst().orElseThrow().tag();
+    String copyTag = m.tasks().values().stream().filter(t -> t instanceof Copy).findFirst().orElseThrow().tag();
+
+    // 1. The repair on the backup task: the dry-run preview + the real stale-only unlock
+    cmd = Main.createCommandLine();
+    out = new StringWriter();
+    err = new StringWriter();
+    cmd.setOut(new PrintWriter(out));
+    cmd.setErr(new PrintWriter(err));
+    assertEquals(0, cmd.execute("repair", backupTag), () -> "stderr: " + err);
+    assertTrue(out.toString().contains("Remove stale locks"), () -> "out: " + out);
+    assertTrue(out.toString().contains("success"), () -> "out: " + out);
+
+    // 2. The repair on the rclone task: the backend provides no operations
+    cmd = Main.createCommandLine();
+    out = new StringWriter();
+    err = new StringWriter();
+    cmd.setOut(new PrintWriter(out));
+    cmd.setErr(new PrintWriter(err));
+    assertNotEquals(0, cmd.execute("repair", copyTag));
+    assertTrue(err.toString().contains("no repair operations"));
+
+    // 3. The destructive remove-all is gated behind --force
+    cmd = Main.createCommandLine();
+    out = new StringWriter();
+    err = new StringWriter();
+    cmd.setOut(new PrintWriter(out));
+    cmd.setErr(new PrintWriter(err));
+    assertNotEquals(0, cmd.execute("repair", "--all", backupTag));
+    assertTrue(err.toString().contains("requires --force"));
+
+    cmd = Main.createCommandLine();
+    out = new StringWriter();
+    err = new StringWriter();
+    cmd.setOut(new PrintWriter(out));
+    cmd.setErr(new PrintWriter(err));
+    assertEquals(0, cmd.execute("repair", "--all", "--force", backupTag), () -> "stderr: " + err);
+    assertTrue(out.toString().contains("Remove all locks"), () -> "out: " + out);
+  }
 }

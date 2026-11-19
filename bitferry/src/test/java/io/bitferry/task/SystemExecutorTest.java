@@ -1628,4 +1628,77 @@ class SystemExecutorTest {
     assertEquals("new-secret", backup.password());
     assertEquals("new-secret", restore.password());
   }
+
+  @Test
+  void repairUnlockBuildsTheExpectedCommand() throws IOException {
+    Path repoDir = Files.createDirectories(dir.resolve("repo"));
+    Endpoint repo = Endpoints.parse(manager, "local:" + repoDir);
+    Backup backup = new Backup(manager, volumeSource(), repo, "secret", null, null, null, null, List.of());
+    RecordingCommandExecutor recorder = new RecordingCommandExecutor();
+    SystemExecutor executor = new SystemExecutor(recorder);
+
+    // The stale-only unlock: no --remove-all, no --dry-run, the repo bound via -r,
+    // the password riding the environment like every restic invocation
+    assertTrue(executor.repair(backup, Repair.UNLOCK_STALE, false, null));
+    RecordingCommandExecutor.Invocation inv = recorder.invocations.get(0);
+    assertEquals("restic", inv.command().get(0));
+    assertEquals("unlock", inv.command().get(1));
+    assertFalse(inv.command().contains("--remove-all"));
+    assertFalse(inv.command().contains("--dry-run"));
+    assertEquals(repoDir.toString(), inv.command().get(inv.command().size() - 1));
+    assertEquals("secret", inv.environment().get("RESTIC_PASSWORD"));
+  }
+
+  @Test
+  void repairFlagsFlowIntoTheUnlockCommand() throws IOException {
+    Path repoDir = Files.createDirectories(dir.resolve("repo"));
+    Endpoint repo = Endpoints.parse(manager, "local:" + repoDir);
+    Backup backup = new Backup(manager, volumeSource(), repo, "secret", null, null, null, null, List.of());
+    RecordingCommandExecutor recorder = new RecordingCommandExecutor();
+    SystemExecutor executor = new SystemExecutor(recorder);
+
+    // The remove-all variant carries its flag, the dry-run preview its own
+    assertTrue(executor.repair(backup, Repair.UNLOCK_ALL, false, null));
+    assertTrue(recorder.invocations.get(0).command().contains("--remove-all"));
+    assertFalse(recorder.invocations.get(0).command().contains("--dry-run"));
+
+    assertTrue(executor.repair(backup, Repair.UNLOCK_STALE, true, null));
+    assertTrue(recorder.invocations.get(1).command().contains("--dry-run"));
+    assertFalse(recorder.invocations.get(1).command().contains("--remove-all"));
+
+    // The simulation mode degrades to the dry-run listing (mirroring the backup/forget flags)
+    manager.simulate = true;
+    assertTrue(executor.repair(backup, Repair.UNLOCK_STALE, false, null));
+    assertTrue(recorder.invocations.get(2).command().contains("--dry-run"));
+  }
+
+  @Test
+  void repairFailuresAndUnsupportedBackendsSurface() throws IOException {
+    Path repoDir = Files.createDirectories(dir.resolve("repo"));
+    Endpoint repo = Endpoints.parse(manager, "local:" + repoDir);
+    Backup backup = new Backup(manager, volumeSource(), repo, "secret", null, null, null, null, List.of());
+    RecordingCommandExecutor recorder = new RecordingCommandExecutor();
+    recorder.returnCode = 1;
+    SystemExecutor executor = new SystemExecutor(recorder);
+    List<String> output = new ArrayList<>();
+    assertFalse(executor.repair(backup, Repair.UNLOCK_STALE, false, output::add));
+    assertTrue(output.stream().anyMatch(l -> l.contains("Command failed with exit code 1")), () -> "missing failure: " + output);
+
+    // The operation outside the task's backend reports and fails (the registry maps
+    // the restic operations onto the restic tasks only)
+    Replicate replicate = new Replicate(manager, source(), destination(), null, List.of(), List.of());
+    output.clear();
+    assertFalse(executor.repair(replicate, Repair.UNLOCK_STALE, false, output::add));
+    assertTrue(output.stream().anyMatch(l -> l.contains("not supported")), () -> "missing refusal: " + output);
+  }
+
+  @Test
+  void repairOperationsFollowTheTaskBackend() throws IOException {
+    Backup backup = new Backup(manager, volumeSource(), destination(), "secret", null, null, null, null, List.of());
+    Restore restore = new Restore(manager, destination(), volumeRestored(), "secret", null, List.of(), List.of());
+    Replicate replicate = new Replicate(manager, source(), destination(), null, List.of(), List.of());
+    assertEquals(List.of(Repair.UNLOCK_STALE, Repair.UNLOCK_ALL), Repair.operationsFor(backup));
+    assertEquals(List.of(Repair.UNLOCK_STALE, Repair.UNLOCK_ALL), Repair.operationsFor(restore));
+    assertEquals(List.of(), Repair.operationsFor(replicate));
+  }
 }
