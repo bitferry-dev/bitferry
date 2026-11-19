@@ -420,7 +420,7 @@ class CliTest {
     err = new StringWriter();
     cmd.setOut(new PrintWriter(out));
     cmd.setErr(new PrintWriter(err));
-    int code = executeWithPassword("Our secret password", "--path", volDir.toString(), "create", "task", "backup", ":" + vtag + ":", "local:" + repoDir, "--keyring");
+    int code = executeWithPassword("Our secret password", "--path", volDir.toString(), "create", "task", "backup", ":" + vtag + ":", "local:" + repoDir, "-K");
     assertEquals(0, code, () -> "stderr: " + err.toString());
 
     // The fallback keeps the obscured token in the volume storage

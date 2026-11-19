@@ -78,7 +78,7 @@ public final class CliUtils {
   /// Defaults to [defaultKeyring] when neither option is specified.
   public static boolean resolveKeyring(String vault, boolean bitferryVault, boolean keyring, boolean defaultKeyring) {
     if (bitferryVault && keyring) {
-      throw new BitferryError("Conflicting vault storage options: cannot specify both -V (--vault bitferry) and -K (--keyring)");
+      throw new BitferryError("Conflicting vault storage options: cannot specify both -V and -K");
     }
     if (vault != null) {
       if (bitferryVault || keyring) {
@@ -94,20 +94,19 @@ public final class CliUtils {
   }
 
   /// Resolve the requested vault migration target, returning null when no migration was requested.
-  public static Boolean resolveVaultMigration(String vault, boolean bitferryVault, boolean keyring, boolean noKeyring) {
-    boolean toBitferry = bitferryVault || noKeyring;
-    if (toBitferry && keyring) {
-      throw new BitferryError("Conflicting vault storage options: cannot combine -V / --no-keyring with -K / --keyring");
+  public static Boolean resolveVaultMigration(String vault, boolean bitferryVault, boolean keyring) {
+    if (bitferryVault && keyring) {
+      throw new BitferryError("Conflicting vault storage options: cannot combine -V and -K");
     }
     if (vault != null) {
-      if (toBitferry || keyring) {
-        throw new BitferryError("Cannot combine --vault with -V, -K, --keyring, or --no-keyring");
+      if (bitferryVault || keyring) {
+        throw new BitferryError("Cannot combine --vault with -V or -K");
       }
       if ("keyring".equalsIgnoreCase(vault)) return true;
       if ("bitferry".equalsIgnoreCase(vault) || "volume".equalsIgnoreCase(vault)) return false;
       throw new BitferryError("Unsupported vault provider '" + vault + "'; must be 'bitferry' or 'keyring'");
     }
-    if (toBitferry) return false;
+    if (bitferryVault) return false;
     if (keyring) return true;
     return null;
   }

@@ -38,11 +38,8 @@ public class ModifyTaskCommand implements Callable<Integer>, HasCommonOptions {
   @Option(names = "-V", description = "Shorthand for --vault bitferry.")
   boolean bitferryVault;
 
-  @Option(names = {"-K", "--keyring"}, description = "Shorthand for --vault keyring.")
+  @Option(names = "-K", description = "Shorthand for --vault keyring.")
   boolean keyring;
-
-  @Option(names = "--no-keyring", description = "Shorthand for --vault bitferry.")
-  boolean noKeyring;
 
   @Option(names = {"-t", "--type"}, description = "Operation type for rclone tasks (copy, update, replicate, equalize).", paramLabel = "TYPE")
   String type;
@@ -118,7 +115,7 @@ public class ModifyTaskCommand implements Callable<Integer>, HasCommonOptions {
     boolean hasType = type != null;
     boolean hasManual = manual || noManual;
 
-    Boolean targetKeyring = CliUtils.resolveVaultMigration(vault, bitferryVault, keyring, noKeyring);
+    Boolean targetKeyring = CliUtils.resolveVaultMigration(vault, bitferryVault, keyring);
     boolean hasVault = targetKeyring != null;
 
     if (!password && !hasVault && !hasForget && !hasCheck && !hasServe && !hasInclude && !hasExclude && !hasExecute && !hasType && !hasManual) {
