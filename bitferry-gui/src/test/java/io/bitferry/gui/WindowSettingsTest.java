@@ -129,7 +129,7 @@ class WindowSettingsTest {
 
     AtomicReference<Throwable> failure = new AtomicReference<>();
     CountDownLatch done = new CountDownLatch(1);
-    runFx(failure, done, () -> {
+    runFx(failure, done, "capture-round-trip", () -> {
       try {
         // The live session: the window lands wherever and is moved/resized
         Stage stage = new Stage();
