@@ -32,7 +32,8 @@ public final class Main extends Application {
     FXMLLoader loader = new FXMLLoader(Main.class.getResource("main.fxml"));
     Parent root = loader.load();
     MainController controller = loader.getController();
-    controller.init(context, settings);
+    // The host services drive the info line's home-site link (the system browser)
+    controller.init(context, settings, getHostServices());
 
     Scene scene = new Scene(root);
     stage.setScene(scene);

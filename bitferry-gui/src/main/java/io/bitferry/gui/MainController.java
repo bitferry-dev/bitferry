@@ -27,6 +27,20 @@ public final class MainController {
   @FXML
   private MenuItem searchRootsItem;
 
+  /// The info line: the product identity and the project home site link.
+  @FXML
+  private Label infoLabel;
+
+  @FXML
+  private Hyperlink homeSite;
+
+  /// The project home site the info line links to.
+  private static final String HOME_SITE = "https://github.com/okhlybov/jackferry";
+
+  /// The host services opening the home site in the system browser (injected by
+  /// the Application; null in the headless tests - the click degrades to the log).
+  private javafx.application.HostServices hostServices;
+
   @FXML
   private CheckBox verbose;
 
@@ -69,12 +83,20 @@ public final class MainController {
     Icons.equip(abort, Icons.Symbol.STOP);
     Icons.equip(reload, Icons.Symbol.REFRESH);
     Icons.equip(exit, Icons.Symbol.EXIT);
+    // The info line carries the build version (the link label stays static)
+    infoLabel.setText("bitferry " + Bitferry.VERSION);
   }
 
   /// Inject the shared context once the whole window is loaded (called by the
   /// Application before the window shows). The persisted window status applies
   /// its share (the log split position and the verbosity switch).
   public void init(AppContext context, WindowSettings settings) {
+    // The headless/test entry: no browser opening capability
+    init(context, settings, null);
+  }
+
+  public void init(AppContext context, WindowSettings settings, javafx.application.HostServices hostServices) {
+    this.hostServices = hostServices;
     this.context = context;
     this.runner = new Runner(context, logPaneController);
     context.logger = logPaneController::log;
@@ -218,6 +240,17 @@ public final class MainController {
       return;
     }
     Dialogs.manageSearchPaths(context, logPaneController);
+  }
+
+  /// Open the project home site in the system browser through the injected host
+  /// services; without them (the headless runs) the link degrades to the log line.
+  @FXML
+  private void onHomeSite() {
+    if (hostServices != null) {
+      hostServices.showDocument(HOME_SITE);
+    } else {
+      logPaneController.log("Project home site: " + HOME_SITE);
+    }
   }
 
   /// The run starter seam for the tasks panel: route into the runner choosing the
