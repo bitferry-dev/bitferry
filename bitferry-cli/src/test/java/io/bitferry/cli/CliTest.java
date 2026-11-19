@@ -147,15 +147,19 @@ class CliTest {
     assertTrue(sVerboseHelp.contains("@extended: --crypt-filename-encoding base32768"));
     assertTrue(sVerboseHelp.contains("@default: --metadata"));
 
-    // Legacy aliases 'mirror' and 'synchronize' produce identical help
-    CommandLine legacySyncCmd = Main.createCommandLine();
-    StringWriter legacySyncOut = new StringWriter();
-    legacySyncCmd.setOut(new PrintWriter(legacySyncOut));
-    assertEquals(0, legacySyncCmd.execute("create", "task", "mirror", "--help"));
-    assertEquals(sHelp, legacySyncOut.toString());
-    legacySyncOut.getBuffer().setLength(0);
-    assertEquals(0, legacySyncCmd.execute("create", "task", "synchronize", "--help"));
-    assertEquals(sHelp, legacySyncOut.toString());
+    // The legacy names are gone ('mirror'/'m'/'synchronize'/'sync'): the unknown
+    // names are rejected as subcommands, and 's' is the one short alias of replicate
+    for (String legacy : List.of("mirror", "m", "synchronize", "sync")) {
+      CommandLine goneCmd = Main.createCommandLine();
+      StringWriter goneErr = new StringWriter();
+      goneCmd.setErr(new PrintWriter(goneErr));
+      assertNotEquals(0, goneCmd.execute("create", "task", legacy), legacy);
+    }
+    CommandLine shortSyncCmd = Main.createCommandLine();
+    StringWriter shortSyncOut = new StringWriter();
+    shortSyncCmd.setOut(new PrintWriter(shortSyncOut));
+    assertEquals(0, shortSyncCmd.execute("create", "task", "s", "--help"));
+    assertEquals(sHelp, shortSyncOut.toString());
 
     // Restore help: non-verbose vs verbose
     CommandLine restoreCmd = Main.createCommandLine();
@@ -165,6 +169,12 @@ class CliTest {
     String rHelp = restoreOut.toString();
     assertTrue(rHelp.contains("profile (@default)"));
     assertFalse(rHelp.contains("@default: --sparse"));
+    // The 'r' alias stays reserved for the restore task (identical help)
+    CommandLine shortRestoreCmd = Main.createCommandLine();
+    StringWriter shortRestoreOut = new StringWriter();
+    shortRestoreCmd.setOut(new PrintWriter(shortRestoreOut));
+    assertEquals(0, shortRestoreCmd.execute("create", "task", "r", "--help"));
+    assertEquals(rHelp, shortRestoreOut.toString());
 
     CommandLine restoreVerboseCmd = Main.createCommandLine();
     StringWriter restoreVerboseOut = new StringWriter();

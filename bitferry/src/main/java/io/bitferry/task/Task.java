@@ -21,8 +21,6 @@ import tools.jackson.databind.node.*;
   @JsonSubTypes.Type(value = Copy.class, name = "copy"),
   @JsonSubTypes.Type(value = Update.class, name = "update"),
   @JsonSubTypes.Type(value = Replicate.class, name = "replicate"),
-  @JsonSubTypes.Type(value = Replicate.class, name = "mirror"),
-  @JsonSubTypes.Type(value = Replicate.class, name = "synchronize"),
   @JsonSubTypes.Type(value = Equalize.class, name = "equalize"),
   @JsonSubTypes.Type(value = Backup.class, name = "backup"),
   @JsonSubTypes.Type(value = Restore.class, name = "restore")
@@ -432,7 +430,7 @@ public abstract class Task {
   /// the morph itself rejects them with its own clean error.
   public static Map<String, List<String>> processRouteFor(String operation) {
     return switch (operation) {
-      case Copy.OPERATION, Update.OPERATION, Replicate.OPERATION, "mirror", "synchronize" -> Rclone.PROCESS;
+      case Copy.OPERATION, Update.OPERATION, Replicate.OPERATION -> Rclone.PROCESS;
       case Equalize.OPERATION -> Equalize.PROCESS;
       case Backup.OPERATION -> Backup.PROCESS;
       case Restore.OPERATION -> Restore.PROCESS;

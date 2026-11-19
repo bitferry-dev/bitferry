@@ -6,8 +6,6 @@
 
 - rollback architectural issue (GLM full) - registration within the volume must be after successful operation only
 
-- get rid of legacy mirror, syncronize refs; 1-way sync -- replicate (r) in cli
-
 - restic restore ergonomics - select the snapshot tag (or latest)
 
 - select task id for restore on restore selection

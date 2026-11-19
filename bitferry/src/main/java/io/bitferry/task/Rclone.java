@@ -237,7 +237,7 @@ public abstract class Rclone extends Task implements IncludeFilters {
     // invalid (or a rejected) operation name used to delete the equalize bisync
     // baseline (deleteWorkdirs) and only then fail, leaving the task permanently
     // un-baselined on disk
-    if (!Set.of(Copy.OPERATION, Update.OPERATION, Replicate.OPERATION, "mirror", "synchronize", Equalize.OPERATION).contains(newOperation)) {
+    if (!Set.of(Copy.OPERATION, Update.OPERATION, Replicate.OPERATION, Equalize.OPERATION).contains(newOperation)) {
       throw new BitferryError("Invalid rclone operation " + newOperation);
     }
     if (this instanceof Equalize) {
@@ -246,7 +246,7 @@ public abstract class Rclone extends Task implements IncludeFilters {
     Rclone morphed = switch (newOperation) {
       case Copy.OPERATION -> new Copy(manager, source, destination, tag, BACKEND, mtime, include, exclude, storeBackend());
       case Update.OPERATION -> new Update(manager, source, destination, tag, BACKEND, mtime, include, exclude, storeBackend());
-      case Replicate.OPERATION, "mirror", "synchronize" -> new Replicate(manager, source, destination, tag, BACKEND, mtime, include, exclude, storeBackend());
+      case Replicate.OPERATION -> new Replicate(manager, source, destination, tag, BACKEND, mtime, include, exclude, storeBackend());
       case Equalize.OPERATION -> new Equalize(manager, source, destination, tag, BACKEND, mtime, include, exclude, storeBackend());
       default -> throw new BitferryError("Invalid rclone operation " + newOperation); // Unreachable (validated above), kept for the exhaustiveness
     };

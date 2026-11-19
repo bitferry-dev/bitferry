@@ -102,6 +102,21 @@ class TaskTest {
   }
 
   @Test
+  void legacyOperationNamesAreGone() {
+    assertNull(Task.processRouteFor("mirror"));
+    assertNull(Task.processRouteFor("synchronize"));
+    Replicate task = new Replicate(manager, source(), destination(), null, List.of(), List.of());
+    BitferryError err = assertThrows(BitferryError.class, () -> task.morph("mirror"));
+    assertTrue(err.getMessage().contains("Invalid rclone operation mirror"));
+    // The project is unreleased: no storage compatibility obligation - a legacy-named
+    // descriptor fails the restoration outright (the preservation then keeps it
+    // verbatim and the frontends surface the failure)
+    ObjectNode legacy = task.serialize().deepCopy();
+    legacy.put("operation", "mirror");
+    assertThrows(BitferryError.class, () -> Task.restore(manager, legacy));
+  }
+
+  @Test
   void resticProfilesFlowIntoTheDescriptors() {
     Backup backup = new Backup(manager, volumeSource(), destination(), "secret", null, null, "@default", "@full", List.of());
     JsonNode data = backup.serialize();
