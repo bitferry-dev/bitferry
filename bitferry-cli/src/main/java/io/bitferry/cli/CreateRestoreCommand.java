@@ -48,6 +48,9 @@ public class CreateRestoreCommand implements Callable<Integer>, HasCommonOptions
   @Option(names = {"-k", "--keyring"}, description = "Store the repository password in the OS keyring (fixed volumes only).")
   boolean keyring;
 
+  @Option(names = "--source-task", description = "Source backup task tag scoping the restore (the newest snapshot of that task is selected; default: derived from the repository when unambiguous, otherwise the newest bitferry-tagged snapshot repo-wide).")
+  String sourceTask;
+
   @Option(names = "--manual", description = "Exclude the task from the mass runs (run it by its tag only).")
   boolean manual;
 
@@ -68,7 +71,16 @@ public class CreateRestoreCommand implements Callable<Integer>, HasCommonOptions
     String password = CliUtils.obtainPassword();
     List<String> inc = CliUtils.parsePatterns(include, includeExts);
     List<String> exc = CliUtils.parsePatterns(exclude, excludeExts);
-    Restore task = new Restore(m, repo, dst, password, execute, inc, exc, keyring);
+    // The snapshot scope: the explicit (or uniquely derived) source backup task whose
+    // snapshots the restore selects from - on a shared (co-repository) repository the
+    // repo-wide fallback would restore whichever sibling task's data is the newest
+    String scope = Restore.resolveSnapshotTag(m, repo, sourceTask);
+    if (scope != null) {
+      spec.commandLine().getOut().println("Snapshot scope: backup task " + scope);
+    } else {
+      spec.commandLine().getErr().println(Ansi.AUTO.string("@|faint no backup task bound to the repository found; the restore will select the newest bitferry-tagged snapshot repo-wide (--source-task pins it)|@"));
+    }
+    Restore task = new Restore(m, repo, dst, password, execute, inc, exc, keyring, scope);
     if (manual) {
       task.setManual(true);
     }

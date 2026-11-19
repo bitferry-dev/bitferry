@@ -35,7 +35,12 @@ class AnsiFormatTest {
   @Test
   void pathFormatting() {
     assertEquals("", AnsiFormat.path(null));
-    assertEquals("\u001B[34m/data/store\u001B[0m", AnsiFormat.path(Path.of("/data/store")));
+    // The expected value rides a platform-native path: the POSIX-looking literals
+    // would render with the backslashes (and the drive prefix) on Windows
+    // WINDOWS: confirm these go green there (the drive-prefix rendering, the
+    // canonicalized LocalEndpoint roots)
+    Path store = dir.resolve("data").resolve("store");
+    assertEquals("\u001B[34m" + store + "\u001B[0m", AnsiFormat.path(store));
     assertEquals("\u001B[34m/data/store\u001B[0m", AnsiFormat.path("/data/store"));
   }
 
@@ -62,8 +67,11 @@ class AnsiFormatTest {
 
   @Test
   void picocliMarkupFlavor() throws IOException {
-    LocalEndpoint local = new LocalEndpoint(Path.of("/local/path"));
-    assertEquals("@|blue /local/path|@", AnsiFormat.endpoint(local, AnsiFormat.Markup.PICOCLI));
+    // The expected value rides the endpoint's post-canonicalization root: the
+    // POSIX-looking literals would render with the backslashes (and the drive
+    // prefix) on Windows
+    LocalEndpoint local = new LocalEndpoint(dir.resolve("local").resolve("path"));
+    assertEquals("@|blue " + local.root() + "|@", AnsiFormat.endpoint(local, AnsiFormat.Markup.PICOCLI));
 
     Manager manager = new Manager();
     Volume vol = new Volume(manager, dir.resolve("vol"));
@@ -85,8 +93,8 @@ class AnsiFormatTest {
   void endpointFormatting() throws IOException {
     assertEquals("", AnsiFormat.endpoint(null));
 
-    LocalEndpoint local = new LocalEndpoint(Path.of("/local/path"));
-    assertEquals("\u001B[34m/local/path\u001B[0m", AnsiFormat.endpoint(local));
+    LocalEndpoint local = new LocalEndpoint(dir.resolve("local").resolve("path"));
+    assertEquals("\u001B[34m" + local.root() + "\u001B[0m", AnsiFormat.endpoint(local));
 
     Manager manager = new Manager();
     Volume vol = new Volume(manager, dir.resolve("vol"));

@@ -23,6 +23,12 @@ public class Restore extends Restic implements IncludeFilters {
   // rides the interface defaults over [includeState]
   protected final List<String> include = new ArrayList<>();
 
+  // The snapshot scope: the tag of the backup task whose snapshots the restore selects
+  // from (the newest of that task's snapshots). Null falls back to the repo-wide newest
+  // snapshot carrying the marker tag (shared repositories would otherwise restore the
+  // newest snapshot across all the co-repository tasks - possibly a sibling task's data)
+  private String snapshotTag;
+
   /// Constructor for a new task instance.
   public Restore(Manager manager, Endpoint source, Endpoint destination, String password, String process, Collection<String> include, Collection<String> exclude) {
     this(manager, source, destination, password, process, include, exclude, false);
@@ -31,8 +37,18 @@ public class Restore extends Restic implements IncludeFilters {
   /// Constructor for a new task instance with the explicit keyring storage request:
   /// the repository password travels to the OS keyring when the keyring is usable.
   public Restore(Manager manager, Endpoint source, Endpoint destination, String password, String process, Collection<String> include, Collection<String> exclude, boolean keyring) {
+    this(manager, source, destination, password, process, include, exclude, keyring, null);
+  }
+
+  /// Constructor for a new task instance with the explicit keyring storage request
+  /// and the snapshot scope: the repository password travels to the OS keyring when
+  /// the keyring is usable; the scope names the backup task whose snapshots the
+  /// restore selects from (null falling back to the repo-wide newest marker-tagged
+  /// snapshot).
+  public Restore(Manager manager, Endpoint source, Endpoint destination, String password, String process, Collection<String> include, Collection<String> exclude, boolean keyring, String snapshotTag) {
     super(manager, source, destination, password, process, PROCESS, exclude, keyring);
     this.include.addAll(include);
+    this.snapshotTag = snapshotTag;
   }
 
   /// Jackson creator restoring an existing task from the storage descriptor;
@@ -47,13 +63,57 @@ public class Restore extends Restic implements IncludeFilters {
     @JsonProperty("modified") OffsetDateTime modified,
     @JsonProperty("include") List<String> include,
     @JsonProperty("exclude") List<String> exclude,
+    @JsonProperty("snapshotTag") String snapshotTag,
     @JsonProperty("restic") Backend backendOpts
   ) {
     super(manager, source, destination, tag, modified, exclude, backendOpts, PROCESS);
     this.include.addAll(include == null ? List.of() : include);
+    this.snapshotTag = snapshotTag;
     if (backend != null && !BACKEND.equals(backend)) {
       throw new BitferryError("Invalid task backend: expected " + BACKEND + " but got " + backend);
     }
+  }
+
+  /// The snapshot scope: the source backup task tag the restore selects the newest
+  /// snapshot of (null selecting the repo-wide newest marker-tagged snapshot).
+  @JsonProperty("snapshotTag")
+  public String snapshotTag() {
+    return snapshotTag;
+  }
+
+  /// The live backup tasks serving the specified repository endpoint: the snapshot
+  /// scope candidates of a restore task targeting it (matching by the processed
+  /// endpoint form, mirroring the repository the backups write into).
+  public static List<String> scopeCandidates(Manager manager, Endpoint repository) {
+    return manager.tasks().values().stream()
+      .filter(t -> t instanceof Backup backup && t.isLive() && !t.isDeleted())
+      .map(t -> (Backup) t)
+      .filter(backup -> backup.destination().processOpts().equals(repository.processOpts()))
+      .map(Task::tag)
+      .distinct()
+      .toList();
+  }
+
+  /// Resolve the snapshot scope of a new restore task: the explicit request must name
+  /// a live backup task; the blank request auto-derives the backup task bound to the
+  /// specified repository. Returns null when nothing scopes the restore (the repo-wide
+  /// newest marker-tagged snapshot is selected at the run time). Raises [BitferryError]
+  /// when the requested tag does not name a live backup task or the derivation is
+  /// ambiguous (multiple co-repository backup tasks).
+  public static String resolveSnapshotTag(Manager manager, Endpoint repository, String requested) {
+    if (requested != null && !requested.isBlank()) {
+      String tag = requested.trim();
+      if (!(manager.tasks().get(tag) instanceof Backup backup) || backup.isDeleted()) {
+        throw new BitferryError("Snapshot scope " + tag + " does not name a live backup task");
+      }
+      return tag;
+    }
+    List<String> candidates = scopeCandidates(manager, repository);
+    if (candidates.size() > 1) {
+      throw new BitferryError("Repository " + repository.processOpts() + " is served by multiple backup tasks (" + String.join(", ", candidates)
+        + "); specify the snapshot scope explicitly (--source-task in the CLI, the snapshot scope field in the GUI)");
+    }
+    return candidates.isEmpty() ? null : candidates.getFirst();
   }
 
   /// The [IncludeFilters] backing state (the behavior rides the interface defaults).

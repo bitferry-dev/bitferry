@@ -19,6 +19,35 @@ public final class BackendProcesses {
 
   private static final Set<Process> LIVE = ConcurrentHashMap.newKeySet();
 
+  static {
+    // The JVM-exit reaper: the GUI exit (or the CLI Ctrl+C, or any System.exit) must
+    // not orphan the running backend child - the daemon run threads die with the JVM
+    // while the spawned OS processes would keep writing into the destinations. The
+    // hook terminates everything live (the graceful terminate first), waits bounded,
+    // and force-kills the remainder (the daemon abort watchdogs cannot be relied
+    // upon during the shutdown)
+    // WINDOWS: verify the reaper there - Process.destroy() carries no POSIX signal
+    // semantics (TerminateProcess, immediate), so the graceful phase is a no-op:
+    // confirm the children die cleanly (no orphans, no wedged file handles) and
+    // decide whether a taskkill-based graceful escalation is wanted for the aborted
+    // runs (mirroring the POSIX SIGTERM-then-SIGKILL ladder)
+    Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+      for (Process process : LIVE) {
+        if (process.isAlive()) process.destroy();
+      }
+      long deadline = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(5);
+      for (Process process : LIVE) {
+        try {
+          long left = deadline - System.currentTimeMillis();
+          if (left > 0 && process.waitFor(left, TimeUnit.MILLISECONDS)) continue;
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+        }
+        if (process.isAlive()) process.destroyForcibly();
+      }
+    }, "bitferry-process-reaper"));
+  }
+
   private BackendProcesses() {}
 
   // Register the process upon its start (called by the executor)

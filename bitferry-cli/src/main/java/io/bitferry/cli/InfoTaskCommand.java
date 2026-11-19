@@ -6,6 +6,7 @@ import java.io.*;
 import java.util.*;
 import java.util.concurrent.*;
 import picocli.CommandLine.*;
+import picocli.CommandLine.Help.Ansi;
 import picocli.CommandLine.Model.*;
 
 /// Print complete breakdown of specified tasks designated by tags.
@@ -36,16 +37,24 @@ public class InfoTaskCommand implements Callable<Integer>, HasCommonOptions {
   @Override
   public Integer call() {
     PrintWriter out = spec != null ? spec.commandLine().getOut() : new PrintWriter(System.out, true);
+    PrintWriter err = spec != null ? spec.commandLine().getErr() : new PrintWriter(System.err, true);
     CommonOptions opts = CliUtils.resolveOptions(spec, options);
     Manager m = CliUtils.restoreManager(opts);
     Map<String, Task> tasks = m.selectTasks(tags);
     boolean first = true;
     for (Task t : tasks.values()) {
       if (commandsOnly) {
-        for (List<String> cmd : t.commands()) {
-          // The display form quotes the tokens carrying whitespace: the echoed line
-          // stays pasteable into a shell (mirroring ExecutorSupport.echoCommandLine)
-          out.println(ExecutorSupport.displayCommandLine(cmd));
+        // The per-task degradation: a task whose backend cannot build the commands
+        // (e.g. a backup on an absent destination volume) reports '(unavailable)'
+        // instead of aborting the whole listing (mirroring TaskBreakdown.appendCommands)
+        try {
+          for (List<String> cmd : t.commands()) {
+            // The display form quotes the tokens carrying whitespace: the echoed line
+            // stays pasteable into a shell (mirroring ExecutorSupport.echoCommandLine)
+            out.println(ExecutorSupport.displayCommandLine(cmd));
+          }
+        } catch (BitferryError e) {
+          err.println(Ansi.AUTO.string("@|yellow (unavailable: " + e.getMessage() + ")|@"));
         }
       } else {
         if (!first) {

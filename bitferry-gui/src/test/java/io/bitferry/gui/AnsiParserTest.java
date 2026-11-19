@@ -24,6 +24,39 @@ class AnsiParserTest {
   }
 
   @Test
+  void oscPayloadsAreSkipped() {
+    // The OSC titles/hyperlinks must never render: the BEL terminator
+    List<Text> nodes = AnsiParser.parseLine("\u001B]0;my title\u0007plain");
+    assertEquals(1, nodes.size());
+    assertEquals("plain\n", nodes.get(0).getText());
+    // The ST (ESC \) terminator
+    nodes = AnsiParser.parseLine("before\u001B]8;;http://example.com\u001B\\after");
+    assertEquals(1, nodes.size());
+    assertEquals("beforeafter\n", nodes.get(0).getText());
+  }
+
+  @Test
+  void truncatedSequencesDoNotLeakAsText() {
+    // The line-split (truncated) CSI drops the partial remainder instead of
+    // rendering the raw escape bytes
+    List<Text> nodes = AnsiParser.parseLine("text \u001B[31");
+    assertEquals(1, nodes.size());
+    assertEquals("text \n", nodes.get(0).getText());
+    // The unterminated OSC payload drops the remainder along
+    nodes = AnsiParser.parseLine("\u001B]8;;http://example.com/no-terminator");
+    assertEquals(1, nodes.size());
+    assertEquals("\n", nodes.get(0).getText());
+  }
+
+  @Test
+  void stripAnsiCoversTheOscAndTheTruncatedSequences() {
+    assertEquals("plain", AnsiParser.stripAnsi("\u001B]0;my title\u0007plain"));
+    assertEquals("plain", AnsiParser.stripAnsi("\u001B]8;;http://example.com\u001B\\plain"));
+    assertEquals("text ", AnsiParser.stripAnsi("text \u001B[31"));
+    assertEquals("", AnsiParser.stripAnsi("\u001B[31m"));
+  }
+
+  @Test
   void plainTextHasDefaultStyleAndTrailingNewline() {
     List<Text> nodes = AnsiParser.parseLine("Hello, world!");
     assertEquals(1, nodes.size());

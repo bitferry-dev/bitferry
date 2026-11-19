@@ -315,8 +315,17 @@ public class Manager {
       }
       LOG.log(Level.INFO, () -> "Probing " + root + " for Bitferry volume");
       try {
-        Volume.restore(this, root);
+        Volume volume = Volume.restore(this, root);
         LOG.log(Level.INFO, () -> "Restored Bitferry volume from " + root);
+        // The per-task restore failures (the preserved unparsable descriptors) travel
+        // into the same loadErrors record as the whole-volume ones: the frontends
+        // surface both uniformly
+        List<String> errors = volume.restoreErrors();
+        if (!errors.isEmpty()) {
+          synchronized (registryLock) {
+            loadErrors.addAll(errors);
+          }
+        }
       } catch (Exception e) {
         // The message stays plain: it travels into the loadErrors record (the API
         // data) and the JUL console handler verbatim; the colorization is the

@@ -45,6 +45,10 @@ public class InfoCommand implements Callable<Integer>, HasCommonOptions {
   public int runWith(CommonOptions resolvedOptions) {
     PrintWriter out = spec != null ? spec.commandLine().getOut() : new PrintWriter(System.out, true);
     Manager m = CliUtils.restoreManager(resolvedOptions);
+    // The quiet mode suppresses the decorative auxiliaries (the faint notices and the
+    // blank separators); the listing itself is the payload and stays (mirroring the
+    // batch runner's chatter/diagnostics split)
+    boolean quiet = resolvedOptions.quiet;
     Map<String, Volume> vs = m.volumes();
     List<Task> intactTasks = vs.values().stream()
       .flatMap(v -> v.intactTasks().values().stream())
@@ -58,25 +62,25 @@ public class InfoCommand implements Callable<Integer>, HasCommonOptions {
       .toList();
 
     if (vs.isEmpty() && intactTasks.isEmpty()) {
-      out.println(Ansi.AUTO.string("@|faint No volumes or tasks found.|@"));
+      if (!quiet) out.println(Ansi.AUTO.string("@|faint No volumes or tasks found.|@"));
       return 0;
     }
     if (!vs.isEmpty()) {
-      out.println();
+      if (!quiet) out.println();
       out.println(Ansi.AUTO.string("@|bold # Intact volumes|@"));
       for (Volume v : vs.values().stream().sorted(Comparator.comparing(Volume::tag)).toList()) {
         out.println(Ansi.AUTO.string(String.format("  @|cyan %s|@    %s", v.tag(), v.root())));
       }
     }
     if (!intactTasks.isEmpty()) {
-      out.println();
+      if (!quiet) out.println();
       out.println(Ansi.AUTO.string("@|bold # Intact tasks|@"));
       for (Task t : intactTasks) {
         out.println(Ansi.AUTO.string(String.format("  @|cyan %s|@    %s", t.tag(), CliUtils.formatTask(t))));
       }
     }
     if (!staleTasks.isEmpty() && m.verbose()) {
-      out.println();
+      if (!quiet) out.println();
       out.println(Ansi.AUTO.string("@|bold,red # Stale tasks|@"));
       for (Task t : staleTasks) {
         out.println(Ansi.AUTO.string(String.format("  @|cyan %s|@    %s", t.tag(), CliUtils.formatTask(t))));

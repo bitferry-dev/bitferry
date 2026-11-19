@@ -39,18 +39,28 @@ public final class ConsoleLog {
       // The short logger name: the bare class name without the package prefix
       String logger = record.getLoggerName();
       int dot = logger == null ? -1 : logger.lastIndexOf('.');
+      // The newlines are neutralized: the log arguments embedding untrusted text
+      // (the exception messages derived from the parsed storage files and the
+      // backend output) must not forge extra console lines (the throwables keep
+      // their real stack traces below - those are the logger's own)
       StringBuilder line = new StringBuilder(128)
         .append(time).append(' ')
         .append(level).append(' ')
-        .append(dot < 0 ? logger : logger.substring(dot + 1))
+        .append(singleLine(dot < 0 ? logger : logger.substring(dot + 1)))
         .append(": ")
-        .append(formatMessage(record));
+        .append(singleLine(formatMessage(record)));
       if (record.getThrown() != null) {
         java.io.StringWriter trace = new java.io.StringWriter();
         record.getThrown().printStackTrace(new java.io.PrintWriter(trace));
         line.append(System.lineSeparator()).append(trace);
       }
       return line.append(System.lineSeparator()).toString();
+    }
+
+    // Flatten the CR/LF into the visible escapes
+    private static String singleLine(String text) {
+      if (text == null) return null;
+      return text.replace("\r", "\\r").replace("\n", "\\n");
     }
   }
 }

@@ -5,6 +5,8 @@ import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonSetter;
+import com.fasterxml.jackson.annotation.Nulls;
 import java.io.IOException;
 import java.lang.System.Logger.Level;
 import java.nio.file.Files;
@@ -82,7 +84,10 @@ public final class ResticRepositoryState {
 
   // The per-task entries keyed by the task tag. The legacy single entry travels
   // separately (never serialized) until the normalization seeds it into the tasks.
+  // The nulls are skipped on the read: a hand-edited "tasks": null must not defeat
+  // the initializer (the nulled map would NPE every subsequent operation).
   @JsonProperty("tasks")
+  @JsonSetter(nulls = Nulls.SKIP)
   private Map<String, Entry> tasks = new LinkedHashMap<>();
 
   @JsonIgnore

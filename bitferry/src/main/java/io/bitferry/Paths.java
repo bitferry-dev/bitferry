@@ -1,6 +1,8 @@
 package io.bitferry;
 
 import java.io.*;
+import java.nio.file.InvalidPathException;
+import java.nio.file.Path;
 import java.util.*;
 import java.util.prefs.*;
 import java.util.regex.*;
@@ -44,6 +46,25 @@ public final class Paths {
     return result;
   }
 
+  /// Split the joined (pathSeparator-separated) entries into the trimmed, blank-free
+  /// path list: the environment/property composed roots ride the same discipline as
+  /// the persisted ones (the empty segments and the unparseable entries are skipped -
+  /// a stray separator must not kill the whole restoration).
+  public static List<Path> parseEntries(String joined) {
+    List<Path> result = new ArrayList<>();
+    if (joined == null || joined.isBlank()) return result;
+    for (String entry : joined.split(Pattern.quote(File.pathSeparator))) {
+      String trimmed = entry.trim();
+      if (trimmed.isEmpty()) continue;
+      try {
+        result.add(Path.of(trimmed));
+      } catch (InvalidPathException e) {
+        LOG.log(Level.DEBUG, () -> "Skipping the unparseable path entry '" + trimmed + "': " + e.getMessage());
+      }
+    }
+    return result;
+  }
+
   /// Persist the volume search roots (the entries are trimmed, blanks dropped, and
   /// joined with [File#pathSeparator]; an empty list removes the key).
   public static void save(List<String> roots) {
@@ -52,9 +73,16 @@ public final class Paths {
       for (String root : roots) {
         if (root != null) {
           String trimmed = root.trim();
-          if (!trimmed.isEmpty()) {
-            valid.add(trimmed);
+          if (trimmed.isEmpty()) continue;
+          // The separator characters cannot be persisted unambiguously (the persisted
+          // form joins on the platform separator): refuse instead of silently splitting
+          // the entry into two on the following load
+          // WINDOWS: the legal Windows directory names may carry ';'-the refusal is
+          // deliberate, confirm the frontends surface it acceptably on such entries
+          if (trimmed.contains(File.pathSeparator)) {
+            throw new BitferryError("The volume search path '" + trimmed + "' contains the path separator '" + File.pathSeparator + "' and cannot be persisted");
           }
+          valid.add(trimmed);
         }
       }
     }

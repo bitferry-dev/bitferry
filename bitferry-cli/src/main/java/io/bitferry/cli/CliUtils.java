@@ -83,23 +83,29 @@ public final class CliUtils {
     }
   }
 
-  // The terminal prompting: hidden input with confirmation
+  // The terminal prompting: hidden input with confirmation (the mismatch retries a
+  // bounded number of times - a single confirm-prompt typo must not kill the command)
+  // WINDOWS: confirm the hidden-input retry prompts render under cmd/PowerShell/
+  // Windows Terminal (the System.console() path there)
   private static String readPasswordFromTerminal() {
     Console console = System.console();
     if (console == null) throw new BitferryError("Password prompting requires an interactive terminal; run the deployed bitferry executable (deploy it with ./gradlew :bitferry-cli:installDist) -- the gradle run task does not attach a terminal to the application, and the piped or redirected standard input is deliberately not accepted");
-    char[] pwdChars = console.readPassword("Password: ");
-    char[] confirmChars = console.readPassword("Repeat password: ");
-    try {
-      // The end-of-stream (Ctrl+D) yields null arrays: treat it as "no password
-      // entered" so obtainPassword raises its clean BitferryError - converting a
-      // null array used to NPE past that check with a bare 'Error: null'
-      if (pwdChars == null || confirmChars == null) return null;
-      if (!Arrays.equals(pwdChars, confirmChars)) throw new BitferryError("Passwords do not match");
-      return new String(pwdChars);
-    } finally {
-      if (pwdChars != null) Arrays.fill(pwdChars, '\0');
-      if (confirmChars != null) Arrays.fill(confirmChars, '\0');
+    for (int attempt = 1; attempt <= 3; attempt++) {
+      char[] pwdChars = console.readPassword("Password: ");
+      char[] confirmChars = console.readPassword("Repeat password: ");
+      try {
+        // The end-of-stream (Ctrl+D) yields null arrays: treat it as "no password
+        // entered" so obtainPassword raises its clean BitferryError - converting a
+        // null array used to NPE past that check with a bare 'Error: null'
+        if (pwdChars == null || confirmChars == null) return null;
+        if (Arrays.equals(pwdChars, confirmChars)) return new String(pwdChars);
+        console.printf("Passwords do not match; try again (attempt %d of 3)%n", attempt);
+      } finally {
+        if (pwdChars != null) Arrays.fill(pwdChars, '\0');
+        if (confirmChars != null) Arrays.fill(confirmChars, '\0');
+      }
     }
+    throw new BitferryError("Passwords do not match");
   }
 
   /// Resolve merged common options from the command spec hierarchy. Every level of the
@@ -152,12 +158,9 @@ public final class CliUtils {
     List<Path> roots = opts.paths == null ? new ArrayList<>() : new ArrayList<>(opts.paths);
     String env = System.getenv("BITFERRY_PATH");
     if (env != null && !env.isBlank()) {
-      for (String entry : env.split(Pattern.quote(File.pathSeparator))) roots.add(Path.of(entry));
+      roots.addAll(io.bitferry.Paths.parseEntries(env));
     }
-    String prop = System.getProperty("bitferry.path");
-    if (prop != null && !prop.isBlank()) {
-      for (String entry : prop.split(Pattern.quote(File.pathSeparator))) roots.add(Path.of(entry));
-    }
+    roots.addAll(io.bitferry.Paths.parseEntries(System.getProperty("bitferry.path")));
     for (String entry : io.bitferry.Paths.load()) {
       try {
         roots.add(Path.of(entry));
@@ -205,6 +208,8 @@ public final class CliUtils {
         if (ext != null) {
           for (String part : ext.split(",")) {
             part = part.trim();
+            // The leading dot is tolerated: '-i .txt' and '-i txt' mean the same
+            while (part.startsWith(".")) part = part.substring(1);
             if (!part.isEmpty()) patterns.add("*." + part);
           }
         }
@@ -279,10 +284,14 @@ public final class CliUtils {
         ok = operation.run(t);
       } catch (BitferryError e) {
         ok = false;
-        if (!m.quiet) out.println(Ansi.AUTO.string("@|red     error: " + e.getMessage() + "|@"));
+        // The failures always speak: the quiet mode suppresses the chatter, not the
+        // diagnostics (the batch still exits 1 - exiting with zero output would be
+        // undiagnosable in the scripted flows)
+        err.println(Ansi.AUTO.string("@|red     error: " + e.getMessage() + "|@"));
       } catch (RuntimeException e) {
         ok = false;
-        if (!m.quiet) out.println(Ansi.AUTO.string("@|red     unexpected failure: " + e + "|@"));
+        err.println(Ansi.AUTO.string("@|red     unexpected failure: " + e + "|@"));
+        if (m.verbosity == Verbosity.DEBUG) e.printStackTrace(err);
       }
       outcome = ok && outcome;
       if (!m.quiet) {

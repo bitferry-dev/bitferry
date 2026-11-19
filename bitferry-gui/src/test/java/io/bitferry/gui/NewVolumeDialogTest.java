@@ -218,18 +218,24 @@ class NewVolumeDialogTest {
 
   @Test
   void failedWritePermission_doesNotRemainRegistered() throws Exception {
-    Path readOnlyDir = Files.createTempDirectory("bitferry-readonly-test-");
-    assertTrue(readOnlyDir.toFile().setReadOnly());
+    // The failure injection parks a directory at the intermediate image path: the
+    // atomic write fails on every platform (EISDIR) - the directory read-only flag
+    // is a POSIX-only mechanism (a no-op for the child creation on Windows). The
+    // image-path variant also keeps the exists-check in createVolume silent (the
+    // stubbed prompt stays uninvoked, the failure surfaces inside the runAsync)
+    // WINDOWS: confirm this test goes green there (the injection and the cleanup)
+    Path blockedDir = Files.createTempDirectory("bitferry-blocked-test-");
+    Files.createDirectories(blockedDir.resolve(Bitferry.STORAGE_IMAGE));
     try {
       AppContext context = new AppContext();
       LogController logs = new LogController();
 
       Dialogs.dialogPrompter = alert -> Optional.of(ButtonType.OK);
 
-      runFx(() -> Dialogs.createVolume(context, logs, readOnlyDir));
+      runFx(() -> Dialogs.createVolume(context, logs, blockedDir));
       waitOperations(context);
 
-      Path canonical = Bitferry.canonicalize(readOnlyDir);
+      Path canonical = Bitferry.canonicalize(blockedDir);
       Volume created = context.manager().liveVolumes().values().stream()
         .filter(v -> v.root().equals(canonical))
         .findFirst().orElse(null);
@@ -237,7 +243,7 @@ class NewVolumeDialogTest {
       assertTrue(context.manager().volumes().values().stream()
         .noneMatch(v -> v.root().equals(canonical)), "Failed volume must not remain in manager.volumes");
     } finally {
-      readOnlyDir.toFile().setWritable(true);
+      Files.deleteIfExists(blockedDir.resolve(Bitferry.STORAGE_IMAGE));
     }
   }
 }

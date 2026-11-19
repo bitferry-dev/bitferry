@@ -148,9 +148,11 @@ public final class Runner {
           output.accept(summary);
           done(listener, failed == 0, ok, failed);
         }
-      } catch (RuntimeException e) {
-        // The runner must never wedge the toolbar: report and finish the run
-        logs.log("Run failed: " + e);
+      } catch (Throwable t) {
+        // The runner must never wedge the toolbar: report and finish the run. The
+        // Throwable (not the RuntimeException) - an Error escaping here would leave
+        // the busy flag set forever (the whole GUI gated on it until the restart)
+        logs.log("Run failed: " + t);
         done(listener, false, ok, failed);
       }
     });

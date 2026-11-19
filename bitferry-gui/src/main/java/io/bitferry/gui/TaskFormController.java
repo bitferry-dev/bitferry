@@ -126,6 +126,8 @@ public final class TaskFormController {
   private Button browseDestinationVolume;
 
   @FXML
+  private TextField snapshotScope;
+  @FXML
   private TextField include;
 
   @FXML
@@ -205,6 +207,8 @@ public final class TaskFormController {
   @FXML
   private Label destinationLabel;
   @FXML
+  private Label snapshotScopeLabel;
+  @FXML
   private Label includeLabel;
   @FXML
   private Label excludeLabel;
@@ -259,6 +263,9 @@ public final class TaskFormController {
     BooleanSupplier restic = () -> "backup".equals(type()) || "restore".equals(type());
     BooleanSupplier backup = () -> "backup".equals(type());
     BooleanSupplier rclone = () -> !restic.getAsBoolean();
+    // The snapshot scope rides the creation mode only: the edit mode keeps the
+    // existing task's scope (the endpoints are immutable there anyway)
+    BooleanSupplier restoreScope = () -> existing == null && "restore".equals(type());
     BooleanSupplier encrypted = () -> rclone.getAsBoolean() && encryption() != null;
     BooleanSupplier cryptPasswordVisible = () -> existing == null && encrypted.getAsBoolean();
     BooleanSupplier formatVisible = () -> existing == null && backup.getAsBoolean();
@@ -269,6 +276,9 @@ public final class TaskFormController {
     rows.add(new Row(typeLabel, type, () -> true));
     rows.add(new Row(sourceLabel, source.getParent(), () -> true));
     rows.add(new Row(destinationLabel, destination.getParent(), () -> true));
+    // The restore snapshot scope: the source backup task whose snapshots the restore
+    // selects from (hidden unless a restore is being created)
+    rows.add(new Row(snapshotScopeLabel, snapshotScope, restoreScope));
     // The include control is disabled for the backup type: restic backup filters by
     // exclusion only, so the entered patterns would be silently ignored
     rows.add(new Row(includeLabel, includeControl, () -> true));
@@ -716,6 +726,11 @@ public final class TaskFormController {
     return destination.getText().trim();
   }
 
+  /// The restore snapshot scope: the source backup task tag (blank = auto-derive).
+  String snapshotScope() {
+    return snapshotScope.getText().trim();
+  }
+
   String include() {
     return include.getText();
   }
@@ -785,6 +800,13 @@ public final class TaskFormController {
     if (source().isEmpty()) throw new BitferryError("Source endpoint must be specified");
     if (destination().isEmpty()) throw new BitferryError("Destination endpoint must be specified");
     if (existing == null) {
+      // The snapshot scope must name a live backup task when specified (the blank
+      // scope auto-derives; the ambiguity surfaces on the apply)
+      if (resticMode() && "restore".equals(type()) && !snapshotScope().isEmpty()) {
+        if (!(context.manager().tasks().get(snapshotScope()) instanceof Backup backup) || backup.isDeleted()) {
+          throw new BitferryError("Snapshot scope " + snapshotScope() + " does not name a live backup task");
+        }
+      }
       if (resticMode()) {
         if (password.getText().isEmpty()) throw new BitferryError("Password must be specified");
         if (!password.getText().equals(passwordConfirm.getText())) throw new BitferryError("Passwords do not match");

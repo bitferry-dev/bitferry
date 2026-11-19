@@ -158,11 +158,14 @@ final class RcloneExecutor {
   private static Set<String> extractCryptPaths(List<String> outputLines) {
     List<String> jsonLines = new ArrayList<>();
     for (String line : outputLines) {
-      String trimmed = line.trim();
+      // The escapes are stripped before the notice filter: the captured runs force
+      // the colors on (CLICOLOR_FORCE), so a colorized notice line begins with the
+      // escape sequences and would slip past the prefix test into the JSON below
+      String trimmed = AnsiFormat.strip(line).trim();
       if (trimmed.startsWith("20") && (trimmed.contains("NOTICE:") || trimmed.contains("ERROR:") || trimmed.contains("CRITICAL:") || trimmed.contains("WARNING:"))) {
         continue;
       }
-      jsonLines.add(line);
+      jsonLines.add(trimmed);
     }
     String jsonText = String.join("\n", jsonLines).trim();
     if (jsonText.isEmpty()) {

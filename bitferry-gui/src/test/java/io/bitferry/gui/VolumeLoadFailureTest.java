@@ -31,7 +31,11 @@ class VolumeLoadFailureTest {
     assertEquals(1, m.loadErrors().size());
     String err = m.loadErrors().getFirst();
     String stripped = AnsiFormat.strip(err);
-    assertTrue(stripped.toLowerCase().contains("failed to restore bitferry volume from " + Bitferry.canonicalize(tempDir)),
+    // The needle is lowercased with the haystack: the Windows paths carry the mixed
+    // case that the lowercasing of the haystack alone can never match
+    // WINDOWS: confirm both assertions go green there (the mixed-case temp paths
+    // were the original failures)
+    assertTrue(stripped.toLowerCase().contains(("failed to restore bitferry volume from " + Bitferry.canonicalize(tempDir)).toLowerCase()),
         () -> "unexpected error message: " + err);
     assertEquals(m.loadErrors(), reported);
     assertEquals(m.loadErrors(), m.restoreErrors());
@@ -61,8 +65,9 @@ class VolumeLoadFailureTest {
     String canonicalPath = Bitferry.canonicalize(tempDir).toString();
     assertTrue(context.manager().loadErrors().stream().map(AnsiFormat::strip).anyMatch(e -> e.contains(canonicalPath)));
 
-    // Verify the failure was reported to the GUI logger
-    assertTrue(captured.stream().map(AnsiFormat::strip).anyMatch(msg -> msg.toLowerCase().contains("failed to restore bitferry volume from " + canonicalPath)),
+    // Verify the failure was reported to the GUI logger (the needle lowercased with
+    // the haystack: the Windows paths carry the mixed case)
+    assertTrue(captured.stream().map(AnsiFormat::strip).anyMatch(msg -> msg.toLowerCase().contains(("failed to restore bitferry volume from " + canonicalPath).toLowerCase())),
         () -> "GUI log did not receive volume load failure. Captured logs: " + captured);
 
     // Verify subsequent manager restored summary was also logged

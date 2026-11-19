@@ -2,10 +2,12 @@ package io.bitferry.task;
 
 import io.bitferry.*;
 import io.bitferry.endpoint.*;
+import io.bitferry.vault.Vault;
 import com.fasterxml.jackson.annotation.*;
 import java.lang.System.Logger.Level;
 import java.time.*;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.*;
 import tools.jackson.databind.*;
 import tools.jackson.databind.node.*;
@@ -69,9 +71,10 @@ public abstract class Task {
   // The transient in-memory marker of the processing in progress: guards the re-entrancy
   // (a task dispatched while its previous run is still going). Deliberately not persisted -
   // the generation/intact mechanism already encodes the processing needs and the backend
-  // runs are idempotent upon the interruption. Volatile: the dispatches may come from
-  // different threads (the guard must be visible across them).
-  private volatile boolean processing;
+  // runs are idempotent upon the interruption. Atomic: the dispatches may come from
+  // different threads, so the check-and-set must be atomic (a volatile check-then-act
+  // would let two dispatchers through together).
+  private final AtomicBoolean processing = new AtomicBoolean();
 
   /// The deletion marker: a tombstoned task stays persisted within the storages of the
   /// currently visible volumes but is invisible for all the operations until it is
@@ -246,8 +249,9 @@ public abstract class Task {
   /// The runtime execution status: whether the task participates in the mass runs
   /// (the no-tags execute/serve invocations). Copied from the persisted manual flag
   /// at the restoration time; the GUI checkbox toggles change this runtime state
-  /// without touching the persisted descriptor.
-  protected boolean runnable = true;
+  /// without touching the persisted descriptor. Volatile: the frontends toggle it
+  /// from their UI threads while the mass runs read it on the dispatch threads.
+  protected volatile boolean runnable = true;
 
   /// Whether the task is manual-only: the persisted flag set at the creation time
   /// (the descriptor carries "manual": true). The mass runs skip manual-only tasks.
@@ -388,6 +392,18 @@ public abstract class Task {
     deleted = true;
     commitState = CommitState.DELETED;
     touch();
+    // The credentials of the deleted task are dropped best-effort: the tags are never
+    // reused, so a surviving keyring entry would leak forever (the volume-vault entries
+    // are purged by the commit-time storage filter anyway - this keeps them symmetric).
+    // The vault-resident end may be absent (its volume is not restored): the deletion
+    // must not fail on that, the stale entries are tolerated like the keyring's own
+    for (Vault provider : List.of(Vault.volume(), Vault.keyring())) {
+      try {
+        provider.deleteToken(this);
+      } catch (RuntimeException e) {
+        LOG.log(Level.DEBUG, () -> "The stored token of the deleted task " + tag + " could not be dropped: " + e.getMessage());
+      }
+    }
   }
 
   /// Physically remove the collected (garbage) tombstone from the storages of all
@@ -521,8 +537,7 @@ public abstract class Task {
   /// paths), and the processing-in-progress guard rejects the re-entrancy (the task
   /// dispatched while its previous run is still going). Return true on success.
   public boolean process(Consumer<String> output) {
-    if (processing) throw new BitferryError("Task " + tag + " is already being processed");
-    processing = true;
+    if (!processing.compareAndSet(false, true)) throw new BitferryError("Task " + tag + " is already being processed");
     try {
       LOG.log(Level.INFO, () -> "Processing task " + tag);
       for (String vtag : referredVolumes()) {
@@ -535,7 +550,7 @@ public abstract class Task {
       if (success && !manager.simulate) processed();
       return success;
     } finally {
-      processing = false;
+      processing.set(false);
     }
   }
 
@@ -543,8 +558,7 @@ public abstract class Task {
   /// The referred volumes are checked for presence, and the processing-in-progress guard
   /// rejects re-entrancy. Return true on success.
   public boolean serve(Consumer<String> output) {
-    if (processing) throw new BitferryError("Task " + tag + " is already being processed");
-    processing = true;
+    if (!processing.compareAndSet(false, true)) throw new BitferryError("Task " + tag + " is already being processed");
     try {
       LOG.log(Level.INFO, () -> "Servicing task " + tag);
       for (String vtag : referredVolumes()) {
@@ -554,7 +568,7 @@ public abstract class Task {
       materializePending();
       return serveWith(manager.backendExecutor(), output);
     } finally {
-      processing = false;
+      processing.set(false);
     }
   }
 

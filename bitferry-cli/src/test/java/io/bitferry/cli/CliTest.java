@@ -1777,4 +1777,14 @@ class CliTest {
     assertNotEquals(0, code);
     assertTrue(err.toString().toLowerCase().contains("cannot specify both --include/--include-ext and --clear-include"));
   }
+
+  @Test
+  void extensionPatternsTolerateTheLeadingDot() {
+    // '-i .txt' and '-i txt' mean the same (the broken '*..txt' pattern matched nothing)
+    assertEquals(List.of("*.txt", "*.md"), CliUtils.parsePatterns(null, List.of(".txt, .md")));
+    assertEquals(List.of("*.txt"), CliUtils.parsePatterns(null, List.of("txt")));
+    assertEquals(List.of("*.log"), CliUtils.parsePatterns(null, List.of("..log")));
+    // The plain specs ride unchanged
+    assertEquals(List.of("a", "b"), CliUtils.parsePatterns(List.of("a,b"), null));
+  }
 }

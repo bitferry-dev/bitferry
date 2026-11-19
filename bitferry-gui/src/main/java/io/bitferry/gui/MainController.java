@@ -4,6 +4,7 @@ import io.bitferry.*;
 import javafx.application.Platform;
 import javafx.fxml.FXML;
 import javafx.scene.control.*;
+import javafx.stage.WindowEvent;
 
 import java.util.List;
 
@@ -143,7 +144,61 @@ public final class MainController {
 
   @FXML
   private void onExit() {
-    Platform.exit();
+    exitRequest();
+  }
+
+  /// The window-manager close handler (wired from the Application): while a run is
+  /// in progress the close request is consumed - the exit is confirmed there and
+  /// performed programmatically once the run winds down.
+  void handleCloseRequest(WindowEvent event) {
+    if (runner.isBusy()) {
+      event.consume();
+      confirmExit();
+    }
+  }
+
+  // The Exit action and the window-manager close share the busy guard: while a run
+  // is in progress the exit is confirmed, the run aborted, and the exit waits for
+  // the wind-down (the backend termination and the post-run commit) before leaving
+  // - exiting unguarded would orphan the running backend child (the daemon run
+  // threads die with the JVM while the OS process survives)
+  private void exitRequest() {
+    if (!runner.isBusy()) {
+      Platform.exit();
+      return;
+    }
+    confirmExit();
+  }
+
+  private void confirmExit() {
+    // WINDOWS: this flow was exercised on Linux only - smoke it there (the title-bar
+    // close and the Exit button mid-run under the jpackage launcher), including the
+    // bounded wait teardown and the BackendProcesses reaper behavior (see its note)
+    Alert alert = new Alert(Alert.AlertType.CONFIRMATION, "A run is in progress. Abort the run and exit?", ButtonType.OK, ButtonType.CANCEL);
+    alert.setTitle("Confirm exit");
+    alert.setHeaderText("Run in progress");
+    if (context.ownerWindow != null) alert.initOwner(context.ownerWindow);
+    Dialogs.centerOnScreen(alert, context.ownerWindow);
+    alert.showAndWait().filter(ButtonType.OK::equals).ifPresent(x -> {
+      runner.abort();
+      // The exit waits for the run wind-down so the post-run bookkeeping commit
+      // lands before the JVM leaves; the bounded wait caps a wedged run (the
+      // BackendProcesses shutdown hook still reaps the children at the exit)
+      Thread waiter = new Thread(() -> {
+        long deadline = System.currentTimeMillis() + 60_000;
+        while (runner.isBusy() && System.currentTimeMillis() < deadline) {
+          try {
+            Thread.sleep(200);
+          } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            break;
+          }
+        }
+        Platform.runLater(Platform::exit);
+      }, "bitferry-exit-wait");
+      waiter.setDaemon(true);
+      waiter.start();
+    });
   }
 
   @FXML

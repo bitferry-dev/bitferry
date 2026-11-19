@@ -252,13 +252,15 @@ public final class MediaWatch {
   private void checkAndReport(SortedSet<String> sig) {
     if (sig.equals(lastReported)) return;
     if (!gate.getAsBoolean()) return;
-    lastReported = sig;
     try {
       onChange.run();
     } catch (RuntimeException e) {
-      // The consumer failure must not kill the watcher thread
+      // The consumer failure must not kill the watcher thread - and must not consume
+      // the change either: it stays outstanding and re-fires on the next tick
       System.getLogger(MediaWatch.class.getName())
         .log(java.lang.System.Logger.Level.WARNING, "media change consumer failed: " + e);
+      return;
     }
+    lastReported = sig;
   }
 }

@@ -281,7 +281,12 @@ public final class LogController {
         scroll.setVvalue(scroll.getVmax());
         Platform.runLater(() -> {
           try {
-            if (follow) {
+            // The live geometry decides (not the stale flag): a user scroll landing
+            // inside this muted pulse is invisible to the tracking listener (it is
+            // muted by the updating counter), so re-deriving from the position is
+            // the only way to honor it - and the flag is re-armed afterwards so the
+            // following flush no longer acts on the stale value either
+            if (atTail()) {
               flow.applyCss();
               flow.layout();
               scroll.layout();
@@ -289,6 +294,7 @@ public final class LogController {
             }
           } finally {
             updating--;
+            follow = atTail();
           }
         });
       } else {

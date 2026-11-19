@@ -119,4 +119,26 @@ class MediaWatchTest {
       watch.close();
     }
   }
+
+  @Test
+  void failingConsumerDoesNotConsumeTheChange() {
+    AtomicReference<SortedSet<String>> mounts = new AtomicReference<>(sig("a"));
+    AtomicInteger calls = new AtomicInteger();
+    MediaWatch watch = MediaWatch.start(() -> {
+      if (calls.incrementAndGet() == 1) throw new RuntimeException("consumer boom");
+    }, () -> true, mounts::get,
+      FAST_TICK, SLOW_TICK, COALESCE, false);
+    try {
+      assertTrue(await(() -> System.currentTimeMillis() > 0));
+      mounts.set(sig("a", "media"));
+      // The throwing consumer must not consume the change: the marking rides the
+      // successful run only, so the change stays outstanding and re-fires
+      assertTrue(await(() -> calls.get() >= 2), "the change must re-fire after the consumer failure");
+      int after = calls.get();
+      // The settled state (the second invocation succeeded) produces no further calls
+      assertTrue(await(() -> calls.get() == after), () -> "expected the state to settle, got " + calls.get());
+    } finally {
+      watch.close();
+    }
+  }
 }

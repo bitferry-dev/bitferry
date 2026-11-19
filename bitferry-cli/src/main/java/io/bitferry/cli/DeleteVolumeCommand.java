@@ -4,6 +4,7 @@ import io.bitferry.*;
 import java.util.*;
 import java.util.concurrent.*;
 import picocli.CommandLine.*;
+import picocli.CommandLine.Help.Ansi;
 import picocli.CommandLine.Model.*;
 
 /// Delete existing volumes whose tags match specified tags.
@@ -39,10 +40,21 @@ public class DeleteVolumeCommand implements Callable<Integer>, HasCommonOptions 
     if (!m.force) {
       throw new BitferryError("Volume deletion requires --force (it removes the volume storage and tombstones every task referring to it); preview the selection with --dry-run");
     }
-    for (Volume v : m.selectVolumes(tags)) {
+    var selected = m.selectVolumes(tags);
+    if (selected.isEmpty()) {
+      spec.commandLine().getErr().println(Ansi.AUTO.string("@|faint no volume(s) match " + String.join(" ", tags) + "|@"));
+      return 0;
+    }
+    for (Volume v : selected) {
+      // The selection echo doubles as the promised --dry-run preview (the deletion
+      // itself simulates through the commit below)
+      spec.commandLine().getOut().println(Ansi.AUTO.string("@|bold deleting|@ @|cyan " + v.tag() + "|@  " + v.root()));
       v.delete();
     }
     m.commit();
+    if (m.simulate()) {
+      spec.commandLine().getErr().println(Ansi.AUTO.string("@|faint the deletion simulated (nothing was written); re-run without --dry-run to delete for real|@"));
+    }
     return 0;
   }
 }

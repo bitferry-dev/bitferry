@@ -68,21 +68,22 @@ class VolumeTest {
 
   @Test
   void failedInitialCommitDeregistersVolume() throws IOException {
-    Path readOnlyRoot = dir.resolve("readonly");
-    Files.createDirectories(readOnlyRoot);
-    assertTrue(readOnlyRoot.toFile().setReadOnly());
-    try {
-      Manager manager = new Manager();
-      Volume volume = new Volume(manager, readOnlyRoot);
-      assertThrows(BitferryError.class, manager::commit);
-      // The volume whose initial creation failed must deregister from manager
-      assertFalse(manager.volumes().containsKey(volume.tag()));
-      assertFalse(manager.liveVolumes().containsKey(volume.tag()));
-      assertFalse(volume.isLive());
-      assertDoesNotThrow(manager::commit);
-    } finally {
-      readOnlyRoot.toFile().setWritable(true);
-    }
+    // The failure injection parks a directory at the intermediate image path: the
+    // atomic write fails on every platform (EISDIR) - the directory read-only flag
+    // is a POSIX-only mechanism (a no-op for the child creation on Windows)
+    // WINDOWS: confirm this test goes green there (the open-on-a-directory failure
+    // mode, and the empty '~' directory cleanup in the temp dir)
+    Path blockedRoot = dir.resolve("blocked");
+    Files.createDirectories(blockedRoot);
+    Files.createDirectories(blockedRoot.resolve(Bitferry.STORAGE_IMAGE));
+    Manager manager = new Manager();
+    Volume volume = new Volume(manager, blockedRoot);
+    assertThrows(BitferryError.class, manager::commit);
+    // The volume whose initial creation failed must deregister from manager
+    assertFalse(manager.volumes().containsKey(volume.tag()));
+    assertFalse(manager.liveVolumes().containsKey(volume.tag()));
+    assertFalse(volume.isLive());
+    assertDoesNotThrow(manager::commit);
   }
 
   @Test

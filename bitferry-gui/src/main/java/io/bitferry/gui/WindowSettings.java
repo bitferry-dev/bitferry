@@ -75,9 +75,14 @@ final class WindowSettings {
   void apply(Stage stage) {
     width = Math.max(MIN_WIDTH, width);
     height = Math.max(MIN_HEIGHT, height);
+    // The placement must keep the draggable title-bar strip on a real screen: the
+    // union-bounds 1-px-overlap test accepted windows whose only visible pixel sat
+    // in a dead zone between the screens (the bottom-right corner on a phantom edge)
+    // WINDOWS: verify on multi-monitor + DPI-scaled screens there (the strip check
+    // must reject the dead-zone placements without rejecting the valid ones)
     if (!Double.isNaN(x) && !Double.isNaN(y)
       && Double.isFinite(x) && Double.isFinite(y)
-      && screenUnion().intersects(x, y, width, height)) {
+      && !Screen.getScreensForRectangle(x, y, width, Math.min(height, 60)).isEmpty()) {
       stage.setX(x);
       stage.setY(y);
     }

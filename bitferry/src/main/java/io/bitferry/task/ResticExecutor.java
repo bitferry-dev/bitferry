@@ -69,8 +69,41 @@ final class ResticExecutor {
     }
     String repo = backup.destination().processOpts();
     if (Boolean.TRUE.equals(backup.formatMode())) {
+      // The forced re-initialization destroys the snapshots: the destructive wipe is
+      // guarded against the two misfires - the co-repository siblings sharing the
+      // repository (the wipe would destroy their snapshots along), and the ordinary
+      // (non-restic) non-empty directory that happens to sit at the repository path.
+      // The --force stays the explicit override for the task's own repository only.
+      Path repoDir = Path.of(repo);
+      Set<String> siblings = new LinkedHashSet<>();
+      if (Files.isDirectory(repoDir)) {
+        for (Task t : manager.liveTasks().values()) {
+          if (t == backup || !(t instanceof Restic other)) continue;
+          try {
+            if (Restic.sameRepository(repo, repoPath(other))) siblings.add(t.tag());
+          } catch (BitferryError ignored) {
+            // The sibling's volume is absent (its repository membership is unknowable
+            // through the endpoints): consult the maintenance state instead - it records
+            // the tag of every task that ever touched the repository
+            if (hasRepository(repo) && ResticRepositoryState.load(repoDir).tags().contains(t.tag())) siblings.add(t.tag());
+          }
+        }
+      }
+      if (!siblings.isEmpty()) {
+        throw new BitferryError("Refusing to wipe the repository at " + repo + ": the co-repository task(s) "
+          + String.join(", ", siblings) + " share it and would lose their snapshots; delete or re-point them first");
+      }
+      boolean empty;
+      try {
+        empty = isEmptyDirectory(repoDir);
+      } catch (IOException e) {
+        throw new BitferryError("Cannot inspect the repository directory " + repo + ": " + e.getMessage(), e);
+      }
+      if (Files.isDirectory(repoDir) && !hasRepository(repo) && !empty) {
+        throw new BitferryError("Refusing to wipe " + repo + ": it is not a restic repository (no config file) but is not empty; re-point the task or empty the directory explicitly");
+      }
       LOG.log(Level.INFO, () -> "Wiping existing repository for task " + backup.tag() + " in " + repo);
-      wipeRepository(Path.of(repo));
+      wipeRepository(repoDir);
     } else if (hasRepository(repo)) {
       probeRepository(backup, repo);
       LOG.log(Level.INFO, () -> "Existing repository opened; attaching implicitly");
@@ -183,21 +216,25 @@ final class ResticExecutor {
       try {
         if (!Restic.sameRepository(repo, repoPath(other))) continue;
       } catch (BitferryError e) {
-        // The tombstone's endpoints cannot be resolved (the hosting volume is
-        // absent): its repository membership is unknowable, the entry stays
-        continue;
+        // The tombstone's endpoints cannot be resolved (the hosting volume is absent),
+        // but the deletion is witnessed all the same: the tag is never reused, so the
+        // entry is dropped regardless of the unknowable repository membership
       }
       dropped.add(t.tag());
     }
     ResticRepositoryState state = ResticRepositoryState.load(repoDir);
     boolean changed = state.normalize(registered) | state.drop(dropped);
     if (changed) state.save(repoDir);
+    // The stale remainder: the state file is per-repository, so every recorded tag
+    // (this session's invisible siblings and the other-host tasks alike) genuinely
+    // shared this repository and holds the stale token now - all of them are the
+    // actionable warnings (the deleted tasks were dropped above)
     List<String> stale = state.tags().stream()
       .filter(tag -> !registered.contains(tag))
       .toList();
     if (!stale.isEmpty()) {
       LOG.log(Level.WARNING, () -> "The stored passwords of the co-repository task(s) " + String.join(", ", stale)
-        + " were not updated (their volumes are not restored, or the tasks were deleted); the unreachable tasks' runs will fail the authentication until the token is re-synced");
+        + " were not updated (their hosting volumes are not restored); the unreachable tasks' runs will fail the authentication until the token is re-synced");
     }
     return stale;
   }
@@ -361,6 +398,14 @@ final class ResticExecutor {
   // Remove the repository subdirectories upon the forced re-initialization. Any wipe
   // failure aborts the caller: `restic init` over the partially wiped repository would
   // layer the new repository config over the orphaned data of the old one.
+  // Whether the directory carries no entries at all (the ordinary-directory
+  // misfire guard of the wipe)
+  private static boolean isEmptyDirectory(Path directory) throws IOException {
+    try (Stream<Path> entries = Files.list(directory)) {
+      return entries.findAny().isEmpty();
+    }
+  }
+
   private void wipeRepository(Path repo) {
     List<String> failures = new ArrayList<>();
     // The maintenance state files travel with the wipe too: the stale cadence
@@ -397,7 +442,7 @@ final class ResticExecutor {
     cmd.add("backup");
     cmd.add(".");
     cmd.add("--tag");
-    cmd.add("bitferry," + backup.tag());
+    cmd.add(Tags.MARKER + "," + backup.tag());
 
     // Exclude Bitferry storage files and per-task metadata
     cmd.add("--exclude");
@@ -451,7 +496,7 @@ final class ResticExecutor {
     forgetCmd.add(resolveExecutable());
     forgetCmd.add("forget");
     forgetCmd.add("--tag");
-    forgetCmd.add("bitferry," + backup.tag());
+    forgetCmd.add(Tags.MARKER + "," + backup.tag());
     for (String opt : backup.forget()) {
       if (!"--prune".equals(opt)) {
         forgetCmd.add(opt);
@@ -510,6 +555,16 @@ final class ResticExecutor {
     cmd.add(resolveExecutable());
     cmd.add("restore");
     cmd.add("latest");
+    // The snapshot scope: the newest snapshot of the source backup task. The restic
+    // tag filters OR-match their alternatives, so the unique per-task tag alone scopes
+    // precisely (the snapshots also carry the marker tag). Without the scope the newest
+    // marker-tagged snapshot of the whole repository is selected - on a shared
+    // (co-repository) repository that would restore whichever sibling task's data
+    // happens to be the newest, so the fallback is a deliberate advisory, and the
+    // foreign (untagged) snapshots stay excluded either way
+    cmd.add("--tag");
+    String scope = restore.snapshotTag();
+    cmd.add(scope != null && !scope.isBlank() ? scope : Tags.MARKER);
     cmd.add("--target");
     cmd.add(restore.destination().processOpts());
 
@@ -597,13 +652,16 @@ final class ResticExecutor {
     }
 
     List<String> cmd = backupCommand(backup);
-    boolean success = ExecutorSupport.execute(commandExecutor, manager, cmd, cwd, backup.processEnvironment(), backup.tag(), output);
+    // The exit code 3 is tolerated: restic reports the snapshot written with some
+    // source files unreadable - a partial success (the outright failure would skip
+    // the maintenance recording and skew the backups_since_maintenance cadence)
+    boolean success = ExecutorSupport.execute(commandExecutor, manager, cmd, cwd, backup.processEnvironment(), backup.tag(), output, 3);
     if (!success) {
       // The stored token may have gone stale (the password rotated by a co-repository
       // task while this volume was absent): re-sync from a sibling and retry once
       if (!healStaleToken(backup, repo)) return false;
       if (output != null) output.accept("Retrying the backup after the stale token re-sync");
-      success = ExecutorSupport.execute(commandExecutor, manager, cmd, cwd, backup.processEnvironment(), backup.tag(), output);
+      success = ExecutorSupport.execute(commandExecutor, manager, cmd, cwd, backup.processEnvironment(), backup.tag(), output, 3);
       if (!success) return false;
     }
 
@@ -718,6 +776,12 @@ final class ResticExecutor {
 
     if (output != null) {
       output.accept("Restoring repository " + repo + " into " + target);
+      String scope = restore.snapshotTag();
+      // The scope advisory: the repo-wide fallback may select a sibling task's data
+      // on a shared repository - say so instead of restoring silently
+      output.accept(scope != null && !scope.isBlank()
+        ? "Snapshot scope: the newest snapshot of backup task " + scope
+        : "Snapshot scope: the newest " + Tags.MARKER + "-tagged snapshot of the repository (no source backup task configured)");
     }
 
     List<String> cmd = restoreCommand(restore);

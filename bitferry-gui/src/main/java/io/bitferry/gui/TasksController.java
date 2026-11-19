@@ -137,8 +137,16 @@ public final class TasksController {
       {
         checkBox.setOnAction(event -> {
           if (getTableRow() != null && getTableRow().getItem() instanceof Row row) {
-            row.task.setRunnable(checkBox.isSelected());
-            row.runnable.set(checkBox.isSelected());
+            // The model mutation marshals onto the operations executor (the mass runs
+            // read the flag there): the direct FX-thread write would race the dispatch.
+            // The row's snapshot property still follows the click immediately (the
+            // re-renders must not repaint the stale pre-click state over the toggle)
+            boolean selected = checkBox.isSelected();
+            context.operations().execute(() -> {
+              Task current = context.manager().task(row.task.tag());
+              if (current != null) current.setRunnable(selected);
+            });
+            row.runnable.set(selected);
           }
         });
       }

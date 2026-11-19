@@ -10,6 +10,10 @@ public final class Tags {
 
   private static final SecureRandom RANDOM = new SecureRandom();
 
+  /// The marker tag stamped onto every snapshot the tool creates (along the owning
+  /// task's unique tag): the restore scoping and the foreign-snapshot exclusion ride it.
+  public static final String MARKER = "bitferry";
+
   private Tags() {}
 
   /// Generate a new random 8 hexadecimal character tag (mirroring Python's `secrets.token_hex(4)`).

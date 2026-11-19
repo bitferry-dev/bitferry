@@ -114,10 +114,29 @@ public final class ExecutorSupport {
   /// on the zero exit code.
   static boolean execute(CommandExecutor executor, Manager manager, List<String> command, Path workingDirectory,
                          Map<String, String> environment, String taskTag, Consumer<String> output) {
+    return execute(executor, manager, command, workingDirectory, environment, taskTag, output, new int[0]);
+  }
+
+  /// The variant tolerating the additional (non-zero) exit codes: they report success
+  /// with a warning line instead of a failure (e.g. the restic backup exits 3 when the
+  /// snapshot was written but some source files could not be read - a partial success,
+  /// not an outright failure: the outright failure would skew the maintenance cadence).
+  static boolean execute(CommandExecutor executor, Manager manager, List<String> command, Path workingDirectory,
+                         Map<String, String> environment, String taskTag, Consumer<String> output, int... toleratedExitCodes) {
     echoCommandLine(manager, command, output);
     try {
       int exitCode = executor.execute(command, workingDirectory, environment, output);
       if (exitCode != 0) {
+        boolean tolerated = false;
+        for (int code : toleratedExitCodes) {
+          if (code == exitCode) tolerated = true;
+        }
+        if (tolerated) {
+          String message = "Command completed with exit code " + exitCode + " for task " + taskTag + " (partial success)";
+          LOG.log(Level.WARNING, () -> message);
+          if (output != null) output.accept(message);
+          return true;
+        }
         String message = "Command failed with exit code " + exitCode + " for task " + taskTag;
         LOG.log(Level.ERROR, () -> message);
         if (output != null) output.accept(message);

@@ -5,8 +5,8 @@ import javafx.scene.text.*;
 
 import java.util.*;
 
-/// Parses terminal text containing ANSI escape sequences (SGR color and style codes)
-/// into styled JavaFX Text nodes.
+/// Parses terminal text containing ANSI escape sequences (the SGR color and style
+/// codes, the OSC payload skipping) into styled JavaFX Text nodes.
 public final class AnsiParser {
 
   public static final Color DEFAULT_FG = Color.web("#222222");
@@ -59,12 +59,18 @@ public final class AnsiParser {
 
     while (i < len) {
       char c = line.charAt(i);
-      if (c == '\u001B' && i + 1 < len && line.charAt(i + 1) == '[') {
-        int j = i + 2;
-        while (j < len && (line.charAt(j) < 0x40 || line.charAt(j) > 0x7E)) {
-          j++;
-        }
-        if (j < len) {
+      if (c == '\u001B' && i + 1 < len) {
+        char kind = line.charAt(i + 1);
+        if (kind == '[') { // CSI (the SGR and the cursor sequences)
+          int j = i + 2;
+          while (j < len && (line.charAt(j) < 0x40 || line.charAt(j) > 0x7E)) {
+            j++;
+          }
+          if (j >= len) {
+            // The truncated sequence (the output chunked mid-escape): the remainder
+            // is dropped - rendering the raw escape bytes as text would corrupt the log
+            break;
+          }
           char finalChar = line.charAt(j);
           if (finalChar == 'm') {
             if (currentText.length() > 0) {
@@ -150,6 +156,22 @@ public final class AnsiParser {
           i = j + 1;
           continue;
         }
+        if (kind == ']') { // OSC (the window titles, the hyperlinks): the payload is
+          // skipped up to the BEL or the ST (ESC \) terminator - it must never render
+          int j = i + 2;
+          while (j < len) {
+            if (line.charAt(j) == '\u0007') { j++; break; }
+            if (line.charAt(j) == '\u001B' && j + 1 < len && line.charAt(j + 1) == '\\') { j += 2; break; }
+            j++;
+          }
+          // The unterminated payload drops the remainder of the line (mirroring the
+          // truncated CSI above)
+          i = Math.min(j, len);
+          continue;
+        }
+        // The other two-byte ESC families (the charset shifts etc.): consume the pair
+        i += 2;
+        continue;
       }
       currentText.append(c);
       i++;
@@ -175,7 +197,12 @@ public final class AnsiParser {
   /// Strip all ANSI escape sequences from the string.
   public static String stripAnsi(String text) {
     if (text == null || text.isEmpty()) return text;
-    return text.replaceAll("\u001B\\[[0-9;]*[a-zA-Z]", "");
+    // Mirrors the parseLine state machine: the SGR/CSI sequences; the OSC payloads
+    // (the titles, the hyperlinks) up to their BEL/ST terminator (an unterminated
+    // payload rides to the end); the truncated (line-split) sequences
+    return text
+      .replaceAll("\u001B\\][^\u0007\u001B]*(?:\u0007|\u001B\\\\)?", "")
+      .replaceAll("\u001B\\[[0-9;]*[a-zA-Z]?", "");
   }
 
   private static Text createText(String content, boolean bold, boolean dim, boolean italic, boolean underline, Color fgColor) {

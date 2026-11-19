@@ -80,6 +80,19 @@ public final class Storage {
       } catch (AtomicMoveNotSupportedException e) {
         Files.move(image, target, StandardCopyOption.REPLACE_EXISTING);
       }
+      // The parent directory entry durability (best-effort): the rename above is only
+      // as durable as the directory's metadata - the platforms without a directory
+      // fsync (Windows, the file systems refusing directory channels) skip it silently
+      // WINDOWS: verify the directory-channel open fast-fails there (and is swallowed)
+      // on NTFS/FAT/exFAT, and that the rename durability without a directory fsync
+      // stays acceptable (the '~' image remains behind as the recovery residue)
+      if (target.getParent() != null) {
+        try (FileChannel directory = FileChannel.open(target.getParent(), StandardOpenOption.READ)) {
+          directory.force(true);
+        } catch (UnsupportedOperationException | IOException ignored) {
+          // The best-effort durability: no-op where the platform cannot do it
+        }
+      }
       if (target.getFileName().toString().startsWith(".")) {
         Bitferry.hideIfSupported(target);
       }

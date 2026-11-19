@@ -206,7 +206,17 @@ final class Dialogs {
           // absent - restic backup filters by exclusion only)
           case "backup" -> new Backup(manager, source, destination, form.password(), form.format(),
             execute, form.forget(), form.check(), form.serve(), exclude, keyring);
-          case "restore" -> new Restore(manager, source, destination, form.password(), execute, include, exclude, keyring);
+          // The restore resolves its snapshot scope first: the explicit (or uniquely
+          // derived) source backup task whose snapshots it selects from - on a shared
+          // (co-repository) repository the repo-wide fallback would restore whichever
+          // sibling task's data is the newest
+          case "restore" -> {
+            String scope = Restore.resolveSnapshotTag(manager, source, form.snapshotScope());
+            logs.log(scope == null
+              ? "No backup task bound to the repository found; the restore will select the newest bitferry-tagged snapshot repo-wide"
+              : "Restore snapshot scope: backup task " + scope);
+            yield new Restore(manager, source, destination, form.password(), execute, include, exclude, keyring, scope);
+          }
           default -> throw new BitferryError("Unknown task type " + form.type());
         };
         if (form.encryption() != null && task.supportsEncryption()) {
@@ -266,7 +276,7 @@ final class Dialogs {
           logs.log("Password updated for task " + AnsiFormat.tag(current.tag()));
           if (!stale.isEmpty()) {
             logs.log(AnsiFormat.error("Warning: the co-repository task(s) " + String.join(", ", stale)
-              + " were not reachable - their stored passwords were not updated (their volumes are not restored, or the tasks were deleted)."
+              + " were not reachable - their stored passwords were not updated (their hosting volumes are not restored)."
               + " The unreachable tasks' runs will fail the authentication until the token is re-synced (by the auto-heal upon their next run, or by re-entering the password)"));
           }
         }
@@ -328,7 +338,13 @@ final class Dialogs {
         if (current.usesVault()) {
           boolean wantKeyring = form.keyring();
           boolean heldKeyring = current.vaultProvider().orElse(io.bitferry.vault.Vault.volume()) == io.bitferry.vault.Vault.keyring();
-          if (wantKeyring != heldKeyring) {
+          // The gray-out artifact: a keyring-held token on a keyring-less host reads
+          // as the vault (the radio is disabled and cannot be selected) - the apparent
+          // difference is not a user decision, so the migration is skipped instead of
+          // attempting the doomed retrieval
+          if (heldKeyring && !io.bitferry.vault.KeyringVault.INSTANCE.available() && !wantKeyring) {
+            logs.log("Password stays in the OS keyring (no usable keyring on this host to migrate it from)");
+          } else if (wantKeyring != heldKeyring) {
             current.migrateVault(wantKeyring);
             logs.log("Password storage moved to the " + (wantKeyring ? "OS keyring" : "volume vault") + " for task " + AnsiFormat.tag(current.tag()));
           }
@@ -413,7 +429,14 @@ final class Dialogs {
       logs.log("Volume search path unchanged");
       return;
     }
-    io.bitferry.Paths.save(updated);
+    try {
+      io.bitferry.Paths.save(updated);
+    } catch (BitferryError e) {
+      // The separator characters cannot be persisted unambiguously: refuse the entry
+      // instead of silently splitting it into two on the following load
+      alert(context, javafx.scene.control.Alert.AlertType.ERROR, "Invalid search path", e.getMessage());
+      return;
+    }
     logs.log("Volume search path updated: " + updated.size() + " directory(ies)");
     context.reload();
   }

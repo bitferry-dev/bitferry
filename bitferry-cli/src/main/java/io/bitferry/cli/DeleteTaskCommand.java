@@ -5,6 +5,7 @@ import io.bitferry.task.*;
 import java.util.*;
 import java.util.concurrent.*;
 import picocli.CommandLine.*;
+import picocli.CommandLine.Help.Ansi;
 import picocli.CommandLine.Model.*;
 
 /// Delete existing tasks whose tags match specified tags.
@@ -40,10 +41,21 @@ public class DeleteTaskCommand implements Callable<Integer>, HasCommonOptions {
     if (!m.force) {
       throw new BitferryError("Task deletion requires --force (it tombstones the task in every referring storage); preview the selection with --dry-run");
     }
-    for (Task t : m.selectLiveTasks(tags)) {
+    var selected = m.selectLiveTasks(tags);
+    if (selected.isEmpty()) {
+      spec.commandLine().getErr().println(Ansi.AUTO.string("@|faint no task(s) match " + String.join(" ", tags) + "|@"));
+      return 0;
+    }
+    for (Task t : selected) {
+      // The selection echo doubles as the promised --dry-run preview (the deletion
+      // itself simulates through the commit below)
+      spec.commandLine().getOut().println(Ansi.AUTO.string("@|bold deleting|@ @|cyan " + t.tag() + "|@  " + t.describe()));
       t.delete();
     }
     m.commit();
+    if (m.simulate()) {
+      spec.commandLine().getErr().println(Ansi.AUTO.string("@|faint the deletion simulated (nothing was written); re-run without --dry-run to delete for real|@"));
+    }
     return 0;
   }
 }

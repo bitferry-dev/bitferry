@@ -51,6 +51,12 @@ public final class Main extends Application {
     stage.setOnHiding(event ->
       settings.capture(stage, controller.dividerPosition(), controller.verboseSelected(), controller.simulateSelected()));
 
+    // The window manager close shares the Exit action's busy guard: while a run is
+    // in progress the close request is consumed (the exit is confirmed there and
+    // performed once the run winds down - the unguarded exit would orphan the
+    // running backend child)
+    stage.setOnCloseRequest(controller::handleCloseRequest);
+
     // The initial manager restoration travels through the operations thread;
     // the panes fill in upon the model change notification
     context.reload();

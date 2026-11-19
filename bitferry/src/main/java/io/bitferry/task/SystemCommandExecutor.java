@@ -39,6 +39,13 @@ public final class SystemCommandExecutor implements CommandExecutor {
     if (environment != null && !environment.isEmpty()) {
       builder.environment().putAll(environment);
     }
+    // The parent-inherited password sources must not override the task's own
+    // RESTIC_PASSWORD (restic resolves command > file > plain env): a stray shell
+    // export would silently steer the password verification and the key rotation
+    // against a foreign credential. The backends' credentials always travel through
+    // the task environment here, so the removal is safe for every spawned child.
+    builder.environment().remove("RESTIC_PASSWORD_COMMAND");
+    builder.environment().remove("RESTIC_PASSWORD_FILE");
 
     if (output == null) {
       if (pumpStderr) {

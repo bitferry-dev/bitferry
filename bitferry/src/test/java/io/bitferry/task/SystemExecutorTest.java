@@ -1341,7 +1341,11 @@ class SystemExecutorTest {
     Manager restored = new Manager().restore(srcDir);
     assertTrue(restored.tasks().containsKey(correctBackup.tag()));
 
-    // 4. Force (--force) skips conformance, wipes and reinitializes with new password
+    // 4. Force (--force) skips conformance, wipes and reinitializes with new password.
+    // The previous co-repository sibling is deleted first: the forced wipe refuses to
+    // destroy the snapshots of a live sibling task (the guard protects the shared
+    // repositories - the deletion is the documented way out)
+    manager.task(correctBackup.tag()).delete();
     Backup forceBackup = new Backup(manager, src, repo, "new-force-password", true, null, null, null, List.of());
     vol.commit();
     assertTrue(manager.tasks().containsKey(forceBackup.tag()));
