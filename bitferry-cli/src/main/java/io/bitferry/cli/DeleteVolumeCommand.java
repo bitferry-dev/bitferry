@@ -32,7 +32,7 @@ public class DeleteVolumeCommand implements Callable<Integer>, HasCommonOptions 
   @Override
   public Integer call() {
     CommonOptions opts = CliUtils.resolveOptions(spec, options);
-    Manager m = CliUtils.restoreManager(opts);
+    Manager m = CliUtils.restoreManager(spec, opts);
     // The deletion is irreversible (the storage file is physically removed and every
     // task on the volume is tombstoned across the peer storages) and the selection is
     // fuzzy (a substring match), so the accidental one-keystroke destruction is gated

@@ -141,7 +141,7 @@ public final class TaskBreakdown {
     if (cadence == null) {
       appendProperty(sb, "Cadence:", "disabled (-)");
     } else {
-      String profile = Cadence.PROFILES.get("default").equals(cadence) ? " (profile: @default)" : "";
+      String profile = Cadence.PROFILES.get("default").equals(cadence) ? Ansi.AUTO.string(" (profile: @|bold,cyan @default|@)") : "";
       appendProperty(sb, "Cadence:", cadence.format() + profile);
     }
 
@@ -230,9 +230,9 @@ public final class TaskBreakdown {
     if (backup.check() == null) {
       appendProperty(sb, "Check:", "none");
     } else if (backup.check().isEmpty()) {
-      appendProperty(sb, "Check:", "@default (structural)"); 
+      appendProperty(sb, "Check:", Ansi.AUTO.string("@|bold,cyan @default|@ (structural)"));
     } else if (backup.check().contains("--read-data")) {
-      appendProperty(sb, "Check:", "@full (--read-data)");
+      appendProperty(sb, "Check:", Ansi.AUTO.string("@|bold,cyan @full|@ (--read-data)"));
     } else {
       appendProperty(sb, "Check:", String.join(" ", backup.check()));
     }

@@ -1,7 +1,5 @@
 package io.bitferry.cli;
 
-import java.nio.file.*;
-import java.util.*;
 import picocli.CommandLine.*;
 
 /// Common command line options that can be supplied before or after subcommands.
@@ -26,9 +24,6 @@ public class CommonOptions {
   @Option(names = "--force", description = "Allow potentially dangerous operations.")
   public boolean force;
 
-  @Option(names = "--path", split = ",", description = "Additional directory paths to probe for volumes.")
-  public List<Path> paths;
-
   /// Merge this options instance with parent options following the most-verbose-wins rule.
   public CommonOptions merge(CommonOptions parent) {
     if (parent == null) return this;
@@ -38,11 +33,6 @@ public class CommonOptions {
     merged.debug = this.debug || parent.debug;
     merged.simulate = this.simulate || parent.simulate;
     merged.force = this.force || parent.force;
-    if (this.paths != null || parent.paths != null) {
-      merged.paths = new ArrayList<>();
-      if (parent.paths != null) merged.paths.addAll(parent.paths);
-      if (this.paths != null) merged.paths.addAll(this.paths);
-    }
     return merged;
   }
 }

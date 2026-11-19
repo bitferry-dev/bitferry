@@ -32,62 +32,50 @@ public class ModifyTaskCommand implements Callable<Integer>, HasCommonOptions {
   @Option(names = {"-p", "--password"}, description = "Update the repository password.")
   boolean password;
 
-  @Option(names = "--vault", description = "Migrate sensitive data storage to 'bitferry' (volume storage) or 'keyring' (OS keyring).", paramLabel = "PROVIDER")
+  @Option(names = "--vault", description = "Migrate sensitive data storage to @|bold,cyan bitferry|@ (volume storage) or @|bold,cyan keyring|@ (OS keyring).", paramLabel = "PROVIDER")
   String vault;
 
-  @Option(names = "-V", description = "Shorthand for --vault bitferry.")
+  @Option(names = "-z", description = "Shorthand for --vault bitferry.")
   boolean bitferryVault;
 
-  @Option(names = "-K", description = "Shorthand for --vault keyring.")
+  @Option(names = "-k", description = "Shorthand for --vault keyring.")
   boolean keyring;
 
   @Option(names = {"-t", "--type"}, description = "Operation type for rclone tasks (copy, update, replicate, equalize).", paramLabel = "TYPE")
   String type;
 
-  @Option(names = "-f", description = "Apply default snapshot retention policy options.")
-  boolean defaultForget;
-
-  @Option(names = {"-F", "--forget"}, description = "Snapshot retention policy options (or '-' to disable).", paramLabel = "PROFILE|OPTS")
+  @Option(names = "--forget", description = "Snapshot retention policy with profile @|bold,cyan (@default)|@, options, or @|bold,cyan -|@ to disable.", paramLabel = "PROFILE|OPTS")
   String forget;
 
-  @Option(names = "-c", description = "Apply default repository integrity check options.")
-  boolean defaultCheck;
-
-  @Option(names = {"-C", "--check"}, description = "Repository integrity check options (or '-' to disable).", paramLabel = "PROFILE|OPTS")
+  @Option(names = "--check", description = "Repository integrity check with profile @|bold,cyan (@default, @full)|@, options, or @|bold,cyan -|@ to disable.", paramLabel = "PROFILE|OPTS")
   String check;
 
-  @Option(names = "-s", description = "Apply default serve cadence (@default).")
-  boolean defaultServe;
-
-  @Option(names = {"-S", "--serve"}, description = "Serve cadence with profile (@default) or '<duration>,<count>' (or '-' to disable).", paramLabel = "CADENCE")
+  @Option(names = "--serve", description = "Serve cadence with profile @|bold,cyan (@default)|@, @|bold,cyan <duration>,<count>|@, or @|bold,cyan -|@ to disable.", paramLabel = "CADENCE")
   String serve;
 
-  @Option(names = {"-X", "--execute"}, description = "Backend execution options (or '-' to clear).", paramLabel = "PROFILE|OPTS")
+  @Option(names = {"-b", "--backup-task"}, description = "Backup task tag scoping the restore snapshot selection, or @|bold,cyan -|@ for the default scope (derived from the repository when unambiguous, otherwise the newest bitferry-tagged snapshot repo-wide; restore tasks only).", paramLabel = "TAG")
+  String backupTask;
+
+  @Option(names = {"-x", "--execute"}, description = "Backend execution options, profile @|bold,cyan (@default)|@, or @|bold,cyan -|@ to clear.", paramLabel = "PROFILE|OPTS")
   String execute;
 
-  @Option(names = "--include", split = ",", description = "Include path specifications (comma-separated list).")
+  @Option(names = "--include", split = ",", description = "Include path specifications (comma-separated list), or @|bold,cyan -|@ to clear.", paramLabel = "PATTERN")
   List<String> include;
 
-  @Option(names = "--include-ext", split = ",", description = "Include file extensions (comma-separated list).")
+  @Option(names = "--include-ext", split = ",", description = "Include file extensions (comma-separated list), or @|bold,cyan -|@ to clear.", paramLabel = "EXT")
   List<String> includeExts;
 
-  @Option(names = "--exclude", split = ",", description = "Exclude path specifications (comma-separated list).")
+  @Option(names = "--exclude", split = ",", description = "Exclude path specifications (comma-separated list), or @|bold,cyan -|@ to clear.", paramLabel = "PATTERN")
   List<String> exclude;
 
-  @Option(names = "--exclude-ext", split = ",", description = "Exclude file extensions (comma-separated list).")
+  @Option(names = "--exclude-ext", split = ",", description = "Exclude file extensions (comma-separated list), or @|bold,cyan -|@ to clear.", paramLabel = "EXT")
   List<String> excludeExts;
 
-  @Option(names = "--clear-include", description = "Clear include path specifications.")
-  boolean clearInclude;
+  @Option(names = "-m", description = "Shorthand for --execution manual (exclude the task from the mass runs; run it by its tag only).")
+  boolean manualExecution;
 
-  @Option(names = "--clear-exclude", description = "Clear exclude path specifications.")
-  boolean clearExclude;
-
-  @Option(names = "--manual", description = "Exclude the task from the mass runs (run it by its tag only).")
-  boolean manual;
-
-  @Option(names = "--no-manual", description = "Include the task in the mass runs.")
-  boolean noManual;
+  @Option(names = "--execution", description = "Mass-run participation: @|bold,cyan manual|@ (run it by its tag only) or @|bold,cyan automatic|@ (include in the mass runs).", paramLabel = "MODE")
+  String execution;
 
   @Override
   public CommonOptions commonOptions() {
@@ -99,30 +87,44 @@ public class ModifyTaskCommand implements Callable<Integer>, HasCommonOptions {
     PrintWriter out = spec != null ? spec.commandLine().getOut() : new PrintWriter(System.out, true);
     CommonOptions opts = CliUtils.resolveOptions(spec, options);
 
-    if (defaultForget && forget != null) throw new BitferryError("Cannot specify both -f and -F");
-    if (defaultCheck && check != null) throw new BitferryError("Cannot specify both -c and -C");
-    if (defaultServe && serve != null) throw new BitferryError("Cannot specify both -s and -S");
-    if (clearInclude && (include != null || includeExts != null)) throw new BitferryError("Cannot specify both --include/--include-ext and --clear-include");
-    if (clearExclude && (exclude != null || excludeExts != null)) throw new BitferryError("Cannot specify both --exclude/--exclude-ext and --clear-exclude");
-    if (manual && noManual) throw new BitferryError("Cannot specify both --manual and --no-manual");
+    // The filter option pairs honor the global '-' clear marker: '-' in either half
+    // wipes the specifications; the marker combined with the real patterns of its
+    // pair (across the repeated occurrences too) is rejected
+    boolean includeCleared = CliUtils.isCleared(include) || CliUtils.isCleared(includeExts);
+    boolean includeSet = (include != null && !CliUtils.isCleared(include)) || (includeExts != null && !CliUtils.isCleared(includeExts));
+    if (CliUtils.mixesClearMarker(include) || CliUtils.mixesClearMarker(includeExts) || (includeCleared && includeSet)) {
+      throw new BitferryError("Cannot combine '-' (clear) with the include patterns");
+    }
+    boolean excludeCleared = CliUtils.isCleared(exclude) || CliUtils.isCleared(excludeExts);
+    boolean excludeSet = (exclude != null && !CliUtils.isCleared(exclude)) || (excludeExts != null && !CliUtils.isCleared(excludeExts));
+    if (CliUtils.mixesClearMarker(exclude) || CliUtils.mixesClearMarker(excludeExts) || (excludeCleared && excludeSet)) {
+      throw new BitferryError("Cannot combine '-' (clear) with the exclude patterns");
+    }
 
-    boolean hasForget = defaultForget || forget != null;
-    boolean hasCheck = defaultCheck || check != null;
-    boolean hasServe = defaultServe || serve != null;
-    boolean hasInclude = clearInclude || include != null || includeExts != null;
-    boolean hasExclude = clearExclude || exclude != null || excludeExts != null;
+    // The mass-run participation is validated upfront (the bogus modes fail before any probing):
+    // the shorthand and the explicit forms of the same setting are mutually exclusive
+    if (manualExecution && execution != null) throw new BitferryError("Execution mode specified twice: use either -m or --execution");
+    Boolean manual = manualExecution ? Boolean.TRUE : CliUtils.resolveExecution(execution);
+    boolean hasExecution = manual != null;
+
+    boolean hasForget = forget != null;
+    boolean hasCheck = check != null;
+    boolean hasServe = serve != null;
+    boolean hasBackupTask = backupTask != null;
+    boolean hasInclude = includeCleared || includeSet;
+    boolean hasExclude = excludeCleared || excludeSet;
     boolean hasExecute = execute != null;
     boolean hasType = type != null;
-    boolean hasManual = manual || noManual;
+    boolean hasManual = hasExecution;
 
     Boolean targetKeyring = CliUtils.resolveVaultMigration(vault, bitferryVault, keyring);
     boolean hasVault = targetKeyring != null;
 
-    if (!password && !hasVault && !hasForget && !hasCheck && !hasServe && !hasInclude && !hasExclude && !hasExecute && !hasType && !hasManual) {
+    if (!password && !hasVault && !hasForget && !hasCheck && !hasServe && !hasBackupTask && !hasInclude && !hasExclude && !hasExecute && !hasType && !hasManual) {
       throw new BitferryError("No modifications specified for task " + tag);
     }
 
-    Manager m = CliUtils.restoreManager(opts);
+    Manager m = CliUtils.restoreManager(spec, opts);
     List<Task> selected = m.selectLiveTasks(List.of(tag));
     Task task = selected.get(0);
 
@@ -137,11 +139,16 @@ public class ModifyTaskCommand implements Callable<Integer>, HasCommonOptions {
       }
     }
 
+    if (hasBackupTask && !(task instanceof Restore)) {
+      throw new BitferryError("Backup task scope is only applicable to restore tasks");
+    }
+
     // The include filters are rejected upfront (before any mutation): the capability
     // is structural (the [IncludeFilters] mixin on the rclone family and the restore
     // tasks), so the filter-less operations (the backup ones - restic backup filters
-    // by exclusion only) carry neither the state nor the accessors
-    if ((include != null || includeExts != null) && !(task instanceof IncludeFilters)) {
+    // by exclusion only) carry neither the state nor the accessors. The clear ('-')
+    // is the tolerated no-op there (only the set requests are rejected)
+    if (includeSet && !(task instanceof IncludeFilters)) {
       throw new BitferryError("Include filters are not applicable to backup tasks (restic backup filters by exclusion only)");
     }
 
@@ -184,32 +191,34 @@ public class ModifyTaskCommand implements Callable<Integer>, HasCommonOptions {
       task.setProcessOptions(execute);
     }
 
-    // The resolved policies (the -f/-c/-s shorthands expand to the @default profiles)
-    task.applyPolicyOptions(
-      defaultForget ? "@default" : forget,
-      defaultCheck ? "@default" : check,
-      defaultServe ? "@default" : serve);
+    // The resolved policies
+    task.applyPolicyOptions(forget, check, serve);
+
+    // The snapshot scope re-selection (restore tasks only, guarded upfront): '-'
+    // clears the explicit scope (the default derived selection applies at the run
+    // time); the explicit tag must name a live backup task (the create-path rule)
+    if (hasBackupTask) {
+      ((Restore) task).setSnapshotTag("-".equals(backupTask) ? null : Restore.resolveSnapshotTag(m, task.source(), backupTask));
+    }
 
     // The clear is the tolerated no-op for the capability-less tasks (the upfront
     // guard above has already rejected the set requests)
-    if (clearInclude) {
+    if (includeCleared) {
       if (task instanceof IncludeFilters includable) includable.clearInclude();
-    } else if (include != null || includeExts != null) {
+    } else if (includeSet) {
       ((IncludeFilters) task).setInclude(CliUtils.parsePatterns(include, includeExts));
     }
 
-    if (clearExclude) {
+    if (excludeCleared) {
       task.clearExclude();
-    } else if (exclude != null || excludeExts != null) {
+    } else if (excludeSet) {
       task.setExclude(CliUtils.parsePatterns(exclude, excludeExts));
     }
 
     // The mass-run participation marker (the morph carries it over, so the position
     // relative to the morph is immaterial)
-    if (manual) {
-      task.setManual(true);
-    } else if (noManual) {
-      task.setManual(false);
+    if (hasExecution) {
+      task.setManual(manual);
     }
 
     m.commit();

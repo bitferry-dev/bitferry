@@ -39,7 +39,7 @@ public class InfoTaskCommand implements Callable<Integer>, HasCommonOptions {
     PrintWriter out = spec != null ? spec.commandLine().getOut() : new PrintWriter(System.out, true);
     PrintWriter err = spec != null ? spec.commandLine().getErr() : new PrintWriter(System.err, true);
     CommonOptions opts = CliUtils.resolveOptions(spec, options);
-    Manager m = CliUtils.restoreManager(opts);
+    Manager m = CliUtils.restoreManager(spec, opts);
     Map<String, Task> tasks = m.selectTasks(tags);
     boolean first = true;
     for (Task t : tasks.values()) {

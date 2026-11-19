@@ -33,35 +33,38 @@ public class CreateRestoreCommand implements Callable<Integer>, HasCommonOptions
   String destination;
 
   @Profiles(Restore.class)
-  @Option(names = {"-X", "--execute"}, description = "Extra backend execution options (comma-separated), profile @|bold,cyan (@default)|@ or '-' for none.")
+  @Option(names = {"-x", "--execute"}, description = "Extra backend execution options (comma-separated), profile @|bold,cyan (@default)|@ or @|bold,cyan -|@ for none.", paramLabel = "PROFILE|OPTS")
   String execute;
 
-  @Option(names = "--include", split = ",", description = "Include path specifications (comma-separated list).")
+  @Option(names = "--include", split = ",", description = "Include path specifications (comma-separated list).", paramLabel = "PATTERN")
   List<String> include;
 
-  @Option(names = "--exclude", split = ",", description = "Exclude path specifications (comma-separated list).")
+  @Option(names = "--exclude", split = ",", description = "Exclude path specifications (comma-separated list).", paramLabel = "PATTERN")
   List<String> exclude;
 
-  @Option(names = "-i", split = ",", description = "Include file extensions (comma-separated list).")
+  @Option(names = "--include-ext", split = ",", description = "Include file extensions (comma-separated list).", paramLabel = "EXT")
   List<String> includeExts;
 
-  @Option(names = "-x", split = ",", description = "Exclude file extensions (comma-separated list).")
+  @Option(names = "--exclude-ext", split = ",", description = "Exclude file extensions (comma-separated list).", paramLabel = "EXT")
   List<String> excludeExts;
 
-  @Option(names = "--vault", description = "Vault provider for sensitive data: 'bitferry' (volume storage) or 'keyring' (OS keyring).", paramLabel = "PROVIDER")
+  @Option(names = "--vault", description = "Vault provider for sensitive data: @|bold,cyan bitferry|@ (volume storage) or @|bold,cyan keyring|@ (OS keyring).", paramLabel = "PROVIDER")
   String vault;
 
-  @Option(names = "-V", description = "Shorthand for --vault bitferry (store sensitive data in volume vault).")
+  @Option(names = "-z", description = "Shorthand for --vault bitferry (store sensitive data in volume vault).")
   boolean bitferryVault;
 
-  @Option(names = "-K", description = "Shorthand for --vault keyring (fixed volumes only).")
+  @Option(names = "-k", description = "Shorthand for --vault keyring (fixed volumes only).")
   boolean keyring;
 
-  @Option(names = "--source-task", description = "Source backup task tag scoping the restore (the newest snapshot of that task is selected; default: derived from the repository when unambiguous, otherwise the newest bitferry-tagged snapshot repo-wide).")
-  String sourceTask;
+  @Option(names = {"-b", "--backup-task"}, description = "Backup task tag scoping the restore (the newest snapshot of that task is selected), or @|bold,cyan -|@ for the default scope (derived from the repository when unambiguous, otherwise the newest bitferry-tagged snapshot repo-wide).", paramLabel = "TAG")
+  String backupTask;
 
-  @Option(names = "--manual", description = "Exclude the task from the mass runs (run it by its tag only).")
-  boolean manual;
+  @Option(names = "-m", description = "Shorthand for --execution manual (exclude the task from the mass runs; run it by its tag only).")
+  boolean manualExecution;
+
+  @Option(names = "--execution", description = "Mass-run participation: @|bold,cyan manual|@ (run it by its tag only) or @|bold,cyan automatic|@ (include in the mass runs; the default).", paramLabel = "MODE")
+  String execution;
 
   @Override
   public CommonOptions commonOptions() {
@@ -70,8 +73,12 @@ public class CreateRestoreCommand implements Callable<Integer>, HasCommonOptions
 
   @Override
   public Integer call() {
+    // The mass-run participation is validated upfront (the bogus modes fail before any probing):
+    // the shorthand and the explicit forms of the same setting are mutually exclusive
+    if (manualExecution && execution != null) throw new BitferryError("Execution mode specified twice: use either -m or --execution");
+    Boolean manual = manualExecution ? Boolean.TRUE : CliUtils.resolveExecution(execution);
     CommonOptions opts = CliUtils.resolveOptions(spec, options);
-    Manager m = CliUtils.restoreManager(opts);
+    Manager m = CliUtils.restoreManager(spec, opts);
     // The bare paths encompassed by the intact volumes are attached to them
     Endpoint repo = Endpoints.parse(m, repository);
     Endpoint dst = Endpoints.parse(m, destination);
@@ -82,16 +89,17 @@ public class CreateRestoreCommand implements Callable<Integer>, HasCommonOptions
     List<String> exc = CliUtils.parsePatterns(exclude, excludeExts);
     // The snapshot scope: the explicit (or uniquely derived) source backup task whose
     // snapshots the restore selects from - on a shared (co-repository) repository the
-    // repo-wide fallback would restore whichever sibling task's data is the newest
-    String scope = Restore.resolveSnapshotTag(m, repo, sourceTask);
+    // repo-wide fallback would restore whichever sibling task's data is the newest.
+    // The '-' marker declines the explicit scoping (the default resolution applies)
+    String scope = Restore.resolveSnapshotTag(m, repo, "-".equals(backupTask) ? null : backupTask);
     if (scope != null) {
       spec.commandLine().getOut().println("Snapshot scope: backup task " + scope);
     } else {
-      spec.commandLine().getErr().println(Ansi.AUTO.string("@|faint no backup task bound to the repository found; the restore will select the newest bitferry-tagged snapshot repo-wide (--source-task pins it)|@"));
+      spec.commandLine().getErr().println(Ansi.AUTO.string("@|faint no backup task bound to the repository found; the restore will select the newest bitferry-tagged snapshot repo-wide (--backup-task pins it)|@"));
     }
     boolean toKeyring = CliUtils.resolveKeyring(vault, bitferryVault, keyring, false);
     Restore task = new Restore(m, repo, dst, password, execute, inc, exc, toKeyring, scope);
-    if (manual) {
+    if (Boolean.TRUE.equals(manual)) {
       task.setManual(true);
     }
     CliUtils.noteKeyringStorage(spec, task, toKeyring);

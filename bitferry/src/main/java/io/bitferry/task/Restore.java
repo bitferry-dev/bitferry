@@ -81,6 +81,14 @@ public class Restore extends Restic implements IncludeFilters {
     return snapshotTag;
   }
 
+  /// Re-scope the snapshot selection: the backup task whose snapshots the restore
+  /// selects from (null clearing the explicit scope, the default derived selection
+  /// applying at the run time).
+  public void setSnapshotTag(String snapshotTag) {
+    this.snapshotTag = snapshotTag;
+    touch();
+  }
+
   /// The live backup tasks serving the specified repository endpoint: the snapshot
   /// scope candidates of a restore task targeting it (matching by the processed
   /// endpoint form, mirroring the repository the backups write into).
@@ -111,7 +119,7 @@ public class Restore extends Restic implements IncludeFilters {
     List<String> candidates = scopeCandidates(manager, repository);
     if (candidates.size() > 1) {
       throw new BitferryError("Repository " + repository.processOpts() + " is served by multiple backup tasks (" + String.join(", ", candidates)
-        + "); specify the snapshot scope explicitly (--source-task in the CLI, the snapshot scope field in the GUI)");
+        + "); specify the snapshot scope explicitly (--backup-task in the CLI, the snapshot scope field in the GUI)");
     }
     return candidates.isEmpty() ? null : candidates.getFirst();
   }

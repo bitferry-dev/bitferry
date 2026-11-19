@@ -44,7 +44,7 @@ public class InfoCommand implements Callable<Integer>, HasCommonOptions {
   /// Execute the info command with the resolved options.
   public int runWith(CommonOptions resolvedOptions) {
     PrintWriter out = spec != null ? spec.commandLine().getOut() : new PrintWriter(System.out, true);
-    Manager m = CliUtils.restoreManager(resolvedOptions);
+    Manager m = CliUtils.restoreManager(spec, resolvedOptions);
     // The quiet mode suppresses the decorative auxiliaries (the faint notices and the
     // blank separators); the listing itself is the payload and stays (mirroring the
     // batch runner's chatter/diagnostics split)

@@ -70,7 +70,7 @@ public final class CliUtils {
   /// Obtain the salt by prompting from the terminal with hidden input and confirmation.
   public static String obtainSalt() {
     String salt = saltSource.get();
-    if (salt == null || salt.isEmpty()) throw new BitferryError("Salt must be specified when -S/--salt is requested");
+    if (salt == null || salt.isEmpty()) throw new BitferryError("Salt must be specified when -s/--salt is requested");
     return salt;
   }
 
@@ -78,11 +78,11 @@ public final class CliUtils {
   /// Defaults to [defaultKeyring] when neither option is specified.
   public static boolean resolveKeyring(String vault, boolean bitferryVault, boolean keyring, boolean defaultKeyring) {
     if (bitferryVault && keyring) {
-      throw new BitferryError("Conflicting vault storage options: cannot specify both -V and -K");
+      throw new BitferryError("Conflicting vault storage options: cannot specify both -z and -k");
     }
     if (vault != null) {
       if (bitferryVault || keyring) {
-        throw new BitferryError("Cannot combine --vault with -V or -K");
+        throw new BitferryError("Cannot combine --vault with -z or -k");
       }
       if ("keyring".equalsIgnoreCase(vault)) return true;
       if ("bitferry".equalsIgnoreCase(vault) || "volume".equalsIgnoreCase(vault)) return false;
@@ -96,11 +96,11 @@ public final class CliUtils {
   /// Resolve the requested vault migration target, returning null when no migration was requested.
   public static Boolean resolveVaultMigration(String vault, boolean bitferryVault, boolean keyring) {
     if (bitferryVault && keyring) {
-      throw new BitferryError("Conflicting vault storage options: cannot combine -V and -K");
+      throw new BitferryError("Conflicting vault storage options: cannot combine -z and -k");
     }
     if (vault != null) {
       if (bitferryVault || keyring) {
-        throw new BitferryError("Cannot combine --vault with -V or -K");
+        throw new BitferryError("Cannot combine --vault with -z or -k");
       }
       if ("keyring".equalsIgnoreCase(vault)) return true;
       if ("bitferry".equalsIgnoreCase(vault) || "volume".equalsIgnoreCase(vault)) return false;
@@ -109,6 +109,16 @@ public final class CliUtils {
     if (bitferryVault) return false;
     if (keyring) return true;
     return null;
+  }
+
+  /// Resolve the requested mass-run participation mode, returning null when the
+  /// mode was not specified. The bare -m alias rides the option's fallback value
+  /// ('manual'), so the resolution sees the fully resolved mode here.
+  public static Boolean resolveExecution(String execution) {
+    if (execution == null) return null;
+    if ("manual".equalsIgnoreCase(execution)) return true;
+    if ("automatic".equalsIgnoreCase(execution)) return false;
+    throw new BitferryError("Unsupported execution mode '" + execution + "'; must be 'manual' or 'automatic'");
   }
 
   /// Surface the keyring storage outcome as a faint advisory note: the explicit
@@ -214,13 +224,27 @@ public final class CliUtils {
     return m;
   }
 
+  /// The probe roots explicitly supplied on the modify command line: --path is
+  /// declared on the bare modify command only (the volume discovery tuning rides
+  /// the entity modification surface), so the resolution walks the whole spec
+  /// hierarchy looking for it (the leaf flows read it transparently).
+  public static List<Path> probePaths(CommandSpec spec) {
+    for (CommandSpec level = spec; level != null; level = level.parent()) {
+      if (level.userObject() instanceof ModifyCommand modify && modify.paths != null) {
+        return modify.paths;
+      }
+    }
+    return List.of();
+  }
+
   /// Create, configure and restore a Manager instance by probing available volumes.
   /// The probing policy of the CLI: the explicit --path roots, the BITFERRY_PATH
   /// directories, the bitferry.path system property (the JVM-level injection mirroring
   /// the GUI's AppContext), the user's home directory and all the mounted file systems.
-  public static Manager restoreManager(CommonOptions opts) {
+  public static Manager restoreManager(CommandSpec spec, CommonOptions opts) {
     Manager m = createManager(opts);
-    List<Path> roots = opts.paths == null ? new ArrayList<>() : new ArrayList<>(opts.paths);
+    List<Path> explicit = probePaths(spec);
+    List<Path> roots = explicit.isEmpty() ? new ArrayList<>() : new ArrayList<>(explicit);
     String env = System.getenv("BITFERRY_PATH");
     if (env != null && !env.isBlank()) {
       roots.addAll(io.bitferry.Paths.parseEntries(env));
@@ -255,8 +279,31 @@ public final class CliUtils {
     }
   }
 
+  /// Whether the option value list carries only the '-' clear marker: the global
+  /// convention for the empty lists (the pattern/ext option pairs accept '-' where
+  /// the scalar options do, mirroring the '-' of --execute/--forget/--check/--serve).
+  /// The repeated occurrences accumulate into one list, so the detection is
+  /// element-wise rather than positional.
+  public static boolean isCleared(List<String> specs) {
+    return specs != null && !specs.isEmpty() && specs.stream().allMatch("-"::equals);
+  }
+
+  /// Whether the option value list mixes the '-' clear marker with the real values
+  /// (the mutually exclusive request).
+  public static boolean mixesClearMarker(List<String> specs) {
+    return specs != null && specs.stream().anyMatch("-"::equals) && specs.stream().anyMatch(s -> !"-".equals(s));
+  }
+
   /// Parse and combine comma-separated filter specs and file extension lists.
+  /// The '-' clear marker in either half yields the empty list (the filters
+  /// wiped/absent); combining the marker with the real patterns is rejected.
   public static List<String> parsePatterns(List<String> specs, List<String> exts) {
+    boolean cleared = isCleared(specs) || isCleared(exts);
+    boolean specified = (specs != null && !isCleared(specs)) || (exts != null && !isCleared(exts));
+    if (mixesClearMarker(specs) || mixesClearMarker(exts) || (cleared && specified)) {
+      throw new BitferryError("Cannot combine '-' (clear) with the specified patterns");
+    }
+    if (cleared) return List.of();
     List<String> patterns = new ArrayList<>();
     if (specs != null) {
       for (String spec : specs) {
@@ -273,7 +320,7 @@ public final class CliUtils {
         if (ext != null) {
           for (String part : ext.split(",")) {
             part = part.trim();
-            // The leading dot is tolerated: '-i .txt' and '-i txt' mean the same
+            // The leading dot is tolerated: '--include-ext .txt' and '--include-ext txt' mean the same
             while (part.startsWith(".")) part = part.substring(1);
             if (!part.isEmpty()) patterns.add("*." + part);
           }
@@ -315,7 +362,7 @@ public final class CliUtils {
     PrintWriter out = spec != null ? spec.commandLine().getOut() : new PrintWriter(System.out, true);
     PrintWriter err = spec != null ? spec.commandLine().getErr() : new PrintWriter(System.err, true);
     CommonOptions opts = resolveOptions(spec, options);
-    Manager m = restoreManager(opts);
+    Manager m = restoreManager(spec, opts);
     // The tasks skipped due to the absent volumes are surfaced in verbose mode
     List<Task> stale = m.liveTasks().values().stream().filter(t -> !t.isIntact()).toList();
     if (!stale.isEmpty() && m.verbose()) {

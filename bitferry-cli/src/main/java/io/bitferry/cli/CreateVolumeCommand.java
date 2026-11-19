@@ -35,7 +35,7 @@ public class CreateVolumeCommand implements Callable<Integer>, HasCommonOptions 
     // The full manager restoration (not the narrow fresh one): the creation commits
     // the whole volume set, so the collected tombstones materialize their removal
     // from the other storages within this very command
-    Manager m = CliUtils.restoreManager(opts);
+    Manager m = CliUtils.restoreManager(spec, opts);
     // The non-existent root is refused: the storage writing would silently materialize
     // the whole (possibly typo'd) hierarchy. The explicit --force keeps the old
     // auto-create behavior for the scripting flows.

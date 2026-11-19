@@ -37,52 +37,55 @@ public abstract class RcloneTaskCommand implements Callable<Integer>, HasCommonO
   String destination;
 
   @Profiles(Rclone.class)
-  @Option(names = {"-X", "--execute"}, description = "Extra backend execution options (comma-separated), profile @|bold,cyan (@default)|@ or '-' for none.")
+  @Option(names = {"-x", "--execute"}, description = "Extra backend execution options (comma-separated), profile @|bold,cyan (@default)|@ or @|bold,cyan -|@ for none.", paramLabel = "PROFILE|OPTS")
   String execute;
 
-  @Option(names = "--include", split = ",", description = "Include path specifications (comma-separated list).")
+  @Option(names = "--include", split = ",", description = "Include path specifications (comma-separated list).", paramLabel = "PATTERN")
   List<String> include;
 
-  @Option(names = "--exclude", split = ",", description = "Exclude path specifications (comma-separated list).")
+  @Option(names = "--exclude", split = ",", description = "Exclude path specifications (comma-separated list).", paramLabel = "PATTERN")
   List<String> exclude;
 
-  @Option(names = "-i", split = ",", description = "Include file extensions (comma-separated list).")
+  @Option(names = "--include-ext", split = ",", description = "Include file extensions (comma-separated list).", paramLabel = "EXT")
   List<String> includeExts;
 
-  @Option(names = "-x", split = ",", description = "Exclude file extensions (comma-separated list).")
+  @Option(names = "--exclude-ext", split = ",", description = "Exclude file extensions (comma-separated list).", paramLabel = "EXT")
   List<String> excludeExts;
 
-  @Option(names = "-e", description = "Encrypt files in destination using @default profile.")
+  @Option(names = "-e", description = "Encrypt files in destination using @|bold,cyan @default|@ profile.")
   boolean encryptDefault;
 
   @Option(names = "-d", description = "Decrypt source files using @|bold,cyan @default|@ profile.")
   boolean decryptDefault;
 
   @Profiles(value = Rclone.class, field = "PROFILE")
-  @Option(names = {"-E", "--encrypt"}, description = "Encrypt files in destination using specified profile @|bold,cyan (@default, @extended)|@ or options.")
+  @Option(names = "--encrypt", description = "Encrypt files in destination using specified profile @|bold,cyan (@default, @extended)|@ or options.", paramLabel = "PROFILE|OPTS")
   String encrypt;
 
   @Profiles(value = Rclone.class, field = "PROFILE")
-  @Option(names = {"-D", "--decrypt"}, description = "Decrypt source files using specified profile @|bold,cyan (@default, @extended)|@ or options.")
+  @Option(names = "--decrypt", description = "Decrypt source files using specified profile @|bold,cyan (@default, @extended)|@ or options.", paramLabel = "PROFILE|OPTS")
   String decrypt;
 
-  @Option(names = "-u", description = "Apply extended (unicode) encryption profile options.")
+  @Option(names = "-u", description = "Augment the encryption options (-e, -d) with the @|bold,cyan @extended|@ profile (unicode filename encoding).")
   boolean extended;
 
-  @Option(names = "--vault", description = "Vault provider for sensitive data: 'bitferry' (volume storage) or 'keyring' (OS keyring).", paramLabel = "PROVIDER")
+  @Option(names = "--vault", description = "Vault provider for sensitive data: @|bold,cyan bitferry|@ (volume storage) or @|bold,cyan keyring|@ (OS keyring).", paramLabel = "PROVIDER")
   String vault;
 
-  @Option(names = "-V", description = "Shorthand for --vault bitferry (store sensitive data in volume vault).")
+  @Option(names = "-z", description = "Shorthand for --vault bitferry (store sensitive data in volume vault).")
   boolean bitferryVault;
 
-  @Option(names = "-K", description = "Shorthand for --vault keyring (fixed volumes only).")
+  @Option(names = "-k", description = "Shorthand for --vault keyring (fixed volumes only).")
   boolean keyring;
 
-  @Option(names = {"-S", "--salt"}, description = "Prompt for a secondary password / salt (required when reusing an existing rclone crypt remote created with a custom salt).")
+  @Option(names = {"-s", "--salt"}, description = "Prompt for a secondary password / salt (required when reusing an existing rclone crypt remote created with a custom salt).")
   boolean salt;
 
-  @Option(names = "--manual", description = "Exclude the task from the mass runs (run it by its tag only).")
-  boolean manual;
+  @Option(names = "-m", description = "Shorthand for --execution manual (exclude the task from the mass runs; run it by its tag only).")
+  boolean manualExecution;
+
+  @Option(names = "--execution", description = "Mass-run participation: @|bold,cyan manual|@ (run it by its tag only) or @|bold,cyan automatic|@ (include in the mass runs; the default).", paramLabel = "MODE")
+  String execution;
 
   @Override
   public CommonOptions commonOptions() {
@@ -105,6 +108,10 @@ public abstract class RcloneTaskCommand implements Callable<Integer>, HasCommonO
     if (extended && (encrypt != null || decrypt != null)) throw new BitferryError("Invalid encryption options: the extended profile modifier (-u) conflicts with the explicitly specified encryption profile");
     if (extended && !encryptRequested && !decryptRequested) throw new BitferryError("Invalid encryption options: the extended profile modifier requires the encryption to be requested");
     String profile = encrypt != null ? encrypt : decrypt != null ? decrypt : extended ? "@extended" : "@default";
+    // The mass-run participation is validated upfront (the bogus modes fail before any probing):
+    // the shorthand and the explicit forms of the same setting are mutually exclusive
+    if (manualExecution && execution != null) throw new BitferryError("Execution mode specified twice: use either -m or --execution");
+    Boolean manual = manualExecution ? Boolean.TRUE : CliUtils.resolveExecution(execution);
     boolean toKeyring = CliUtils.resolveKeyring(vault, bitferryVault, keyring, false);
     if (!encryptRequested && !decryptRequested && (vault != null || bitferryVault || keyring)) {
       throw new BitferryError("Vault storage option is applicable to encrypted tasks only");
@@ -113,7 +120,7 @@ public abstract class RcloneTaskCommand implements Callable<Integer>, HasCommonO
       throw new BitferryError("Salt option requires encryption to be requested (-e, -d, --encrypt, --decrypt)");
     }
     CommonOptions opts = CliUtils.resolveOptions(spec, options);
-    Manager m = CliUtils.restoreManager(opts);
+    Manager m = CliUtils.restoreManager(spec, opts);
     // The bare paths encompassed by the intact volumes are attached to them
     Endpoint src = Endpoints.parse(m, source);
     Endpoint dst = Endpoints.parse(m, destination);
@@ -134,7 +141,7 @@ public abstract class RcloneTaskCommand implements Callable<Integer>, HasCommonO
       }
       CliUtils.noteKeyringStorage(spec, task, toKeyring);
     }
-    if (manual) {
+    if (Boolean.TRUE.equals(manual)) {
       task.setManual(true);
     }
     if (m.volumes().values().stream().noneMatch(v -> task.refersVolume(v.tag()))) {

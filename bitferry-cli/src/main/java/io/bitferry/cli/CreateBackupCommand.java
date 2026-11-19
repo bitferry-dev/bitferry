@@ -32,48 +32,42 @@ public class CreateBackupCommand implements Callable<Integer>, HasCommonOptions 
   @Parameters(index = "1", description = "Repository endpoint.", paramLabel = "REPOSITORY")
   String repository;
 
-  @Option(names = "-f", description = "Apply default snapshot retention policy options.")
-  boolean defaultForget;
-
   @Profiles(value = Backup.class, field = "FORGET")
-  @Option(names = {"-F", "--forget"}, description = "Snapshot retention policy with profile @|bold,cyan (@default)|@ or options.")
-  String forget;
-
-  @Option(names = "-c", description = "Apply default repository checking options.")
-  boolean defaultCheck;
+  @Option(names = "--forget", description = "Snapshot retention policy with profile @|bold,cyan (@default)|@, options, or @|bold,cyan -|@ for none (default: @|bold,cyan @default|@).", paramLabel = "PROFILE|OPTS")
+  String forget = "@default";
 
   @Profiles(value = Backup.class, field = "CHECK")
-  @Option(names = {"-C", "--check"}, description = "Repository checking with profile @|bold,cyan (@default, @full)|@ or options.")
-  String check;
-
-  @Option(names = "-s", description = "Apply default serve cadence.")
-  boolean defaultServe;
+  @Option(names = "--check", description = "Repository checking with profile @|bold,cyan (@default, @full)|@, options, or @|bold,cyan -|@ for none (default: @|bold,cyan @default|@).", paramLabel = "PROFILE|OPTS")
+  String check = "@default";
 
   @Profiles(value = Backup.class, field = "CADENCE")
-  @Option(names = {"-S", "--serve"}, description = "Serve cadence with profile @|bold,cyan (@default)|@, '<duration>,<count>' or '-' for none.")
-  String serve;
+  @Option(names = "--serve", description = "Serve cadence with profile @|bold,cyan (@default)|@, @|bold,cyan <duration>,<count>|@, or @|bold,cyan -|@ for none (default: @|bold,cyan @default|@).", paramLabel = "CADENCE")
+  String serve = "@default";
 
   @Profiles(Backup.class)
-  @Option(names = {"-X", "--execute"}, description = "Extra backend execution options (comma-separated), profile @|bold,cyan (@default)|@ or '-' for none.")
+  @Option(names = {"-x", "--execute"}, description = "Extra backend execution options (comma-separated), profile @|bold,cyan (@default)|@ or @|bold,cyan -|@ for none.", paramLabel = "PROFILE|OPTS")
   String execute;
 
-  @Option(names = "--exclude", split = ",", description = "Exclude path specifications (comma-separated list).")
+  @Option(names = "--exclude", split = ",", description = "Exclude path specifications (comma-separated list).", paramLabel = "PATTERN")
   List<String> exclude;
 
-  @Option(names = "-x", split = ",", description = "Exclude file extensions (comma-separated list).")
+  @Option(names = "--exclude-ext", split = ",", description = "Exclude file extensions (comma-separated list).", paramLabel = "EXT")
   List<String> excludeExts;
 
-  @Option(names = "--vault", description = "Vault provider for sensitive data: 'bitferry' (volume storage) or 'keyring' (OS keyring).", paramLabel = "PROVIDER")
+  @Option(names = "--vault", description = "Vault provider for sensitive data: @|bold,cyan bitferry|@ (volume storage) or @|bold,cyan keyring|@ (OS keyring).", paramLabel = "PROVIDER")
   String vault;
 
-  @Option(names = "-V", description = "Shorthand for --vault bitferry (store sensitive data in volume vault).")
+  @Option(names = "-z", description = "Shorthand for --vault bitferry (store sensitive data in volume vault).")
   boolean bitferryVault;
 
-  @Option(names = "-K", description = "Shorthand for --vault keyring (fixed volumes only).")
+  @Option(names = "-k", description = "Shorthand for --vault keyring (fixed volumes only).")
   boolean keyring;
 
-  @Option(names = "--manual", description = "Exclude the task from the mass runs (run it by its tag only).")
-  boolean manual;
+  @Option(names = "-m", description = "Shorthand for --execution manual (exclude the task from the mass runs; run it by its tag only).")
+  boolean manualExecution;
+
+  @Option(names = "--execution", description = "Mass-run participation: @|bold,cyan manual|@ (run it by its tag only) or @|bold,cyan automatic|@ (include in the mass runs; the default).", paramLabel = "MODE")
+  String execution;
 
   @Override
   public CommonOptions commonOptions() {
@@ -82,12 +76,12 @@ public class CreateBackupCommand implements Callable<Integer>, HasCommonOptions 
 
   @Override
   public Integer call() {
-    // The shorthand and the explicit forms of the same setting are mutually exclusive
-    if (defaultForget && forget != null) throw new BitferryError("Snapshot retention policy specified twice: use either -f or --forget");
-    if (defaultCheck && check != null) throw new BitferryError("Repository checking specified twice: use either -c or --check");
-    if (defaultServe && serve != null) throw new BitferryError("Serve cadence specified twice: use either -s or --serve");
+    // The mass-run participation is validated upfront (the bogus modes fail before any probing):
+    // the shorthand and the explicit forms of the same setting are mutually exclusive
+    if (manualExecution && execution != null) throw new BitferryError("Execution mode specified twice: use either -m or --execution");
+    Boolean manual = manualExecution ? Boolean.TRUE : CliUtils.resolveExecution(execution);
     CommonOptions opts = CliUtils.resolveOptions(spec, options);
-    Manager m = CliUtils.restoreManager(opts);
+    Manager m = CliUtils.restoreManager(spec, opts);
     // The bare paths encompassed by the intact volumes are attached to them
     Endpoint src = Endpoints.parse(m, source);
     Endpoint repo = Endpoints.parse(m, repository);
@@ -95,13 +89,10 @@ public class CreateBackupCommand implements Callable<Integer>, HasCommonOptions 
     // The password is obtained after the endpoints are validated
     String password = CliUtils.obtainPassword();
     Boolean format = opts.force ? Boolean.TRUE : null;
-    String f = defaultForget ? "@default" : forget;
-    String c = defaultCheck ? "@default" : check;
-    String sCadence = defaultServe ? "@default" : serve;
     List<String> exc = CliUtils.parsePatterns(exclude, excludeExts);
     boolean toKeyring = CliUtils.resolveKeyring(vault, bitferryVault, keyring, false);
-    Backup task = new Backup(m, src, repo, password, format, execute, f, c, sCadence, exc, toKeyring);
-    if (manual) {
+    Backup task = new Backup(m, src, repo, password, format, execute, forget, check, serve, exc, toKeyring);
+    if (Boolean.TRUE.equals(manual)) {
       task.setManual(true);
     }
     CliUtils.noteKeyringStorage(spec, task, toKeyring);
