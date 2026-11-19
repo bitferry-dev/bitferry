@@ -10,12 +10,15 @@ import picocli.CommandLine.Help.Ansi;
 import picocli.CommandLine.Model.*;
 
 /// Create repository content restore task (Restic).
-@Command(name = "restore", aliases = {"r"}, mixinStandardHelpOptions = true, description = "Create repository content restore task.")
+@Command(name = "restore", aliases = {"r"}, description = "Create repository content restore task.")
 public class CreateRestoreCommand implements Callable<Integer>, HasCommonOptions {
 
   // Explicit no-arg constructor: the command classes are instantiated
   // reflectively by picocli.
   public CreateRestoreCommand() {}
+
+  @Option(names = {"-h", "--help"}, usageHelp = true, description = "Show this help message and exit.")
+  boolean help;
 
   @Mixin
   CommonOptions options = new CommonOptions();
@@ -45,7 +48,10 @@ public class CreateRestoreCommand implements Callable<Integer>, HasCommonOptions
   @Option(names = "-x", split = ",", description = "Exclude file extensions (comma-separated list).")
   List<String> excludeExts;
 
-  @Option(names = {"-k", "--keyring"}, description = "Store the repository password in the OS keyring (fixed volumes only).")
+  @Option(names = {"-V", "--vault"}, description = "Vault provider for sensitive data: 'bitferry' (volume storage) or 'keyring' (OS keyring).", paramLabel = "PROVIDER")
+  String vault;
+
+  @Option(names = {"-K", "-k", "--keyring"}, description = "Shorthand for --vault keyring (fixed volumes only).")
   boolean keyring;
 
   @Option(names = "--source-task", description = "Source backup task tag scoping the restore (the newest snapshot of that task is selected; default: derived from the repository when unambiguous, otherwise the newest bitferry-tagged snapshot repo-wide).")
@@ -80,11 +86,12 @@ public class CreateRestoreCommand implements Callable<Integer>, HasCommonOptions
     } else {
       spec.commandLine().getErr().println(Ansi.AUTO.string("@|faint no backup task bound to the repository found; the restore will select the newest bitferry-tagged snapshot repo-wide (--source-task pins it)|@"));
     }
-    Restore task = new Restore(m, repo, dst, password, execute, inc, exc, keyring, scope);
+    boolean toKeyring = CliUtils.resolveKeyring(vault, keyring, false);
+    Restore task = new Restore(m, repo, dst, password, execute, inc, exc, toKeyring, scope);
     if (manual) {
       task.setManual(true);
     }
-    CliUtils.noteKeyringStorage(spec, task, keyring);
+    CliUtils.noteKeyringStorage(spec, task, toKeyring);
     if (m.volumes().values().stream().noneMatch(v -> task.refersVolume(v.tag()))) {
       throw new BitferryError("Task " + task.tag() + " does not belong to any registered volume; it cannot be persisted");
     }

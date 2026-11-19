@@ -395,9 +395,9 @@ public abstract class Task {
     // must not fail on that, the stale entries are tolerated like the keyring's own
     for (Vault provider : List.of(Vault.volume(), Vault.keyring())) {
       try {
-        provider.deleteToken(this);
+        provider.delete(this);
       } catch (RuntimeException e) {
-        LOG.log(Level.DEBUG, () -> "The stored token of the deleted task " + tag + " could not be dropped: " + e.getMessage());
+        LOG.log(Level.DEBUG, () -> "The stored credentials of the deleted task " + tag + " could not be dropped: " + e.getMessage());
       }
     }
   }

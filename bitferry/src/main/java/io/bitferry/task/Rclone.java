@@ -370,16 +370,16 @@ public abstract class Rclone extends Task implements IncludeFilters {
     /// Raises [BitferryError] for the endpoints residing outside Bitferry volumes.
     public abstract Volume vaultVolume(Rclone task);
 
-    /// Obscure and store the password pair with the vault provider caching the plain
-    /// values. The target provider is the one currently holding the token (the updates
+    /// Store the password pair with the vault provider caching the plain
+    /// values. The target provider is the one currently holding the credentials (the updates
     /// keep the storage kind), falling back to the creation-time selection; the stale
     /// entries in the other provider are dropped.
     void storePasswords(String password, String password2) {
       if (password == null || password.isEmpty()) throw new BitferryError("Password must be specified for task " + task().tag());
       Vault target = holding != null ? holding : vault;
-      target.storeToken(task(), Passwords.encodePasswords(password, password2));
-      if (target != Vault.volume()) Vault.volume().deleteToken(task());
-      if (target != Vault.keyring()) Vault.keyring().deleteToken(task());
+      target.store(task(), password, password2);
+      if (target != Vault.volume()) Vault.volume().delete(task());
+      if (target != Vault.keyring()) Vault.keyring().delete(task());
       cachedPassword = password;
       cachedPassword2 = password2;
       cached = true;
@@ -401,30 +401,29 @@ public abstract class Rclone extends Task implements IncludeFilters {
     // Retrieve and cache the password pair from the vault upon the first request
     private void cache() {
       if (!cached) {
-        String token = retrieveToken();
-        if (token == null) throw new BitferryError("No stored password token for task " + task().tag());
-        String[] passwords = Passwords.decodeToken(token);
-        cachedPassword = passwords[0];
-        cachedPassword2 = passwords[1];
+        VaultCredentials creds = retrieveCredentials();
+        if (creds == null) throw new BitferryError("No stored password credentials for task " + task().tag());
+        cachedPassword = creds.password();
+        cachedPassword2 = creds.salt();
         cached = true;
       }
     }
 
-    /// Retrieve the obscured token trying the providers in turn: the creation-time
+    /// Retrieve the credentials trying the providers in turn: the creation-time
     /// selection first, then the other one — the classification drift and the
     /// pre-keyring tasks keep resolving.
-    private String retrieveToken() {
-      String token = vault.retrieveToken(task());
-      if (token != null) {
+    private VaultCredentials retrieveCredentials() {
+      VaultCredentials creds = vault.retrieve(task());
+      if (creds != null) {
         holding = vault;
-        return token;
+        return creds;
       }
       for (Vault other : new Vault[]{Vault.volume(), Vault.keyring()}) {
         if (other == vault) continue;
-        token = other.retrieveToken(task());
-        if (token != null) {
+        creds = other.retrieve(task());
+        if (creds != null) {
           holding = other;
-          return token;
+          return creds;
         }
       }
       return null;
@@ -434,8 +433,8 @@ public abstract class Rclone extends Task implements IncludeFilters {
     /// Rclone expects the obscured (not plain) password tokens.
     public Map<String, String> processEnvironment() {
       Map<String, String> environment = new LinkedHashMap<>();
-      environment.put("RCLONE_CRYPT_PASSWORD", Passwords.obscure(password()));
-      if (password2() != null) environment.put("RCLONE_CRYPT_PASSWORD2", Passwords.obscure(password2()));
+      environment.put("RCLONE_CRYPT_PASSWORD", Passwords.rcloneObscure(password()));
+      if (password2() != null) environment.put("RCLONE_CRYPT_PASSWORD2", Passwords.rcloneObscure(password2()));
       return environment;
     }
 
@@ -475,8 +474,8 @@ public abstract class Rclone extends Task implements IncludeFilters {
       return holding != null ? holding : vault;
     }
 
-    /// Move the stored crypt token to the requested provider (the volume vault or
-    /// the OS keyring): the token is read from the provider holding it, stored with
+    /// Move the stored crypt credentials to the requested provider (the volume vault or
+    /// the OS keyring): credentials are read from the provider holding them, stored with
     /// the target one, and the stale entry is dropped from the other (mirroring the
     /// storePasswords stale-drop). The already-there request is a no-op; migrating
     /// to the keyring requires a usable OS keyring.
@@ -486,11 +485,11 @@ public abstract class Rclone extends Task implements IncludeFilters {
       if (target == Vault.keyring() && !KeyringVault.INSTANCE.available()) {
         throw new BitferryError("No usable OS keyring on this host - the password storage cannot be migrated");
       }
-      String token = retrieveToken();
-      if (token == null) throw new BitferryError("No stored password token for task " + task().tag());
-      target.storeToken(task(), token);
-      if (target != Vault.volume()) Vault.volume().deleteToken(task());
-      if (target != Vault.keyring()) Vault.keyring().deleteToken(task());
+      VaultCredentials creds = retrieveCredentials();
+      if (creds == null) throw new BitferryError("No stored password credentials for task " + task().tag());
+      target.store(task(), creds.password(), creds.salt());
+      if (target != Vault.volume()) Vault.volume().delete(task());
+      if (target != Vault.keyring()) Vault.keyring().delete(task());
       holding = target;
     }
   }

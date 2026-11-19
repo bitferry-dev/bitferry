@@ -47,8 +47,20 @@ public final class Volume {
   // The lazily computed fixed-media classification (null until probed)
   private Boolean fixed;
 
+  /// A vault entry stored in the volume descriptor.
+  public record VaultEntry(
+    @JsonProperty("password") String password,
+    @JsonProperty("salt") @JsonInclude(JsonInclude.Include.NON_NULL) String salt
+  ) {
+    public VaultEntry {
+      if (password == null || password.isEmpty()) {
+        throw new IllegalArgumentException("Password token must be specified");
+      }
+    }
+  }
+
   // Password tokens of the encrypted tasks keyed by the task tags (see vault providers)
-  private final Map<String, String> vault = new LinkedHashMap<>();
+  private final Map<String, VaultEntry> vault = new LinkedHashMap<>();
 
   // The task descriptors that failed to restore preserved verbatim (the raw JSON
   // nodes): the storage dump re-emits them under their own 'preserved' section -
@@ -101,7 +113,7 @@ public final class Volume {
     @JsonProperty("modified") OffsetDateTime modified,
     @JsonProperty("tasks") List<JsonNode> tasks,
     @JsonProperty("preserved") List<JsonNode> preserved,
-    @JsonProperty("vault") Map<String, String> vault
+    @JsonProperty("vault") Map<String, VaultEntry> vault
   ) {
     if (version == null) throw new BitferryError("Missing volume storage version property 'bitferry'");
     if (!Bitferry.STORAGE_VERSION.equals(version)) throw new BitferryError("Unsupported volume storage version " + version);
@@ -337,9 +349,9 @@ public final class Volume {
   /// descriptors whose tag cannot be determined (accepted residue). Omitted when
   /// empty.
   @JsonProperty("vault")
-  Map<String, String> storeVault() {
+  Map<String, VaultEntry> storeVault() {
     Set<String> preserved = failedTasks.stream().map(Volume::failedTag).filter(Objects::nonNull).collect(Collectors.toSet());
-    Map<String, String> kept = vault.entrySet().stream()
+    Map<String, VaultEntry> kept = vault.entrySet().stream()
       .filter(e -> {
         Task task = manager.tasks().get(e.getKey());
         if (task != null) return task.isLive() && !task.isDeleted();
@@ -563,24 +575,24 @@ public final class Volume {
   }
 
 
-  /// Return the obscured password token of the task stored in the volume vault
+  /// Return the vault entry of the task stored in the volume vault
   /// (used by the vault providers).
-  public String readVault(String tag) {
+  public VaultEntry readVault(String tag) {
     synchronized (stateLock) {
       return vault.get(tag);
     }
   }
 
-  /// Store the obscured password token of the task in the volume vault
+  /// Store the vault entry of the task in the volume vault
   /// marking the volume out-of-date (used by the vault providers).
-  public void writeVault(String tag, String token) {
+  public void writeVault(String tag, VaultEntry entry) {
     synchronized (stateLock) {
-      vault.put(tag, token);
+      vault.put(tag, entry);
       touch();
     }
   }
 
-  /// Drop the obscured password token of the task from the volume vault marking
+  /// Drop the vault entry of the task from the volume vault marking
   /// the volume out-of-date when something was dropped (used by the vault providers).
   public void removeVault(String tag) {
     synchronized (stateLock) {

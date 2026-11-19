@@ -2,12 +2,8 @@
 
 - warn about unreachable volumes after creation
 
-- password vault/keyring migration on radion button state change
-
 - restic restore ergonomics - select the snapshot tag (or latest)
 
 - select task id for restore on restore selection
 
 - what about disabling the restic repo sharing altogether?
-
-- vault entry as an encoded json

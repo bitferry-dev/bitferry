@@ -10,12 +10,15 @@ import picocli.CommandLine.Help.Ansi;
 import picocli.CommandLine.Model.*;
 
 /// Modify parameters of an existing task.
-@Command(name = "task", aliases = {"t"}, mixinStandardHelpOptions = true, description = "Modify parameters of an existing task.")
+@Command(name = "task", aliases = {"t"}, description = "Modify parameters of an existing task.")
 public class ModifyTaskCommand implements Callable<Integer>, HasCommonOptions {
 
   // Explicit no-arg constructor: the command classes are instantiated
   // reflectively by picocli.
   public ModifyTaskCommand() {}
+
+  @Option(names = {"-h", "--help"}, usageHelp = true, description = "Show this help message and exit.")
+  boolean help;
 
   @Mixin
   CommonOptions options = new CommonOptions();
@@ -28,6 +31,15 @@ public class ModifyTaskCommand implements Callable<Integer>, HasCommonOptions {
 
   @Option(names = {"-p", "--password"}, description = "Update the repository password.")
   boolean password;
+
+  @Option(names = {"-V", "--vault"}, description = "Migrate sensitive data storage to 'bitferry' (volume storage) or 'keyring' (OS keyring).", paramLabel = "PROVIDER")
+  String vault;
+
+  @Option(names = {"-K", "--keyring"}, description = "Shorthand for --vault keyring.")
+  boolean keyring;
+
+  @Option(names = "--no-keyring", description = "Shorthand for --vault bitferry.")
+  boolean noKeyring;
 
   @Option(names = {"-t", "--type"}, description = "Operation type for rclone tasks (copy, update, replicate, equalize).", paramLabel = "TYPE")
   String type;
@@ -103,7 +115,10 @@ public class ModifyTaskCommand implements Callable<Integer>, HasCommonOptions {
     boolean hasType = type != null;
     boolean hasManual = manual || noManual;
 
-    if (!password && !hasForget && !hasCheck && !hasServe && !hasInclude && !hasExclude && !hasExecute && !hasType && !hasManual) {
+    Boolean targetKeyring = CliUtils.resolveVaultMigration(vault, keyring, noKeyring);
+    boolean hasVault = targetKeyring != null;
+
+    if (!password && !hasVault && !hasForget && !hasCheck && !hasServe && !hasInclude && !hasExclude && !hasExecute && !hasType && !hasManual) {
       throw new BitferryError("No modifications specified for task " + tag);
     }
 
@@ -130,8 +145,12 @@ public class ModifyTaskCommand implements Callable<Integer>, HasCommonOptions {
       throw new BitferryError("Include filters are not applicable to backup tasks (restic backup filters by exclusion only)");
     }
 
+    if (hasVault && !task.usesVault()) {
+      throw new BitferryError("Vault storage migration is only applicable to encrypted or credential-bearing tasks");
+    }
+
     if (password && !task.supportsPasswordRotation()) {
-      throw new BitferryError("Rclone crypt parameters and passwords cannot be modified on an existing task; create a new task");
+      throw new BitferryError("Password update is only applicable to backup tasks (rclone crypt encryption is immutable on existing tasks)");
     }
 
     // The execution options are value-checked against the effective (the post-morph)
@@ -154,6 +173,11 @@ public class ModifyTaskCommand implements Callable<Integer>, HasCommonOptions {
           + " were not reachable - their stored passwords were not updated (their volumes are not restored, or the tasks were deleted)."
           + " The unreachable tasks' runs will fail the authentication until the token is re-synced (by the auto-heal upon their next run, or by re-entering the password)"));
       }
+    }
+
+    if (hasVault) {
+      task.migrateVault(targetKeyring);
+      CliUtils.noteKeyringStorage(spec, task, targetKeyring);
     }
 
     if (hasExecute) {

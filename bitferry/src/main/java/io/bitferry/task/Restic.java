@@ -114,16 +114,16 @@ public abstract class Restic extends Task {
     touch();
   }
 
-  /// Obscure and store the password with the vault provider caching the plain value.
-  /// The target provider is the one currently holding the token (the password updates
+  /// Store the password with the vault provider caching the plain value.
+  /// The target provider is the one currently holding the credentials (the password updates
   /// and the key rotations keep the storage kind), falling back to the creation-time
   /// selection; the stale entries in the other provider are dropped.
   private void setPassword(String password) {
     if (password == null || password.isEmpty()) throw new BitferryError("password must be specified for task " + tag);
     Vault target = holding != null ? holding : vault;
-    target.storeToken(this, Passwords.encodePasswords(password, null));
-    if (target != Vault.volume()) Vault.volume().deleteToken(this);
-    if (target != Vault.keyring()) Vault.keyring().deleteToken(this);
+    target.store(this, password, null);
+    if (target != Vault.volume()) Vault.volume().delete(this);
+    if (target != Vault.keyring()) Vault.keyring().delete(this);
     cachedPassword = password;
     cached = true;
   }
@@ -132,29 +132,29 @@ public abstract class Restic extends Task {
   /// upon the first request (e.g. after the task has been restored from the storage).
   public String password() {
     if (!cached) {
-      String token = retrieveToken();
-      if (token == null) throw new BitferryError("no stored password token for task " + tag);
-      cachedPassword = Passwords.decodeToken(token)[0];
+      VaultCredentials creds = retrieveCredentials();
+      if (creds == null) throw new BitferryError("no stored password token for task " + tag);
+      cachedPassword = creds.password();
       cached = true;
     }
     return cachedPassword;
   }
 
-  /// Retrieve the obscured token trying the providers in turn: the creation-time
+  /// Retrieve the credentials trying the providers in turn: the creation-time
   /// selection first, then the other one — the classification drift (the volume
   /// moving between the media kinds) and the pre-keyring tasks keep resolving.
-  private String retrieveToken() {
-    String token = vault.retrieveToken(this);
-    if (token != null) {
+  private VaultCredentials retrieveCredentials() {
+    VaultCredentials creds = vault.retrieve(this);
+    if (creds != null) {
       holding = vault;
-      return token;
+      return creds;
     }
     for (Vault other : new Vault[]{Vault.volume(), Vault.keyring()}) {
       if (other == vault) continue;
-      token = other.retrieveToken(this);
-      if (token != null) {
+      creds = other.retrieve(this);
+      if (creds != null) {
         holding = other;
-        return token;
+        return creds;
       }
     }
     return null;
@@ -167,8 +167,8 @@ public abstract class Restic extends Task {
     return java.util.Optional.ofNullable(holding != null ? holding : vault);
   }
 
-  /// Move the stored repository token to the requested provider (the volume vault
-  /// or the OS keyring): the token is read from the provider holding it, stored
+  /// Move the stored repository credentials to the requested provider (the volume vault
+  /// or the OS keyring): credentials are read from the provider holding them, stored
   /// with the target one, and the stale entry is dropped from the other (mirroring
   /// the setPassword stale-drop). The already-there request is a no-op; migrating
   /// to the keyring requires a usable OS keyring.
@@ -179,11 +179,11 @@ public abstract class Restic extends Task {
     if (target == Vault.keyring() && !KeyringVault.INSTANCE.available()) {
       throw new BitferryError("No usable OS keyring on this host - the password storage cannot be migrated");
     }
-    String token = retrieveToken();
-    if (token == null) throw new BitferryError("No stored password token for task " + tag);
-    target.storeToken(this, token);
-    if (target != Vault.volume()) Vault.volume().deleteToken(this);
-    if (target != Vault.keyring()) Vault.keyring().deleteToken(this);
+    VaultCredentials creds = retrieveCredentials();
+    if (creds == null) throw new BitferryError("No stored password token for task " + tag);
+    target.store(this, creds.password(), creds.salt());
+    if (target != Vault.volume()) Vault.volume().delete(this);
+    if (target != Vault.keyring()) Vault.keyring().delete(this);
     holding = target;
   }
 

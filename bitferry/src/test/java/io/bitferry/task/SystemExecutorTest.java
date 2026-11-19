@@ -998,7 +998,7 @@ class SystemExecutorTest {
     // The crypt password travels obscured through the environment
     String obscured = inv.environment().get("RCLONE_CRYPT_PASSWORD");
     assertNotNull(obscured);
-    assertEquals("secret", Passwords.reveal(obscured));
+    assertEquals("secret", Passwords.rcloneReveal(obscured));
     assertFalse(inv.environment().containsKey("RCLONE_CRYPT_PASSWORD2"));
   }
 
@@ -1020,8 +1020,8 @@ class SystemExecutorTest {
     assertEquals(destination().processOpts(), cmd.get(remote + 1));
     assertEquals(":crypt:", cmd.get(remote + 2));
     assertEquals(volumeRestored().processOpts(), cmd.get(cmd.size() - 1));
-    assertEquals("secret", Passwords.reveal(inv.environment().get("RCLONE_CRYPT_PASSWORD")));
-    assertEquals("second", Passwords.reveal(inv.environment().get("RCLONE_CRYPT_PASSWORD2")));
+    assertEquals("secret", Passwords.rcloneReveal(inv.environment().get("RCLONE_CRYPT_PASSWORD")));
+    assertEquals("second", Passwords.rcloneReveal(inv.environment().get("RCLONE_CRYPT_PASSWORD2")));
   }
 
   @Test
@@ -1247,8 +1247,8 @@ class SystemExecutorTest {
     assertTrue(cmd.contains("--crypt-remote"));
     assertEquals(dst.toString(), cmd.get(cmd.indexOf("--crypt-remote") + 1));
     assertEquals(":crypt:", cmd.get(cmd.size() - 1));
-    assertEquals("secret", Passwords.reveal(inv.environment().get("RCLONE_CRYPT_PASSWORD")));
-    assertEquals("secret2", Passwords.reveal(inv.environment().get("RCLONE_CRYPT_PASSWORD2")));
+    assertEquals("secret", Passwords.rcloneReveal(inv.environment().get("RCLONE_CRYPT_PASSWORD")));
+    assertEquals("secret2", Passwords.rcloneReveal(inv.environment().get("RCLONE_CRYPT_PASSWORD2")));
   }
 
   @Test

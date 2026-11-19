@@ -16,6 +16,9 @@ public abstract class RcloneTaskCommand implements Callable<Integer>, HasCommonO
   // reflectively by picocli.
   protected RcloneTaskCommand() {}
 
+  @Option(names = {"-h", "--help"}, usageHelp = true, description = "Show this help message and exit.")
+  boolean help;
+
   @FunctionalInterface
   public interface TaskFactory {
     Task create(Manager manager, Endpoint source, Endpoint destination, String execute, Collection<String> include, Collection<String> exclude);
@@ -66,8 +69,14 @@ public abstract class RcloneTaskCommand implements Callable<Integer>, HasCommonO
   @Option(names = "-u", description = "Apply extended (unicode) encryption profile options.")
   boolean extended;
 
-  @Option(names = {"-k", "--keyring"}, description = "Store the encryption password in the OS keyring (fixed volumes only).")
+  @Option(names = {"-V", "--vault"}, description = "Vault provider for sensitive data: 'bitferry' (volume storage) or 'keyring' (OS keyring).", paramLabel = "PROVIDER")
+  String vault;
+
+  @Option(names = {"-K", "-k", "--keyring"}, description = "Shorthand for --vault keyring (fixed volumes only).")
   boolean keyring;
+
+  @Option(names = {"-s", "--salt"}, description = "Prompt for a secondary password / salt (required when reusing an existing rclone crypt remote created with a custom salt).")
+  boolean salt;
 
   @Option(names = "--manual", description = "Exclude the task from the mass runs (run it by its tag only).")
   boolean manual;
@@ -93,6 +102,13 @@ public abstract class RcloneTaskCommand implements Callable<Integer>, HasCommonO
     if (extended && (encrypt != null || decrypt != null)) throw new BitferryError("Invalid encryption options: the extended profile modifier (-u) conflicts with the explicitly specified encryption profile");
     if (extended && !encryptRequested && !decryptRequested) throw new BitferryError("Invalid encryption options: the extended profile modifier requires the encryption to be requested");
     String profile = encrypt != null ? encrypt : decrypt != null ? decrypt : extended ? "@extended" : "@default";
+    boolean toKeyring = CliUtils.resolveKeyring(vault, keyring, false);
+    if (!encryptRequested && !decryptRequested && (vault != null || keyring)) {
+      throw new BitferryError("Vault storage option is applicable to encrypted tasks only");
+    }
+    if (!encryptRequested && !decryptRequested && salt) {
+      throw new BitferryError("Salt option requires encryption to be requested (-e, -d, --encrypt, --decrypt)");
+    }
     CommonOptions opts = CliUtils.resolveOptions(spec, options);
     Manager m = CliUtils.restoreManager(opts);
     // The bare paths encompassed by the intact volumes are attached to them
@@ -107,12 +123,13 @@ public abstract class RcloneTaskCommand implements Callable<Integer>, HasCommonO
       Rclone rclone = (Rclone) task;
       // The password is obtained after the endpoints are validated
       String password = CliUtils.obtainPassword();
+      String password2 = salt ? CliUtils.obtainSalt() : null;
       if (encryptRequested) {
-        rclone.encrypt(password, null, Rclone.Encryption.options(profile), keyring);
+        rclone.encrypt(password, password2, Rclone.Encryption.options(profile), toKeyring);
       } else {
-        rclone.decrypt(password, null, Rclone.Encryption.options(profile), keyring);
+        rclone.decrypt(password, password2, Rclone.Encryption.options(profile), toKeyring);
       }
-      CliUtils.noteKeyringStorage(spec, task, keyring);
+      CliUtils.noteKeyringStorage(spec, task, toKeyring);
     }
     if (manual) {
       task.setManual(true);

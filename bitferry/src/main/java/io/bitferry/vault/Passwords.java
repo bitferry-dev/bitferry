@@ -10,38 +10,110 @@ import java.security.GeneralSecurityException;
 import java.security.SecureRandom;
 import java.util.Base64;
 
-/// Rclone-compatible password obscuring and the multi-password token codec.
+/// Password obscuring and token codec.
 ///
-/// The obscured form is obfuscation rather than encryption: it keeps the plain
-/// passwords out of the storage files while remaining interoperable with rclone's
-/// obscure/reveal (AES-256-CTR with the shared static key, random IV prepended,
-/// unpadded URL-safe base64 encoding).
+/// Features length-masking stream obfuscation (ARCFOUR-drop256 with random salt and
+/// leading null padding) for concealing plaintexts in volume storage, alongside the
+/// rclone-compatible AES-256-CTR obscure/reveal for rclone process environments.
 public final class Passwords {
 
-  // The shared static key of the rclone obscured format
-  private static final byte[] KEY = {
-    (byte) 0x9c, (byte) 0x93, 0x5b, 0x48, 0x73, 0x0a, 0x55, 0x4d,
-    0x6b, (byte) 0xfd, 0x7c, 0x63, (byte) 0xc8, (byte) 0x86, (byte) 0xa9, 0x2b,
-    (byte) 0xd3, (byte) 0x90, 0x19, (byte) 0x8e, (byte) 0xb8, 0x12, (byte) 0x8a, (byte) 0xfb,
-    (byte) 0xf4, (byte) 0xde, 0x16, 0x2b, (byte) 0x8b, (byte) 0x95, (byte) 0xf6, 0x38
+  // The 16-byte shared static key of the Bitferry stream obfuscation
+  private static final byte[] BITFERRY_KEY = {
+    (byte) 0x2b, (byte) 0x7e, (byte) 0x15, (byte) 0x16, (byte) 0x28, (byte) 0xae, (byte) 0xd2, (byte) 0xa6,
+    (byte) 0xab, (byte) 0xf7, (byte) 0x15, (byte) 0x88, (byte) 0x09, (byte) 0xcf, (byte) 0x4f, (byte) 0x3c
   };
 
-  // AES block sized random IV is prepended to the ciphertext
+  private static final int SALT_LENGTH = 8;
+  private static final int MIN_PAD = 16;
+  private static final int MAX_PAD = 32;
+  private static final int DROP_BYTES = 256;
+
+  // The shared static key of the rclone obscured format
+  private static final byte[] RCLONE_KEY = {
+    (byte) 0x9c, (byte) 0x93, (byte) 0x5b, (byte) 0x48, (byte) 0x73, (byte) 0x0a, (byte) 0x55, (byte) 0x4d,
+    (byte) 0x6b, (byte) 0xfd, (byte) 0x7c, (byte) 0x63, (byte) 0xc8, (byte) 0x86, (byte) 0xa9, (byte) 0x2b,
+    (byte) 0xd3, (byte) 0x90, (byte) 0x19, (byte) 0x8e, (byte) 0xb8, (byte) 0x12, (byte) 0x8a, (byte) 0xfb,
+    (byte) 0xf4, (byte) 0xde, (byte) 0x16, (byte) 0x2b, (byte) 0x8b, (byte) 0x95, (byte) 0xf6, (byte) 0x38
+  };
+
   private static final int IV_LENGTH = 16;
 
   private static final SecureRandom RANDOM = new SecureRandom();
 
   private Passwords() {}
 
-  /// Obscure the value: encrypt with AES-CTR under a fresh random IV and return
-  /// the base64url (unpadded) encoding of the IV followed by the ciphertext.
+  /// Obscure a secret value using ARCFOUR-drop256 with a fresh random salt and randomized
+  /// leading null padding, returning the unpadded base64url encoding of the salt followed
+  /// by the ciphertext.
   public static String obscure(String data) {
+    if (data == null) throw new BitferryError("Cannot obscure null password");
+    try {
+      byte[] plaintext = data.getBytes(StandardCharsets.UTF_8);
+      int padLen = MIN_PAD + RANDOM.nextInt(MAX_PAD - MIN_PAD + 1);
+      byte[] payload = new byte[padLen + plaintext.length];
+      System.arraycopy(plaintext, 0, payload, padLen, plaintext.length);
+
+      byte[] salt = new byte[SALT_LENGTH];
+      RANDOM.nextBytes(salt);
+
+      Cipher cipher = Cipher.getInstance("ARCFOUR");
+      cipher.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(deriveBitferryKey(salt), "ARCFOUR"));
+      cipher.update(new byte[DROP_BYTES]);
+      byte[] ciphertext = cipher.doFinal(payload);
+
+      byte[] result = new byte[SALT_LENGTH + ciphertext.length];
+      System.arraycopy(salt, 0, result, 0, SALT_LENGTH);
+      System.arraycopy(ciphertext, 0, result, SALT_LENGTH, ciphertext.length);
+      return Base64.getUrlEncoder().withoutPadding().encodeToString(result);
+    } catch (GeneralSecurityException e) {
+      throw new BitferryError("Password obscuring failure: " + e.getMessage(), e);
+    }
+  }
+
+  /// Reveal a value obscured by [obscure].
+  public static String reveal(String obscured) {
+    byte[] raw;
+    try {
+      raw = Base64.getUrlDecoder().decode(obscured);
+    } catch (IllegalArgumentException e) {
+      throw new BitferryError("Invalid obscured password - is it obscured?", e);
+    }
+    if (raw.length <= SALT_LENGTH + MIN_PAD) throw new BitferryError("Obscured password too short - is it obscured?");
+    try {
+      byte[] salt = new byte[SALT_LENGTH];
+      System.arraycopy(raw, 0, salt, 0, SALT_LENGTH);
+      byte[] ciphertext = new byte[raw.length - SALT_LENGTH];
+      System.arraycopy(raw, SALT_LENGTH, ciphertext, 0, ciphertext.length);
+
+      Cipher cipher = Cipher.getInstance("ARCFOUR");
+      cipher.init(Cipher.DECRYPT_MODE, new SecretKeySpec(deriveBitferryKey(salt), "ARCFOUR"));
+      cipher.update(new byte[DROP_BYTES]);
+      byte[] decrypted = cipher.doFinal(ciphertext);
+
+      int start = 0;
+      while (start < decrypted.length && decrypted[start] == 0) start++;
+      if (start >= decrypted.length) throw new BitferryError("Invalid obscured password - empty payload");
+      return new String(decrypted, start, decrypted.length - start, StandardCharsets.UTF_8);
+    } catch (GeneralSecurityException e) {
+      throw new BitferryError("Password revealing failure: " + e.getMessage(), e);
+    }
+  }
+
+  private static byte[] deriveBitferryKey(byte[] salt) {
+    byte[] key = new byte[BITFERRY_KEY.length + salt.length];
+    System.arraycopy(BITFERRY_KEY, 0, key, 0, BITFERRY_KEY.length);
+    System.arraycopy(salt, 0, key, BITFERRY_KEY.length, salt.length);
+    return key;
+  }
+
+  /// Obscure the value using rclone's AES-256-CTR scheme for passing to rclone's environment.
+  public static String rcloneObscure(String data) {
     try {
       byte[] plaintext = data.getBytes(StandardCharsets.UTF_8);
       byte[] iv = new byte[IV_LENGTH];
       RANDOM.nextBytes(iv);
       Cipher cipher = Cipher.getInstance("AES/CTR/NoPadding");
-      cipher.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(KEY, "AES"), new IvParameterSpec(iv));
+      cipher.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(RCLONE_KEY, "AES"), new IvParameterSpec(iv));
       byte[] ciphertext = cipher.doFinal(plaintext);
       byte[] payload = new byte[IV_LENGTH + ciphertext.length];
       System.arraycopy(iv, 0, payload, 0, IV_LENGTH);
@@ -52,8 +124,8 @@ public final class Passwords {
     }
   }
 
-  /// Reveal a value obscured by [obscure] (or by rclone itself).
-  public static String reveal(String obscured) {
+  /// Reveal a value obscured by [rcloneObscure] (or by rclone itself).
+  public static String rcloneReveal(String obscured) {
     byte[] payload;
     try {
       payload = Base64.getUrlDecoder().decode(obscured);
@@ -63,48 +135,11 @@ public final class Passwords {
     if (payload.length < IV_LENGTH) throw new BitferryError("Obscured password too short - is it obscured?");
     try {
       Cipher cipher = Cipher.getInstance("AES/CTR/NoPadding");
-      cipher.init(Cipher.DECRYPT_MODE, new SecretKeySpec(KEY, "AES"), new IvParameterSpec(payload, 0, IV_LENGTH));
+      cipher.init(Cipher.DECRYPT_MODE, new SecretKeySpec(RCLONE_KEY, "AES"), new IvParameterSpec(payload, 0, IV_LENGTH));
       byte[] plaintext = cipher.doFinal(payload, IV_LENGTH, payload.length - IV_LENGTH);
       return new String(plaintext, StandardCharsets.UTF_8);
     } catch (GeneralSecurityException e) {
       throw new BitferryError("Password revealing failure: " + e.getMessage(), e);
     }
-  }
-
-  // The slot separator of the multi-password token: ',' lies outside the base64url
-  // alphabet of the obscured forms, so it unambiguously splits the token into the
-  // independently obscured slots
-  private static final String SLOT_SEPARATOR = ",";
-
-  /// Encode the password pair (the second one optional) into the single token: each
-  /// password is obscured independently and the obscured forms are comma-joined.
-  /// A '\n' inside a password is then representable - the former join-with-newline
-  /// codec silently truncated the first password at its embedded newline upon the
-  /// decoding (the corrupted password surfaced as a bare authentication failure).
-  /// The single-password form carries the trailing separator marking the empty
-  /// second slot.
-  public static String encodePasswords(String password, String password2) {
-    return password2 == null
-      ? obscure(password) + SLOT_SEPARATOR
-      : obscure(password) + SLOT_SEPARATOR + obscure(password2);
-  }
-
-  /// Decode the token back into the password pair (the second element null when
-  /// single). The legacy single-blob form (the passwords joined with the line feed
-  /// prior to the obscuring - the pre-slot tokens of the older versions) keeps
-  /// decoding; a legacy single password carrying a newline was already mangled by
-  /// that codec's encoding and is unrecoverable.
-  public static String[] decodeToken(String token) {
-    int at = token.indexOf(SLOT_SEPARATOR);
-    if (at >= 0) {
-      String first = reveal(token.substring(0, at));
-      String rest = token.substring(at + 1);
-      return new String[]{first, rest.isEmpty() ? null : reveal(rest)};
-    }
-    // The legacy form: the newline-joined pair (or the plain single password)
-    String revealed = reveal(token);
-    int nl = revealed.indexOf('\n');
-    if (nl < 0) return new String[]{revealed, null};
-    return new String[]{revealed.substring(0, nl), revealed.substring(nl + 1)};
   }
 }

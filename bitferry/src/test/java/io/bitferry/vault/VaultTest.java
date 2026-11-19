@@ -47,11 +47,13 @@ class VaultTest {
     Backup backup = new Backup(manager, volumeSource(), volumeRepo(), "Our secret password", null, null, null, null, List.of());
     manager.commit(backup);
 
-    // The obscured token travels in the storage file's vault section
+    // The obscured token travels in the storage file's vault section as a JSON entry
     JsonNode storage = Storage.readJson(dir.resolve("volume").resolve(Bitferry.STORAGE));
-    String token = storage.get("vault").get(backup.tag()).asString();
+    JsonNode entry = storage.get("vault").get(backup.tag());
+    assertNotNull(entry);
+    String token = entry.get("password").asString();
     assertNotEquals("Our secret password", token); // Never the plain form
-    assertEquals("Our secret password", Passwords.decodeToken(token)[0]);
+    assertEquals("Our secret password", Passwords.reveal(token));
   }
 
   @Test
@@ -60,8 +62,10 @@ class VaultTest {
     manager.commit(restore);
 
     JsonNode storage = Storage.readJson(dir.resolve("volume").resolve(Bitferry.STORAGE));
-    String token = storage.get("vault").get(restore.tag()).asString();
-    assertEquals("restore-pass", Passwords.decodeToken(token)[0]);
+    JsonNode entry = storage.get("vault").get(restore.tag());
+    assertNotNull(entry);
+    String token = entry.get("password").asString();
+    assertEquals("restore-pass", Passwords.reveal(token));
   }
 
   @Test

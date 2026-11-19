@@ -87,10 +87,12 @@ class RcloneEncryptionTest {
     task.encrypt("Our secret password", null, Rclone.Encryption.options("@default"));
     manager.commit(task);
 
-    // The obscured password token is stored in the vault of the source volume
+    // The obscured password token is stored in the vault of the source volume as JSON
     JsonNode storage = Storage.readJson(dir.resolve("volume").resolve(Bitferry.STORAGE));
-    String token = storage.get("vault").get(task.tag()).asString();
-    assertEquals("Our secret password", Passwords.decodeToken(token)[0]);
+    JsonNode entry = storage.get("vault").get(task.tag());
+    assertNotNull(entry);
+    String token = entry.get("password").asString();
+    assertEquals("Our secret password", Passwords.reveal(token));
 
     // A fresh manager restores the task with its encryption mode and password
     Manager restored = new Manager();
@@ -101,7 +103,7 @@ class RcloneEncryptionTest {
     // The rclone environment carries the obscured (not plain) password token
     String obscured = copy.encryption().processEnvironment().get("RCLONE_CRYPT_PASSWORD");
     assertNotEquals("Our secret password", obscured);
-    assertEquals("Our secret password", Passwords.reveal(obscured));
+    assertEquals("Our secret password", Passwords.rcloneReveal(obscured));
     // The descriptor keeps the encryption section upon the re-serialization
     assertTrue(copy.serialize().get("rclone").has("encrypt"));
   }
@@ -118,8 +120,8 @@ class RcloneEncryptionTest {
     assertEquals("main-secret", copy.encryption().password());
     assertEquals("file-secret", copy.encryption().password2());
     Map<String, String> environment = copy.encryption().processEnvironment();
-    assertEquals("main-secret", Passwords.reveal(environment.get("RCLONE_CRYPT_PASSWORD")));
-    assertEquals("file-secret", Passwords.reveal(environment.get("RCLONE_CRYPT_PASSWORD2")));
+    assertEquals("main-secret", Passwords.rcloneReveal(environment.get("RCLONE_CRYPT_PASSWORD")));
+    assertEquals("file-secret", Passwords.rcloneReveal(environment.get("RCLONE_CRYPT_PASSWORD2")));
   }
 
   @Test
@@ -179,7 +181,7 @@ class RcloneEncryptionTest {
       "--crypt-filename-encoding", "base32",
       "--config", "/dev/null"
     );
-    pb.environment().put("RCLONE_CRYPT_PASSWORD", Passwords.obscure("secretA"));
+    pb.environment().put("RCLONE_CRYPT_PASSWORD", Passwords.rcloneObscure("secretA"));
     Process p = pb.start();
     assertEquals(0, p.waitFor());
 

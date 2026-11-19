@@ -10,12 +10,15 @@ import picocli.CommandLine.Help.Ansi;
 import picocli.CommandLine.Model.*;
 
 /// Create incremental backup task with snapshotting (Restic).
-@Command(name = "backup", aliases = {"b"}, mixinStandardHelpOptions = true, description = "Create incremental backup task.")
+@Command(name = "backup", aliases = {"b"}, description = "Create incremental backup task.")
 public class CreateBackupCommand implements Callable<Integer>, HasCommonOptions {
 
   // Explicit no-arg constructor: the command classes are instantiated
   // reflectively by picocli.
   public CreateBackupCommand() {}
+
+  @Option(names = {"-h", "--help"}, usageHelp = true, description = "Show this help message and exit.")
+  boolean help;
 
   @Mixin
   CommonOptions options = new CommonOptions();
@@ -60,7 +63,10 @@ public class CreateBackupCommand implements Callable<Integer>, HasCommonOptions 
   @Option(names = "-x", split = ",", description = "Exclude file extensions (comma-separated list).")
   List<String> excludeExts;
 
-  @Option(names = {"-k", "--keyring"}, description = "Store the repository password in the OS keyring (fixed volumes only).")
+  @Option(names = {"-V", "--vault"}, description = "Vault provider for sensitive data: 'bitferry' (volume storage) or 'keyring' (OS keyring).", paramLabel = "PROVIDER")
+  String vault;
+
+  @Option(names = {"-K", "-k", "--keyring"}, description = "Shorthand for --vault keyring (fixed volumes only).")
   boolean keyring;
 
   @Option(names = "--manual", description = "Exclude the task from the mass runs (run it by its tag only).")
@@ -90,11 +96,12 @@ public class CreateBackupCommand implements Callable<Integer>, HasCommonOptions 
     String c = defaultCheck ? "@default" : check;
     String sCadence = defaultServe ? "@default" : serve;
     List<String> exc = CliUtils.parsePatterns(exclude, excludeExts);
-    Backup task = new Backup(m, src, repo, password, format, execute, f, c, sCadence, exc, keyring);
+    boolean toKeyring = CliUtils.resolveKeyring(vault, keyring, false);
+    Backup task = new Backup(m, src, repo, password, format, execute, f, c, sCadence, exc, toKeyring);
     if (manual) {
       task.setManual(true);
     }
-    CliUtils.noteKeyringStorage(spec, task, keyring);
+    CliUtils.noteKeyringStorage(spec, task, toKeyring);
     if (m.volumes().values().stream().noneMatch(v -> task.refersVolume(v.tag()))) {
       throw new BitferryError("Task " + task.tag() + " does not belong to any registered volume; it cannot be persisted");
     }

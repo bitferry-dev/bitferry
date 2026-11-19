@@ -46,7 +46,7 @@ class VolumeFailedTaskPreservationTest {
     broken.put("task", "deadbee1");
     broken.put("operation", "nosuchoperation");
     broken.put("modified", "2026-01-01T00:00:00+00:00");
-    data.putObject("vault").put("deadbee1", "obscured-token");
+    data.putObject("vault").putObject("deadbee1").put("password", "obscured-token");
     Files.writeString(storage, Storage.toJson(data));
 
     // The restore: the broken descriptor fails while the volume and the live task
@@ -70,7 +70,7 @@ class VolumeFailedTaskPreservationTest {
     assertEquals(1, preserved.size());
     assertEquals("deadbee1", preserved.get(0).get("task").asString());
     assertEquals("nosuchoperation", preserved.get(0).get("operation").asString());
-    assertEquals("obscured-token", rewritten.get("vault").get("deadbee1").asString());
+    assertEquals("obscured-token", rewritten.get("vault").get("deadbee1").get("password").asString());
   }
 
   @Test
@@ -79,7 +79,7 @@ class VolumeFailedTaskPreservationTest {
     // of the tasks no descriptor refers to keep being garbage-collected
     Path storage = seedVolume();
     ObjectNode data = (ObjectNode) Storage.readJson(storage);
-    data.putObject("vault").put("deadbeef", "ghost-token");
+    data.putObject("vault").putObject("deadbeef").put("password", "ghost-token");
     Files.writeString(storage, Storage.toJson(data));
 
     Manager restored = new Manager();

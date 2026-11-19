@@ -358,11 +358,11 @@ class CliTest {
     int code = executeWithPassword("Our secret password", "--path", volDir.toString(), "create", "task", "backup", ":" + vtag + ":", "local:" + repoDir);
     assertEquals(0, code, () -> "stderr: " + err.toString());
 
-    // The obscured password token is stored within the volume storage
+    // The obscured password token is stored within the volume storage as JSON
     JsonNode storage = Storage.readJson(volDir.resolve(Bitferry.STORAGE));
     JsonNode vault = storage.get("vault");
     assertNotNull(vault);
-    String token = vault.properties().iterator().next().getValue().asString();
+    String token = vault.properties().iterator().next().getValue().get("password").asString();
     assertNotEquals("Our secret password", token);
 
     // The restored task retrieves the password from the volume vault
@@ -427,7 +427,7 @@ class CliTest {
     JsonNode storage = Storage.readJson(volDir.resolve(Bitferry.STORAGE));
     JsonNode vault = storage.get("vault");
     assertNotNull(vault, "the volume vault must serve when the keyring is unavailable");
-    String token = vault.properties().iterator().next().getValue().asString();
+    String token = vault.properties().iterator().next().getValue().get("password").asString();
     assertNotEquals("Our secret password", token);
 
     // The restored task retrieves the password across the retrieval chain
@@ -729,7 +729,7 @@ class CliTest {
       "--crypt-filename-encoding", "base32",
       "--config", emptyConfig.toString()
     );
-    pb.environment().put("RCLONE_CRYPT_PASSWORD", Passwords.obscure("passwordA"));
+    pb.environment().put("RCLONE_CRYPT_PASSWORD", Passwords.rcloneObscure("passwordA"));
     Process p = pb.start();
     assertEquals(0, p.waitFor());
 
@@ -1618,7 +1618,7 @@ class CliTest {
     cmd.setErr(new PrintWriter(err));
     code = cmd.execute("--path", volDir.toString(), "m", "t", task.tag(), "-p");
     assertNotEquals(0, code);
-    assertTrue(err.toString().contains("Rclone crypt parameters and passwords cannot be modified on an existing task"));
+    assertTrue(err.toString().contains("Password update is only applicable to backup tasks"));
 
     // 3. Modifying backup options on rclone fails
     cmd = Main.createCommandLine();
@@ -1796,5 +1796,104 @@ class CliTest {
     assertEquals(List.of("*.log"), CliUtils.parsePatterns(null, List.of("..log")));
     // The plain specs ride unchanged
     assertEquals(List.of("a", "b"), CliUtils.parsePatterns(List.of("a,b"), null));
+  }
+
+  @Test
+  void rcloneCreationWithExplicitSaltStoresBothPasswordAndSalt() throws IOException {
+    Path volDir = tempDir.resolve("salt_vol");
+    Path encDir = tempDir.resolve("salt_enc");
+    Files.createDirectories(volDir);
+    Files.createDirectories(encDir);
+
+    CommandLine cmd = Main.createCommandLine();
+    assertEquals(0, cmd.execute("create", "volume", volDir.toString()));
+    String vtag = volumeTag(managerFor(volDir), volDir);
+
+    var origPwd = CliUtils.passwordSource;
+    var origSalt = CliUtils.saltSource;
+    CliUtils.passwordSource = () -> "data-secret";
+    CliUtils.saltSource = () -> "custom-salt";
+    try {
+      cmd = Main.createCommandLine();
+      StringWriter err = new StringWriter();
+      cmd.setErr(new PrintWriter(err));
+      int code = cmd.execute("--path", volDir.toString(), "create", "task", "replicate", ":" + vtag + ":", "local:" + encDir, "-e", "-s");
+      assertEquals(0, code, () -> "stderr: " + err);
+    } finally {
+      CliUtils.passwordSource = origPwd;
+      CliUtils.saltSource = origSalt;
+    }
+
+    Manager reloaded = managerFor(volDir);
+    Rclone task = (Rclone) reloaded.tasks().values().stream()
+      .filter(t -> t.refersVolume(vtag))
+      .findFirst().orElseThrow();
+    assertEquals("data-secret", task.encryption().password());
+    assertEquals("custom-salt", task.encryption().password2());
+
+    JsonNode storage = Storage.readJson(volDir.resolve(Bitferry.STORAGE));
+    JsonNode entry = storage.get("vault").get(task.tag());
+    assertNotNull(entry);
+    assertEquals("data-secret", Passwords.reveal(entry.get("password").asString()));
+    assertEquals("custom-salt", Passwords.reveal(entry.get("salt").asString()));
+  }
+
+  @Test
+  void vaultFlagAndKeyringFlagsSelectStorageProvider() throws IOException {
+    Path volDir = tempDir.resolve("vault_flag_vol");
+    Path repoDir = tempDir.resolve("vault_flag_repo");
+    Files.createDirectories(volDir);
+    Files.createDirectories(repoDir);
+
+    assertEquals(0, cmd.execute("create", "volume", volDir.toString()));
+    String vtag = volumeTag(managerFor(volDir), volDir);
+
+    // 1. Invalid vault provider is rejected
+    cmd = Main.createCommandLine();
+    err = new StringWriter();
+    cmd.setErr(new PrintWriter(err));
+    int code1 = executeWithPassword("pass", "--path", volDir.toString(), "create", "task", "backup", ":" + vtag + ":", "local:" + repoDir, "-V", "invalid");
+    assertNotEquals(0, code1);
+    assertTrue(err.toString().contains("Unsupported vault provider 'invalid'"));
+
+    // 2. Explicit -V bitferry stores in volume vault
+    cmd = Main.createCommandLine();
+    err = new StringWriter();
+    cmd.setErr(new PrintWriter(err));
+    int code2 = executeWithPassword("pass", "--path", volDir.toString(), "create", "task", "backup", ":" + vtag + ":", "local:" + repoDir, "-V", "bitferry");
+    assertEquals(0, code2, () -> "stderr: " + err);
+  }
+
+  @Test
+  void modifyTaskVaultMigrationGuardsAndApplies() throws IOException {
+    Path volDir = tempDir.resolve("mod_vault_vol");
+    Path encDir = tempDir.resolve("mod_vault_enc");
+    Files.createDirectories(volDir);
+    Files.createDirectories(encDir);
+
+    CommandLine cmd = Main.createCommandLine();
+    assertEquals(0, cmd.execute("create", "volume", volDir.toString()));
+    String vtag = volumeTag(managerFor(volDir), volDir);
+
+    cmd = Main.createCommandLine();
+    assertEquals(0, cmd.execute("--path", volDir.toString(), "create", "task", "copy", ":" + vtag + ":", "local:" + encDir));
+    Manager reloaded = managerFor(volDir);
+    Task unencrypted = reloaded.tasks().values().iterator().next();
+
+    // 1. Vault migration on unencrypted task is rejected
+    cmd = Main.createCommandLine();
+    StringWriter err = new StringWriter();
+    cmd.setErr(new PrintWriter(err));
+    int code = cmd.execute("--path", volDir.toString(), "m", "t", unencrypted.tag(), "-V", "keyring");
+    assertNotEquals(0, code);
+    assertTrue(err.toString().contains("Vault storage migration is only applicable to encrypted or credential-bearing tasks"));
+
+    // 2. Conflicting flags are rejected
+    cmd = Main.createCommandLine();
+    err = new StringWriter();
+    cmd.setErr(new PrintWriter(err));
+    code = cmd.execute("--path", volDir.toString(), "m", "t", unencrypted.tag(), "-K", "--no-keyring");
+    assertNotEquals(0, code);
+    assertTrue(err.toString().contains("Cannot specify both --keyring and --no-keyring"));
   }
 }

@@ -31,6 +31,9 @@ public final class CliUtils {
   /// The terminal password acquisition seam (swappable by the tests).
   static java.util.function.Supplier<String> passwordSource = CliUtils::readPasswordFromTerminal;
 
+  /// The terminal salt acquisition seam (swappable by the tests).
+  static java.util.function.Supplier<String> saltSource = CliUtils::readSaltFromTerminal;
+
   /// Probe whether the console encoding can carry the unicode glyphs (the direction
   /// arrows, the status marks). The Windows consoles always can (jansi routes the
   /// output through the wide-char console API, code-page independently); the unix
@@ -64,6 +67,38 @@ public final class CliUtils {
     return password;
   }
 
+  /// Obtain the salt by prompting from the terminal with hidden input and confirmation.
+  public static String obtainSalt() {
+    String salt = saltSource.get();
+    if (salt == null || salt.isEmpty()) throw new BitferryError("Salt must be specified when --salt is requested");
+    return salt;
+  }
+
+  /// Resolve the requested vault provider into whether the OS keyring was selected.
+  /// Defaults to [defaultKeyring] when neither option is specified.
+  public static boolean resolveKeyring(String vault, boolean keyring, boolean defaultKeyring) {
+    if (vault != null) {
+      if ("keyring".equalsIgnoreCase(vault)) return true;
+      if ("bitferry".equalsIgnoreCase(vault) || "volume".equalsIgnoreCase(vault)) return false;
+      throw new BitferryError("Unsupported vault provider '" + vault + "'; must be 'bitferry' or 'keyring'");
+    }
+    return keyring || defaultKeyring;
+  }
+
+  /// Resolve the requested vault migration target, returning null when no migration was requested.
+  public static Boolean resolveVaultMigration(String vault, boolean keyring, boolean noKeyring) {
+    if (vault != null) {
+      if (keyring || noKeyring) throw new BitferryError("Cannot combine --vault with --keyring or --no-keyring");
+      if ("keyring".equalsIgnoreCase(vault)) return true;
+      if ("bitferry".equalsIgnoreCase(vault) || "volume".equalsIgnoreCase(vault)) return false;
+      throw new BitferryError("Unsupported vault provider '" + vault + "'; must be 'bitferry' or 'keyring'");
+    }
+    if (keyring && noKeyring) throw new BitferryError("Cannot specify both --keyring and --no-keyring");
+    if (keyring) return true;
+    if (noKeyring) return false;
+    return null;
+  }
+
   /// Surface the keyring storage outcome as a faint advisory note: the explicit
   /// request demoted by the missing keyring, or the removable-media portability
   /// tradeoff of the honored request.
@@ -71,12 +106,12 @@ public final class CliUtils {
     if (!keyring) return;
     PrintWriter err = spec != null ? spec.commandLine().getErr() : new PrintWriter(System.err, true);
     if (!KeyringVault.INSTANCE.available()) {
-      err.println(Ansi.AUTO.string("@|faint the OS keyring is not usable on this host - the password token is kept in the volume vault|@"));
+      err.println(Ansi.AUTO.string("@|faint the OS keyring is not usable on this host - sensitive data is kept in the volume vault|@"));
       return;
     }
     try {
       if (!task.vaultVolume().isFixed()) {
-        err.println(Ansi.AUTO.string("@|faint the vault volume resides on removable media - the keyring-stored password token will not travel with it|@"));
+        err.println(Ansi.AUTO.string("@|faint the vault volume resides on removable media - the keyring-stored sensitive data will not travel with it|@"));
       }
     } catch (BitferryError ignored) {
       // No volume-resident end: the task persistence check reports it separately
@@ -106,6 +141,24 @@ public final class CliUtils {
       }
     }
     throw new BitferryError("Passwords do not match");
+  }
+
+  private static String readSaltFromTerminal() {
+    Console console = System.console();
+    if (console == null) throw new BitferryError("Salt prompting requires an interactive terminal; run the deployed bitferry executable");
+    for (int attempt = 1; attempt <= 3; attempt++) {
+      char[] saltChars = console.readPassword("Salt: ");
+      char[] confirmChars = console.readPassword("Repeat salt: ");
+      try {
+        if (saltChars == null || confirmChars == null) return null;
+        if (Arrays.equals(saltChars, confirmChars)) return new String(saltChars);
+        console.printf("Salts do not match; try again (attempt %d of 3)%n", attempt);
+      } finally {
+        if (saltChars != null) Arrays.fill(saltChars, '\0');
+        if (confirmChars != null) Arrays.fill(confirmChars, '\0');
+      }
+    }
+    throw new BitferryError("Salts do not match");
   }
 
   /// Resolve merged common options from the command spec hierarchy. Every level of the
