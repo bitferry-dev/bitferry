@@ -37,6 +37,14 @@ class WindowSettingsTest {
     } catch (IllegalStateException ignored) {
       // Already started by another test class in this JVM
     }
+    // The probes close their stages between the runs: the implicit exit (the default)
+    // would terminate the toolkit when the last window closes, silently dropping the
+    // later probes' runLaters
+    Platform.setImplicitExit(false);
+    // The event-queue responsiveness probe: the first runLater must process promptly
+    long queued = System.currentTimeMillis();
+    Platform.runLater(() ->
+      System.err.println("probe: FX alive right after startup (queued " + queued + ", ran " + System.currentTimeMillis() + ")"));
     savedUserEntries = new HashMap<>();
     for (String key : KEYS) {
       String value = node.get(key, null);
@@ -55,8 +63,9 @@ class WindowSettingsTest {
 
   // Run the action on the application thread collecting the failures for the test thread
   private static void runFx(AtomicReference<Throwable> failure, CountDownLatch done, String step, Runnable action) {
+    System.err.println("probe: queued FX for " + step + " at " + System.currentTimeMillis());
     Platform.runLater(() -> {
-      System.err.println("probe: entered FX for " + step);
+      System.err.println("probe: entered FX for " + step + " at " + System.currentTimeMillis());
       try {
         action.run();
         System.err.println("probe: completed FX for " + step);
@@ -91,9 +100,10 @@ class WindowSettingsTest {
         System.err.println("probe: stage created");
         WindowSettings settings = WindowSettings.load();
         System.err.println("probe: loaded " + settings.getClass().getSimpleName());
+        // The real app's ordering: the scene rides first, the settings apply after
+        stage.setScene(new Scene(new Region()));
         settings.apply(stage);
         System.err.println("probe: applied");
-        stage.setScene(new Scene(new Region()));
         settings.attach(stage);
         System.err.println("probe: attached, showing");
         stage.show();
