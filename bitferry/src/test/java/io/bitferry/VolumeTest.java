@@ -16,7 +16,7 @@ class VolumeTest {
   @Test
   void newVolumeIsRegisteredAndCommitted() throws IOException {
     Manager manager = new Manager();
-    Volume volume = new Volume(manager, dir.resolve("volume"));
+    Volume volume = Volume.create(manager, dir.resolve("volume"));
     assertTrue(manager.volumes().containsKey(volume.tag()));
     manager.commit();
     Path storage = dir.resolve("volume").resolve(Bitferry.STORAGE);
@@ -34,7 +34,7 @@ class VolumeTest {
   @Test
   void volumeSurvivesTheManagerRoundTrip() throws IOException {
     Manager manager = new Manager();
-    Volume volume = new Volume(manager, dir.resolve("volume"));
+    Volume volume = Volume.create(manager, dir.resolve("volume"));
     manager.commit();
 
     Manager restored = new Manager();
@@ -52,22 +52,20 @@ class VolumeTest {
     Files.createDirectories(root);
     Files.writeString(root.resolve(Bitferry.STORAGE), "{}");
     Manager manager = new Manager();
-    Volume volume = new Volume(manager, root);
-    assertThrows(BitferryError.class, manager::commit);
-    // The refused volume deregisters: it must not stay registered re-failing every
-    // following commit (nor poisoning the manager for the other operations)
-    assertFalse(manager.volumes().containsKey(volume.tag()));
-    assertDoesNotThrow(manager::commit);
+    assertThrows(BitferryError.class, () -> Volume.create(manager, root));
+    // The refused volume registers nothing: it leaves the manager clean
+    // (no refused volume stays registered re-failing every following commit)
+    assertTrue(manager.volumes().isEmpty());
+    assertDoesNotThrow(() -> manager.commit());
     // The explicit force overcomes the refusal on the re-created volume
     manager.force = true;
-    Volume forced = new Volume(manager, root);
-    manager.commit();
+    Volume forced = Volume.create(manager, root);
     assertTrue(Files.isRegularFile(root.resolve(Bitferry.STORAGE)));
     assertNotEquals("{}", Files.readString(root.resolve(Bitferry.STORAGE)));
   }
 
   @Test
-  void failedInitialCommitDeregistersVolume() throws IOException {
+  void failedCreationRegistersNothing() throws IOException {
     // The failure injection parks a directory at the intermediate image path: the
     // atomic write fails on every platform (EISDIR) - the directory read-only flag
     // is a POSIX-only mechanism (a no-op for the child creation on Windows)
@@ -77,20 +75,18 @@ class VolumeTest {
     Files.createDirectories(blockedRoot);
     Files.createDirectories(blockedRoot.resolve(Bitferry.STORAGE_IMAGE));
     Manager manager = new Manager();
-    Volume volume = new Volume(manager, blockedRoot);
-    assertThrows(BitferryError.class, manager::commit);
-    // The volume whose initial creation failed must deregister from manager
-    assertFalse(manager.volumes().containsKey(volume.tag()));
-    assertFalse(manager.liveVolumes().containsKey(volume.tag()));
-    assertFalse(volume.isLive());
-    assertDoesNotThrow(manager::commit);
+    assertThrows(BitferryError.class, () -> Volume.create(manager, blockedRoot));
+    // The volume whose initial creation failed registers nothing in the manager
+    assertTrue(manager.volumes().isEmpty());
+    assertTrue(manager.liveVolumes().isEmpty());
+    assertDoesNotThrow(() -> manager.commit());
   }
 
   @Test
   void simulationModeWritesNothing() {
     Manager manager = new Manager();
     manager.simulate = true;
-    Volume volume = new Volume(manager, dir.resolve("volume"));
+    Volume volume = Volume.create(manager, dir.resolve("volume"));
     manager.commit();
     assertFalse(Files.exists(dir.resolve("volume").resolve(Bitferry.STORAGE)));
     assertTrue(manager.liveVolumes().containsKey(volume.tag()));
@@ -100,7 +96,7 @@ class VolumeTest {
   void simulationConsumesNoDurableBookkeeping() throws IOException, InterruptedException {
     Manager manager = new Manager();
     manager.simulate = true;
-    Volume volume = new Volume(manager, dir.resolve("volume"));
+    Volume volume = Volume.create(manager, dir.resolve("volume"));
     manager.commit();
     assertFalse(Files.exists(dir.resolve("volume").resolve(Bitferry.STORAGE)));
     // The simulation leaves the write pending: a following real commit materializes it
@@ -119,7 +115,7 @@ class VolumeTest {
   @Test
   void simulatedDeletionStaysPendingUntilTheRealCommit() throws IOException {
     Manager manager = new Manager();
-    Volume volume = new Volume(manager, dir.resolve("volume"));
+    Volume volume = Volume.create(manager, dir.resolve("volume"));
     manager.commit();
     assertTrue(Files.exists(dir.resolve("volume").resolve(Bitferry.STORAGE)));
 
@@ -139,7 +135,7 @@ class VolumeTest {
   @Test
   void deletionRemovesTheStorage() throws IOException {
     Manager manager = new Manager();
-    Volume volume = new Volume(manager, dir.resolve("volume"));
+    Volume volume = Volume.create(manager, dir.resolve("volume"));
     manager.commit();
     assertTrue(Files.exists(dir.resolve("volume").resolve(Bitferry.STORAGE)));
 
@@ -194,7 +190,7 @@ class VolumeTest {
   @Test
   void endpointResolutionCoversTheVolumeScopeOnly() {
     Manager manager = new Manager();
-    Volume volume = new Volume(manager, dir.resolve("volume"));
+    Volume volume = Volume.create(manager, dir.resolve("volume"));
     var endpoint = assertInstanceOf(io.bitferry.endpoint.VolumeEndpoint.class,
       volume.endpoint(dir.resolve("volume").resolve("sub")));
     assertEquals(volume.tag(), endpoint.vtag());

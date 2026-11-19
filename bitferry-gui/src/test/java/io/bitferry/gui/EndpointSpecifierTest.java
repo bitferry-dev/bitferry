@@ -24,10 +24,10 @@ class EndpointSpecifierTest {
   void setUp() throws Exception {
     manager = new Manager();
     Files.createDirectories(dir.resolve("outer"));
-    outer = new Volume(manager, dir.resolve("outer"));
+    outer = Volume.create(manager, dir.resolve("outer"));
     // The nested volume: the most concrete encompassing volume must win
     Files.createDirectories(dir.resolve("outer").resolve("nested"));
-    inner = new Volume(manager, dir.resolve("outer").resolve("nested"));
+    inner = Volume.create(manager, dir.resolve("outer").resolve("nested"));
   }
 
   @Test

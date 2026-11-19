@@ -54,7 +54,7 @@ class TaskFormControllerTest {
             try {
                 context = new AppContext();
                 manager = context.manager();
-                volume = new Volume(manager, Files.createTempDirectory("bitferry-form-probe").resolve("volume"));
+                volume = Volume.create(manager, Files.createTempDirectory("bitferry-form-probe").resolve("volume"));
             } catch (Throwable t) {
                 failure.set(t);
             } finally {
@@ -165,7 +165,7 @@ class TaskFormControllerTest {
             Endpoints.parse(manager, ":" + volume.tag() + ":new-copy-dst"),
             form.execute(), List.of(), List.of());
         assertEquals(List.of(), copy.processOptions());
-        manager.commit();
+        manager.commit(copy);
 
         // Round trip through volume restore keeps empty options
         Manager reloaded = new Manager().restore(volume.root());
@@ -185,7 +185,7 @@ class TaskFormControllerTest {
             Endpoints.parse(manager, ":" + volume.tag() + ":edit-copy-dst"),
             null, List.of(), List.of());
         assertEquals(List.of("--metadata"), task.processOptions());
-        manager.commit();
+        manager.commit(task);
 
         // 1. Change options to custom list
         TaskFormController form1 = load(task);
@@ -224,14 +224,10 @@ class TaskFormControllerTest {
             Endpoints.parse(manager, ":" + volume.tag() + ":backup-src"),
             Endpoints.parse(manager, "local:" + Files.createTempDirectory("bitferry-backup-repo")),
             "secret", false, null, null, null, null, List.of(), false);
-        try {
-            TaskFormController form = load(task);
-            assertEquals("backup", form.type());
-            ComboBox<String> type = field(form, "type");
-            assertTrue(type.isDisable());
-        } finally {
-            manager.deregisterTask(task);
-        }
+        TaskFormController form = load(task);
+        assertEquals("backup", form.type());
+        ComboBox<String> type = field(form, "type");
+        assertTrue(type.isDisable());
     }
 
   @Test
@@ -276,7 +272,7 @@ class TaskFormControllerTest {
             Endpoints.parse(manager, "local:" + Files.createTempDirectory("bitferry-morph-src")),
             Endpoints.parse(manager, ":" + volume.tag() + ":morph-dst"),
             null, List.of("data/**"), List.of("*.tmp"));
-        manager.commit();
+        manager.commit(task);
 
         Task morphed = null;
         try {

@@ -91,11 +91,10 @@ public abstract class Task {
 
   private static final System.Logger LOG = System.getLogger(Task.class.getName());
 
-  /// Constructor for a new task instance.
-  // The this-escape is deliberate: the task is registered with the manager right upon its
-  // creation (mirroring the reference implementation). The registration reads back only the
-  // tag and the timestamp assigned above, so no uninitialized subclass state is observable.
-  @SuppressWarnings("this-escape")
+  /// Constructor for a new task instance. The registration is deferred to the
+  /// successful pristine commit (see [commit]): it rides the fully constructed
+  /// task - the one-time backend initialization may still reject it - so a
+  /// creation failing mid-flight leaves nothing registered.
   protected Task(Manager manager, Endpoint source, Endpoint destination, Collection<String> exclude) {
     this.manager = manager;
     this.tag = Tags.newTag();
@@ -104,7 +103,6 @@ public abstract class Task {
     this.exclude = new ArrayList<>(exclude);
     this.commitState = CommitState.PRISTINE;
     touch();
-    manager.registerTask(this);
   }
 
   /// Constructor for restoring an existing task from the descriptor's common fields;
@@ -486,7 +484,10 @@ public abstract class Task {
   /// materializing them into the storages.
   protected void processed() {}
 
-  /// Commit the task performing the pending FSM transitions.
+  /// Commit the task performing the pending FSM transitions. The one-time
+  /// initialization of the pristine task (the backend conformance probing and
+  /// the repository formatting) registers the task upon its success only: the
+  /// registration rides the fully constructed task mirroring [restore].
   public void commit() {
     loop:
     while (true) switch (commitState) {
@@ -495,9 +496,10 @@ public abstract class Task {
           conform();
           format();
         } catch (BitferryError e) {
-          // Abort the registration: the failed task must not persist (nor re-register
-          // upon the following restorations) - the volume storage dump below reflects
-          // the surviving task set
+          // Abort the materialization of a simulated creation (the task registered
+          // upon its simulated initialization; the real one just failed - it must
+          // not stay registered re-failing every following commit). A fresh real
+          // creation was never registered: the deregistration is a no-op then
           manager.deregisterTask(this);
           throw e;
         }
@@ -507,6 +509,7 @@ public abstract class Task {
           // leaving the transition pending for a following real commit
           commitState = CommitState.LIVE;
         }
+        manager.registerTask(this);
         LOG.log(Level.INFO, () -> "Task " + tag + " committed");
         return;
       }
@@ -582,7 +585,7 @@ public abstract class Task {
   /// is written anywhere.
   private void materializePending() {
     if (commitState != CommitState.PRISTINE || manager.simulate) return;
-    manager.commit();
+    manager.commit(this);
   }
 
   /// The tool dispatch: the concrete task hands itself to the executor's per-tool

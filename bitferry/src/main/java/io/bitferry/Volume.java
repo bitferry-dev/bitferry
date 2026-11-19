@@ -71,8 +71,12 @@ public final class Volume {
   // this lock first and the registry lock second (never the reverse).
   private final Object stateLock = new Object();
 
-  /// Constructor for a new volume instance.
-  public Volume(Manager manager, Path root) {
+  /// Constructor for a new volume instance. The registration is deferred to
+  /// [create]: it rides the successfully committed volume, not the constructor -
+  /// a creation failing mid-flight (the refused overwrite, the storage writing
+  /// failure) must leave nothing registered. Package-private: the creation goes
+  /// through the factory.
+  Volume(Manager manager, Path root) {
     this.version = Bitferry.STORAGE_VERSION;
     this.manager = manager;
     this.tag = Tags.newTag();
@@ -81,7 +85,6 @@ public final class Volume {
     this.modified = true;
     this.commitState = CommitState.PRISTINE;
     touch();
-    manager.registerVolume(this);
   }
 
   /// Jackson creator restoring an existing volume from the storage descriptor.
@@ -139,6 +142,19 @@ public final class Volume {
         restoreErrors.add("Failed to restore task " + (taskTag == null ? "<unknown tag>" : taskTag) + " of volume " + tag + ": " + e.getMessage());
       }
     }
+  }
+
+  /// Create a new volume at the specified root committing its pristine state:
+  /// the commit refuses to overwrite an existing foreign storage file unless the
+  /// force option is enabled. The volume registers with the manager only upon the
+  /// success - a failed creation leaves nothing behind (no rollback of a premature
+  /// registration is needed). The simulation mode registers the volume leaving the
+  /// pending write for a following real commit to materialize.
+  public static Volume create(Manager manager, Path root) {
+    Volume volume = new Volume(manager, root);
+    volume.commit();
+    manager.registerVolume(volume);
+    return volume;
   }
 
   /// Restore a volume probing the specified root for the storage file.
@@ -333,11 +349,13 @@ public final class Volume {
     return kept.isEmpty() ? null : kept;
   }
 
-  /// Commit the volume: commit the referring tasks first (their one-time initialization
-  /// may still abort the registration - the failed repository initialization - and the
-  /// storage dump below must reflect the surviving task set), then format the storage
-  /// upon creation, dump the storage contents when modified, remove the storage upon
-  /// the deletion.
+  /// Commit the volume: commit the referring tasks first (a task failing its
+  /// one-time initialization - the failed repository initialization - deregisters
+  /// itself, and the storage dump below reflects the surviving task set), then
+  /// format the storage upon creation, dump the storage contents when modified,
+  /// remove the storage upon the deletion. The commit of a pristine volume that
+  /// has not been registered yet (the in-flight [create] factory) raises on any
+  /// failure leaving the registration to the factory's success path only.
   public void commit() {
     if (!isModified() && !manager.force && commitState == CommitState.LIVE) {
       LOG.log(Level.DEBUG, () -> "Bitferry volume " + tag + " is up-to-date and no forced save requested; skipped");
@@ -354,118 +372,102 @@ public final class Volume {
         problems.add(e.getMessage());
       }
     }
-    boolean pristine = (commitState == CommitState.PRISTINE);
-    try {
-      // The commit machine and the storage dump serialization ride the state lock:
-      // the vault writes (the operations thread) cannot interleave with the dump
-      // iteration, and the concurrent GUI readers cannot observe a torn state.
-      // The task commits above stay deliberately outside the lock (their backend
-      // side effects must not hold the volume's readers hostage).
-      synchronized (stateLock) {
-        loop:
-        while (true) switch (commitState) {
-          case PRISTINE -> { // Format the volume
-            if (Files.exists(storage) && !manager.force) {
-              // Abort the registration: the refused volume must not stay registered
-              // (else it would re-fail every following commit) - mirroring the task's
-              // rollback upon the failed pristine commit
-              manager.deregisterVolume(this);
-              throw new BitferryError("Refuse to overwrite existing storage file " + storage + " without the force option enabled");
-            }
-            commitState = CommitState.LIVE;
+    // The commit machine and the storage dump serialization ride the state lock:
+    // the vault writes (the operations thread) cannot interleave with the dump
+    // iteration, and the concurrent GUI readers cannot observe a torn state.
+    // The task commits above stay deliberately outside the lock (their backend
+    // side effects must not hold the volume's readers hostage).
+    synchronized (stateLock) {
+      loop:
+      while (true) switch (commitState) {
+        case PRISTINE -> { // Format the volume
+          if (Files.exists(storage) && !manager.force) {
+            throw new BitferryError("Refuse to overwrite existing storage file " + storage + " without the force option enabled");
           }
-          case LIVE -> { // Dump the volume storage
-            if (isModified() || manager.force) {
-              if (fileStore == null) {
-                // The identity was unresolvable at the discovery time (e.g. the mount
-                // was dropped): re-resolve. An existing root whose file system stays
-                // unresolvable cannot be verified - the stale mount point would
-                // silently adopt the writes. The not-yet-existing root (the fresh
-                // volume) has nothing to verify: the write below creates it.
-                fileStore = fileStoreId(root);
-                if (fileStore == null && Files.isDirectory(root)) {
-                  throw new BitferryError("Bitferry volume " + tag + " presence at " + root + " cannot be verified (its file system is unresolvable)");
-                }
-                if (fileStore != null) {
-                  LOG.log(Level.WARNING, () -> "Bitferry volume " + tag + " file system identity was unresolvable at the discovery time; adopted " + fileStore);
-                }
+          commitState = CommitState.LIVE;
+        }
+        case LIVE -> { // Dump the volume storage
+          if (isModified() || manager.force) {
+            if (fileStore == null) {
+              // The identity was unresolvable at the discovery time (e.g. the mount
+              // was dropped): re-resolve. An existing root whose file system stays
+              // unresolvable cannot be verified - the stale mount point would
+              // silently adopt the writes. The not-yet-existing root (the fresh
+              // volume) has nothing to verify: the write below creates it.
+              fileStore = fileStoreId(root);
+              if (fileStore == null && Files.isDirectory(root)) {
+                throw new BitferryError("Bitferry volume " + tag + " presence at " + root + " cannot be verified (its file system is unresolvable)");
+              }
+              if (fileStore != null) {
+                LOG.log(Level.WARNING, () -> "Bitferry volume " + tag + " file system identity was unresolvable at the discovery time; adopted " + fileStore);
+              }
+            } else {
+              checkPresence();
+            }
+            try {
+              String contents = Storage.toJson(this);
+              if (manager.simulate) {
+                // The simulation writes nothing and consumes no durable bookkeeping:
+                // the pending mtime/generation/modified state is left for a following
+                // real commit to materialize
+                LOG.log(Level.INFO, () -> "Simulated Bitferry volume " + tag + " save to " + storage);
               } else {
-                checkPresence();
+                // The actual storage writing time is stored, not the in-memory modification time
+                mtime = OffsetDateTime.now().truncatedTo(java.time.temporal.ChronoUnit.MICROS);
+                Storage.writeText(storage, contents);
+                LOG.log(Level.INFO, () -> "Bitferry volume " + tag + " written to " + storage);
               }
-              try {
-                String contents = Storage.toJson(this);
-                if (manager.simulate) {
-                  // The simulation writes nothing and consumes no durable bookkeeping:
-                  // the pending mtime/generation/modified state is left for a following
-                  // real commit to materialize
-                  LOG.log(Level.INFO, () -> "Simulated Bitferry volume " + tag + " save to " + storage);
-                } else {
-                  // The actual storage writing time is stored, not the in-memory modification time
-                  mtime = OffsetDateTime.now().truncatedTo(java.time.temporal.ChronoUnit.MICROS);
-                  Storage.writeText(storage, contents);
-                  LOG.log(Level.INFO, () -> "Bitferry volume " + tag + " written to " + storage);
-                }
-              } catch (IOException e) {
-                throw new BitferryError("Bitferry volume " + tag + " storage saving failure", e);
-              }
-            } else {
-              LOG.log(Level.DEBUG, () -> "Bitferry volume " + tag + " is up-to-date and no forced save requested; skipped");
+            } catch (IOException e) {
+              throw new BitferryError("Bitferry volume " + tag + " storage saving failure", e);
             }
-            break loop;
+          } else {
+            LOG.log(Level.DEBUG, () -> "Bitferry volume " + tag + " is up-to-date and no forced save requested; skipped");
           }
-          case DELETED -> {
-            if (fileStore == null) fileStore = fileStoreId(root);
-            if (fileStore == null && Files.exists(root)) {
-              // The destructive removal must not proceed blind on an existing root
-              // with an unresolvable file system (the stale mount directory could
-              // host a re-materialized volume); the already-vanished root carries
-              // no storage to protect
-              throw new BitferryError("Bitferry volume " + tag + " presence at " + root + " cannot be verified (its file system is unresolvable)");
-            }
-            if (fileStore != null) checkPresence();
-            if (manager.simulate) {
-              // The simulation removes nothing and consumes no durable bookkeeping:
-              // the deletion stays pending for a following real commit
-              LOG.log(Level.INFO, () -> "Simulated Bitferry volume " + tag + " storage removal");
-              break loop;
-            } else {
-              // Both the storage file and the possibly stale intermediate
-              // image of an interrupted commit are removed
-              try {
-                Files.deleteIfExists(storage);
-                Files.deleteIfExists(root.resolve(Bitferry.STORAGE_IMAGE));
-              } catch (IOException e) {
-                throw new BitferryError("Bitferry volume " + tag + " storage removal failure", e);
-              }
-              LOG.log(Level.INFO, () -> "Bitferry volume " + tag + " storage " + storage + " deleted");
-            }
-            commitState = CommitState.DEAD;
-            live = false;
-          }
-          case DEAD -> {
-            break loop;
-          }
+          break loop;
         }
-        // On successful commit advance the volume's generation so that the referring tasks
-        // won't be flagged out-of-date anymore. The simulation consumes no durable bookkeeping
-        // (the pending state is left for a following real commit), and the dead volumes
-        // (deleted or dead) skip the advance: their storages are gone, and no live tasks
-        // refer them anymore
-        if (!manager.simulate && live) {
-          var surviving = tasks();
-          generation = surviving.isEmpty() ? 0 : surviving.values().stream().mapToInt(Task::generation).max().orElseThrow() + 1;
-          modified = false;
-        }
-      }
-    } catch (Throwable t) {
-      if (pristine) {
-        manager.deregisterVolume(this);
-        synchronized (stateLock) {
-          commitState = CommitState.PRISTINE;
+        case DELETED -> {
+          if (fileStore == null) fileStore = fileStoreId(root);
+          if (fileStore == null && Files.exists(root)) {
+            // The destructive removal must not proceed blind on an existing root
+            // with an unresolvable file system (the stale mount directory could
+            // host a re-materialized volume); the already-vanished root carries
+            // no storage to protect
+            throw new BitferryError("Bitferry volume " + tag + " presence at " + root + " cannot be verified (its file system is unresolvable)");
+          }
+          if (fileStore != null) checkPresence();
+          if (manager.simulate) {
+            // The simulation removes nothing and consumes no durable bookkeeping:
+            // the deletion stays pending for a following real commit
+            LOG.log(Level.INFO, () -> "Simulated Bitferry volume " + tag + " storage removal");
+            break loop;
+          } else {
+            // Both the storage file and the possibly stale intermediate
+            // image of an interrupted commit are removed
+            try {
+              Files.deleteIfExists(storage);
+              Files.deleteIfExists(root.resolve(Bitferry.STORAGE_IMAGE));
+            } catch (IOException e) {
+              throw new BitferryError("Bitferry volume " + tag + " storage removal failure", e);
+            }
+            LOG.log(Level.INFO, () -> "Bitferry volume " + tag + " storage " + storage + " deleted");
+          }
+          commitState = CommitState.DEAD;
           live = false;
         }
+        case DEAD -> {
+          break loop;
+        }
       }
-      throw t;
+      // On successful commit advance the volume's generation so that the referring tasks
+      // won't be flagged out-of-date anymore. The simulation consumes no durable bookkeeping
+      // (the pending state is left for a following real commit), and the dead volumes
+      // (deleted or dead) skip the advance: their storages are gone, and no live tasks
+      // refer them anymore
+      if (!manager.simulate && live) {
+        var surviving = tasks();
+        generation = surviving.isEmpty() ? 0 : surviving.values().stream().mapToInt(Task::generation).max().orElseThrow() + 1;
+        modified = false;
+      }
     }
     if (!problems.isEmpty()) throw new BitferryError("Task commit failure(s) in volume " + tag + ": " + String.join("; ", problems));
   }

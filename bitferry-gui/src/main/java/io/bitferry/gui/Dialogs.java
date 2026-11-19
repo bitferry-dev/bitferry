@@ -99,16 +99,15 @@ final class Dialogs {
       }
       boolean oldForce = manager.force;
       manager.force = exists;
-      Volume volume = null;
       try {
-        volume = new Volume(manager, path);
+        // The creation registers the volume only upon its successful pristine
+        // commit (a failed creation leaves nothing behind); the follow-up commit
+        // persists the rest of the volume set as before
+        Volume volume = Volume.create(manager, path);
         manager.commit();
         logs.log("Bitferry volume " + AnsiFormat.tag(volume.tag()) + " created at " + AnsiFormat.path(volume.root()));
         context.fireModelChanged();
       } catch (RuntimeException e) {
-        if (volume != null) {
-          manager.deregisterVolume(volume);
-        }
         context.fireModelChanged();
         throw e;
       } finally {
@@ -182,8 +181,9 @@ final class Dialogs {
     });
   }
 
-  // Run the task creation on the operations thread; the failures deregister the
-  // half-constructed task (the commit aborts and deregisters on its own)
+  // Run the task creation on the operations thread; the task registers itself
+  // upon its successful one-time initialization only (a failed creation leaves
+  // nothing behind - no frontend-side rollback is needed)
   private static void createTask(AppContext context, LogController logs, TaskFormController form) {
     context.operations().execute(() -> {
       Task task = null;
@@ -227,7 +227,7 @@ final class Dialogs {
         if (manager.volumes().values().stream().noneMatch(v -> candidate.refersVolume(v.tag()))) {
           throw new BitferryError("Task does not belong to any registered volume; it cannot be persisted");
         }
-        manager.commit();
+        manager.commit(task);
         // The simulated creation writes nothing (the storages hold no such task) and
         // skips the backend initialization (the restic repository init): say so instead
         // of claiming a plain creation - the pending initialization materializes upon
@@ -250,9 +250,6 @@ final class Dialogs {
         }
         context.fireModelChanged();
       } catch (RuntimeException e) {
-        // Deregister on the same manager instance the task was built on: the context's
-        // manager may have been swapped by a concurrent reload meanwhile
-        if (task != null) manager.deregisterTask(task);
         logs.log(AnsiFormat.error("Task creation failed: " + e.getMessage()));
         Platform.runLater(() -> errorAlert(context, "Task creation failed", e.getMessage()));
       }

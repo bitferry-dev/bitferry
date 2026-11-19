@@ -133,7 +133,7 @@ class NewVolumeDialogTest {
     AppContext context = new AppContext();
     LogController logs = new LogController();
 
-    Volume oldVol = new Volume(context.manager(), tempDir);
+    Volume oldVol = Volume.create(context.manager(), tempDir);
     context.manager().commit();
     String oldTag = oldVol.tag();
 
@@ -165,7 +165,7 @@ class NewVolumeDialogTest {
     AppContext context = new AppContext();
     LogController logs = new LogController();
 
-    Volume oldVol = new Volume(context.manager(), tempDir);
+    Volume oldVol = Volume.create(context.manager(), tempDir);
     context.manager().commit();
     String oldTag = oldVol.tag();
 

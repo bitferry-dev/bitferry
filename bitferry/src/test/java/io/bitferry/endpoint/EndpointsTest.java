@@ -18,7 +18,7 @@ class EndpointsTest {
   @BeforeEach
   void setUp() {
     manager = new Manager();
-    volume = new Volume(manager, dir.resolve("volume"));
+    volume = Volume.create(manager, dir.resolve("volume"));
   }
 
   @Test
@@ -67,7 +67,7 @@ class EndpointsTest {
 
   @Test
   void barePathAttachesToTheMostConcreteNestedVolume() {
-    Volume nested = new Volume(manager, dir.resolve("volume").resolve("nested"));
+    Volume nested = Volume.create(manager, dir.resolve("volume").resolve("nested"));
     VolumeEndpoint ve = assertInstanceOf(VolumeEndpoint.class, Endpoints.parse(manager, dir.resolve("volume").resolve("nested").resolve("deep").toString()));
     assertEquals(nested.tag(), ve.vtag());
     assertEquals("deep", ve.path());

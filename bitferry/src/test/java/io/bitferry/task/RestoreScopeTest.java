@@ -18,7 +18,7 @@ class RestoreScopeTest {
 
   private Restore restore(String snapshotTag) {
     Manager manager = new Manager();
-    Volume volume = new Volume(manager, dir.resolve("volume"));
+    Volume volume = Volume.create(manager, dir.resolve("volume"));
     Endpoint repo = Endpoints.parse(manager, "local:" + dir.resolve("repo"));
     Endpoint target = Endpoints.parse(manager, ":" + volume.tag() + ":restored");
     return new Restore(manager, repo, target, "password", null, List.of(), List.of(), false, snapshotTag);
@@ -50,16 +50,18 @@ class RestoreScopeTest {
   @Test
   void scopeResolutionDerivesValidatesAndRejectsAmbiguity() {
     Manager manager = new Manager();
-    Volume volume = new Volume(manager, dir.resolve("volume"));
+    Volume volume = Volume.create(manager, dir.resolve("volume"));
     Endpoint repo = Endpoints.parse(manager, "local:" + dir.resolve("repo"));
     Endpoint source = Endpoints.parse(manager, ":" + volume.tag() + ":data");
     Backup backup = new Backup(manager, source, repo, "password", null, null, null, null, List.of());
+    manager.registerTask(backup);
 
     assertEquals(backup.tag(), Restore.resolveSnapshotTag(manager, repo, null));
     assertEquals(backup.tag(), Restore.resolveSnapshotTag(manager, repo, backup.tag()));
     assertThrows(BitferryError.class, () -> Restore.resolveSnapshotTag(manager, repo, "nosuch"));
 
     Backup twin = new Backup(manager, source, repo, "password", null, null, null, null, List.of());
+    manager.registerTask(twin);
     assertThrows(BitferryError.class, () -> Restore.resolveSnapshotTag(manager, repo, null));
     assertEquals(twin.tag(), Restore.resolveSnapshotTag(manager, repo, twin.tag()));
   }

@@ -4,12 +4,10 @@
 
 - password vault/keyring migration on radion button state change
 
-- rollback architectural issue (GLM full) - registration within the volume must be after successful operation only
-
 - restic restore ergonomics - select the snapshot tag (or latest)
 
 - select task id for restore on restore selection
 
 - what about disabling the restic repo sharing altogether?
 
-- value entry as an encoded json
+- vault entry as an encoded json

@@ -22,7 +22,7 @@ class TaskTest {
   @BeforeEach
   void setUp() {
     manager = new Manager();
-    volume = new Volume(manager, dir.resolve("volume"));
+    volume = Volume.create(manager, dir.resolve("volume"));
   }
 
   private Endpoint source() {
@@ -62,6 +62,7 @@ class TaskTest {
   @Test
   void tasksAreRegisteredAndIntactUponCreation() {
     Replicate task = new Replicate(manager, source(), destination(), null, List.of(), List.of());
+    manager.commit(task);
     assertEquals(task, manager.task(task.tag()));
     assertTrue(task.isIntact());
     assertTrue(task.isLive());
@@ -242,6 +243,7 @@ class TaskTest {
   void processingIsDelegatedToTheStubExecutor() {
     manager.backendExecutor(Executor.stub());
     Replicate task = new Replicate(manager, source(), destination(), null, List.of(), List.of());
+    manager.registerTask(task);
     assertFalse(task.process(null));
     assertFalse(manager.process());
   }
@@ -249,6 +251,7 @@ class TaskTest {
   @Test
   void deletionFlagsTheTaskAndItsVolumes() {
     Replicate task = new Replicate(manager, source(), destination(), null, List.of(), List.of());
+    manager.registerTask(task);
     assertTrue(volume.isModified());
     task.delete();
     // The tombstone: the task stays live (the marker must persist) yet invisible
@@ -269,7 +272,7 @@ class TaskTest {
     Backup backup = new Backup(manager, volumeSource(), destination(), "secret", null, null, null, null, List.of());
 
     // The commit raises the initialization failure and aborts the registration
-    BitferryError error = assertThrows(BitferryError.class, volume::commit);
+    BitferryError error = assertThrows(BitferryError.class, () -> manager.commit(backup));
     assertTrue(error.getMessage().contains("repository initialization failure"), error.getMessage());
     assertFalse(manager.tasks().containsKey(backup.tag()));
     assertEquals(0, volume.generation());
@@ -287,7 +290,7 @@ class TaskTest {
     });
     Backup backup = new Backup(manager, volumeSource(), destination(), "secret", null, null, null, null, List.of());
 
-    BitferryError error = assertThrows(BitferryError.class, volume::commit);
+    BitferryError error = assertThrows(BitferryError.class, () -> manager.commit(backup));
     assertTrue(error.getMessage().contains("encryption conformance failure"), error.getMessage());
     assertFalse(manager.tasks().containsKey(backup.tag()));
     assertEquals(0, volume.generation());
@@ -404,6 +407,7 @@ class TaskTest {
   @Test
   void massRunParticipationDefaultsAndPersists() {
     var task = new Replicate(manager, source(), destination(), null, List.of(), List.of());
+    manager.commit(task);
     // The default: every task participates in the mass runs (the descriptor omits the flag)
     assertTrue(task.isRunnable());
     assertFalse(task.isManual());
@@ -443,6 +447,7 @@ class TaskTest {
   @Test
   void equalTimestampConflictsPreferTheTombstone() {
     Equalize task = new Equalize(manager, source(), destination(), null, List.of(), List.of());
+    manager.commit(task);
 
     // The equal-mtime plain copy keeps the registered one: the tie is resolved
     // deterministically instead of by the registration order alone

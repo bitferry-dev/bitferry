@@ -52,13 +52,14 @@ class MassButtonsTest {
             try {
                 context = new AppContext();
                 manager = context.manager();
-                Volume volume = new Volume(manager, Files.createTempDirectory("bitferry-mass-probe").resolve("volume"));
+                Volume volume = Volume.create(manager, Files.createTempDirectory("bitferry-mass-probe").resolve("volume"));
                 for (int i = 0; i < 2; i++) {
                     Replicate task = new Replicate(manager,
                         io.bitferry.endpoint.Endpoints.parse(manager, "local:" + Files.createTempDirectory("bitferry-mass-data-" + i)),
                         io.bitferry.endpoint.Endpoints.parse(manager, ":" + volume.tag() + ":t" + i),
                         null, List.of(), List.of());
                     task.setRunnable(false);
+                    manager.commit(task);
                     tasks.add(task);
                 }
                 manager.commit();

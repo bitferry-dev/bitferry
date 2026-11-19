@@ -172,9 +172,18 @@ public class Manager {
     }
   }
 
-  /// Drop the task from the registry: the abort of a failed creation (the one-time
-  /// backend initialization of a pristine task may reject the task - e.g. the
-  /// repository initialization over the existing repository).
+  /// Commit the given newly created task performing its one-time backend
+  /// initialization (the task registers itself upon the success only - see
+  /// [Task#commit]), then commit the live volumes persisting the result.
+  public Manager commit(Task task) {
+    task.commit();
+    return commit();
+  }
+
+  /// Drop the task from the registry: the abort of a failed materialization of a
+  /// simulated creation (the real one-time backend initialization rejecting the
+  /// task the simulated one accepted), or a frontend's cleanup of an entity it is
+  /// about to replace.
   public void deregisterTask(Task task) {
     synchronized (registryLock) {
       tasks.remove(task.tag());
@@ -189,10 +198,10 @@ public class Manager {
     }
   }
 
-  /// Drop the volume from the registry: the abort of a failed creation (the commit
-  /// of a pristine volume may reject it - e.g. the refusal to overwrite the existing
-  /// foreign storage). Without the rollback the rejected volume would stay registered
-  /// and fail every following commit.
+  /// Drop the volume from the registry: a frontend's cleanup of an entity it is
+  /// about to replace (a volume re-created over the occupied root). The creation
+  /// itself needs no rollback anymore: the registration rides the successful
+  /// pristine commit only (see [Volume#create]).
   public void deregisterVolume(Volume volume) {
     synchronized (registryLock) {
       volumes.remove(volume.tag());

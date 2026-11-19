@@ -27,15 +27,17 @@ class TombstoneTest {
   @BeforeEach
   void setUp() {
     manager = new Manager();
-    first = new Volume(manager, dir.resolve("first"));
-    second = new Volume(manager, dir.resolve("second"));
+    first = Volume.create(manager, dir.resolve("first"));
+    second = Volume.create(manager, dir.resolve("second"));
   }
 
   private Task bindTask() {
-    return new Replicate(manager,
+    Task task = new Replicate(manager,
       Endpoints.parse(manager, ":" + first.tag() + ":"),
       Endpoints.parse(manager, ":" + second.tag() + ":backup"),
       null, List.of(), List.of());
+    manager.commit(task);
+    return task;
   }
 
   @Test

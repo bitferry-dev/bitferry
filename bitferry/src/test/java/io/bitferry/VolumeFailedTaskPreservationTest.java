@@ -24,12 +24,12 @@ class VolumeFailedTaskPreservationTest {
   // descriptors are the genuine serialized forms, not hand-crafted guesses)
   private Path seedVolume() throws java.io.IOException {
     Manager manager = new Manager();
-    Volume volume = new Volume(manager, dir.resolve("volume"));
-    new Copy(manager,
+    Volume volume = Volume.create(manager, dir.resolve("volume"));
+    Copy copy = new Copy(manager,
       Endpoints.parse(manager, ":" + volume.tag() + ":data"),
       Endpoints.parse(manager, ":" + volume.tag() + ":replica"),
       null, List.of(), List.of());
-    manager.commit();
+    manager.commit(copy);
     return dir.resolve("volume").resolve(Bitferry.STORAGE);
   }
 

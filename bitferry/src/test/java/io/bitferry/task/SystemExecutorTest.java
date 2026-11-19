@@ -25,7 +25,7 @@ class SystemExecutorTest {
   @BeforeEach
   void setUp() {
     manager = new Manager();
-    volume = new Volume(manager, dir.resolve("volume"));
+    volume = Volume.create(manager, dir.resolve("volume"));
   }
 
   private Endpoint source() {
@@ -394,6 +394,7 @@ class SystemExecutorTest {
     SystemExecutor executor = new SystemExecutor(recorder);
 
     Backup backup = new Backup(manager, volumeSource(), destination(), "secret", null, null, "@default", "@default", List.of("*.tmp"));
+    manager.registerTask(backup);
     boolean result = executor.run(backup, null);
 
     assertTrue(result);
@@ -648,7 +649,7 @@ class SystemExecutorTest {
     manager.backendExecutor(new SystemExecutor(recorder));
 
     Backup backup = new Backup(manager, volumeSource(), destination(), "secret", null, null, null, null, List.of());
-    manager.commit();
+    manager.commit(backup);
 
     List<List<String>> initInvocations = recorder.invocations.stream()
       .map(RecordingCommandExecutor.Invocation::command)
@@ -666,7 +667,7 @@ class SystemExecutorTest {
     Path repoDir = dir.resolve("outside-repo");
     Endpoint repo = Endpoints.parse(manager, "local:" + repoDir);
     Backup backup = new Backup(manager, volumeSource(), repo, "secret", null, null, null, null, List.of());
-    manager.commit();
+    manager.commit(backup);
 
     List<List<String>> initInvocations = recorder.invocations.stream()
       .map(RecordingCommandExecutor.Invocation::command)
@@ -685,7 +686,7 @@ class SystemExecutorTest {
     manager.backendExecutor(new SystemExecutor(recorder));
 
     Backup backup = new Backup(manager, volumeSource(), destination(), "secret", null, null, null, null, List.of());
-    manager.commit();
+    manager.commit(backup);
     assertTrue(recorder.invocations.isEmpty(), "Simulation must not spawn any commands");
 
     manager.simulate = false;
@@ -707,7 +708,7 @@ class SystemExecutorTest {
     manager.backendExecutor(new SystemExecutor(recorder));
 
     Backup backup = new Backup(manager, volumeSource(), destination(), "secret", null, null, null, null, List.of());
-    manager.commit();
+    manager.commit(backup);
     assertTrue(recorder.invocations.isEmpty(), "Simulation must not spawn any commands");
 
     manager.simulate = false;
@@ -732,15 +733,16 @@ class SystemExecutorTest {
   }
 
   @Test
-  void simulatedRunOfPendingTaskKeepsTheDeferral() {
+  void simulatedRunOfPendingTaskKeepsTheDeferral() throws IOException {
     // The simulation stays a pure dry run even for the pending tasks: no commands,
     // no persistence
+    Files.deleteIfExists(dir.resolve("volume").resolve(Bitferry.STORAGE));
     manager.simulate = true;
     RecordingCommandExecutor recorder = new RecordingCommandExecutor();
     manager.backendExecutor(new SystemExecutor(recorder));
 
     Backup backup = new Backup(manager, volumeSource(), destination(), "secret", null, null, null, null, List.of());
-    manager.commit();
+    manager.commit(backup);
     assertTrue(manager.process(backup.tag()), "The simulated run must succeed");
     // The simulated run exercises the backend in the dry-run form (the check, the
     // retention, the backup itself) - but never the pending repository initialization
@@ -757,7 +759,9 @@ class SystemExecutorTest {
   // overrides it via the arguments.
   private Backup sharedRepoTask(String sourcePath, String forget, String serve) {
     Endpoint source = sourcePath == null ? volumeSource() : Endpoints.parse(manager, ":" + volume.tag() + ":" + sourcePath);
-    return new Backup(manager, source, destination(), "secret", null, null, forget, null, serve, List.of());
+    Backup task = new Backup(manager, source, destination(), "secret", null, null, forget, null, serve, List.of());
+    manager.registerTask(task);
+    return task;
   }
 
   // Seed the per-task repository state file: fresh for task a, due for task b when
@@ -952,12 +956,13 @@ class SystemExecutorTest {
     Files.writeString(srcDir.resolve("hello.txt"), "hello bitferry");
 
     Path dstDir = dir.resolve("real-dst");
-    Volume dstVol = new Volume(manager, dstDir);
+    Volume dstVol = Volume.create(manager, dstDir);
 
     Endpoint srcEndpoint = Endpoints.parse(manager, "local:" + srcDir);
     Endpoint dstEndpoint = Endpoints.parse(manager, ":" + dstVol.tag() + ":backup");
 
     Replicate task = new Replicate(manager, srcEndpoint, dstEndpoint, null, List.of(), List.of());
+    manager.commit(task);
     List<String> outputLines = new ArrayList<>();
     boolean success = manager.process(outputLines::add, task.tag());
 
@@ -1025,13 +1030,14 @@ class SystemExecutorTest {
     Path volDir = dir.resolve("crypt-vol");
     Files.createDirectories(volDir);
     Files.writeString(volDir.resolve("secret.txt"), "classified payload");
-    Volume volume = new Volume(manager, volDir);
+    Volume volume = Volume.create(manager, volDir);
 
     // The encrypt task replicates the volume contents in the encrypted form
     Endpoint source = Endpoints.parse(manager, ":" + volume.tag() + ":");
     Endpoint encrypted = Endpoints.parse(manager, "local:" + dir.resolve("crypt-enc"));
     Replicate encrypt = new Replicate(manager, source, encrypted, null, List.of(), List.of());
     encrypt.encrypt("crypt-pass", null, Rclone.Encryption.options("@default"));
+    manager.commit(encrypt);
     assertTrue(manager.process(encrypt.tag()));
 
     // The encrypted replica holds no plaintext names nor contents
@@ -1046,6 +1052,7 @@ class SystemExecutorTest {
     // The decrypt task restores the plaintext out of the encrypted source
     Copy decrypt = new Copy(manager, encrypted, Endpoints.parse(manager, ":" + volume.tag() + ":decrypted"), null, List.of(), List.of());
     decrypt.decrypt("crypt-pass", null, Rclone.Encryption.options("@default"));
+    manager.commit(decrypt);
     assertTrue(manager.process(decrypt.tag()));
 
     Path restored = volDir.resolve("decrypted").resolve("secret.txt");
@@ -1322,20 +1329,20 @@ class SystemExecutorTest {
 
     Path srcDir = dir.resolve("real-restic-src");
     Files.createDirectories(srcDir);
-    Volume vol = new Volume(manager, srcDir);
+    Volume vol = Volume.create(manager, srcDir);
     Endpoint src = Endpoints.parse(manager, ":" + vol.tag() + ":");
     Endpoint repo = Endpoints.parse(manager, "local:" + repoDir);
 
     // 1. Wrong password backup creation is refused and task is deregistered
     Backup wrongBackup = new Backup(manager, src, repo, "wrong-password", null, null, null, null, List.of());
-    BitferryError err = assertThrows(BitferryError.class, vol::commit);
+    BitferryError err = assertThrows(BitferryError.class, () -> manager.commit(wrongBackup));
     assertTrue(err.getMessage().contains("does not accept the provided password"), err.getMessage());
     assertFalse(err.getMessage().contains("--attach"), err.getMessage());
     assertFalse(manager.tasks().containsKey(wrongBackup.tag()));
 
     // 2. Correct password backup creation succeeds and persists
     Backup correctBackup = new Backup(manager, src, repo, "correct-password", null, null, null, null, List.of());
-    vol.commit();
+    manager.commit(correctBackup);
     assertTrue(manager.tasks().containsKey(correctBackup.tag()));
 
     Manager restored = new Manager().restore(srcDir);
@@ -1347,19 +1354,19 @@ class SystemExecutorTest {
     // repositories - the deletion is the documented way out)
     manager.task(correctBackup.tag()).delete();
     Backup forceBackup = new Backup(manager, src, repo, "new-force-password", true, null, null, null, List.of());
-    vol.commit();
+    manager.commit(forceBackup);
     assertTrue(manager.tasks().containsKey(forceBackup.tag()));
 
     // 5. Restore with wrong password is refused
     Restore wrongRestore = new Restore(manager, repo, src, "bad-password", null, List.of(), List.of());
-    err = assertThrows(BitferryError.class, vol::commit);
+    err = assertThrows(BitferryError.class, () -> manager.commit(wrongRestore));
     assertTrue(err.getMessage().contains("does not accept the provided password"), err.getMessage());
     assertFalse(err.getMessage().contains("--attach"), err.getMessage());
     assertFalse(manager.tasks().containsKey(wrongRestore.tag()));
 
     // 6. Restore with correct password ("new-force-password") succeeds
     Restore correctRestore = new Restore(manager, repo, src, "new-force-password", null, List.of(), List.of());
-    vol.commit();
+    manager.commit(correctRestore);
     assertTrue(manager.tasks().containsKey(correctRestore.tag()));
   }
 
@@ -1403,6 +1410,7 @@ class SystemExecutorTest {
     Endpoint repo = Endpoints.parse(manager, "local:" + repoDir);
 
     Backup backup = new Backup(manager, volumeSource(), repo, "secret", null, null, "@default", "@default", "7d,5", List.of());
+    manager.registerTask(backup);
 
     // Threshold crossed: 5 backups done since service
     ResticRepositoryState state = new ResticRepositoryState();
@@ -1478,6 +1486,8 @@ class SystemExecutorTest {
 
     Backup b1 = new Backup(manager, volumeSource(), Endpoints.parse(manager, "local:" + repo1), "sec1", null, null, null, null, "7d,5", List.of());
     Backup b2 = new Backup(manager, volumeSource(), Endpoints.parse(manager, "local:" + repo2), "sec2", null, null, null, null, "7d,5", List.of());
+    manager.registerTask(b1);
+    manager.registerTask(b2);
 
     boolean overall = manager.serve(List.of(b1.tag(), b2.tag()), null);
     assertFalse(overall);
@@ -1610,6 +1620,8 @@ class SystemExecutorTest {
     Endpoint repoEndpoint = Endpoints.parse(manager, "local:" + repoDir);
     Backup backup = new Backup(manager, volumeSource(), repoEndpoint, "old-secret", null, null, null, null, List.of());
     Restore restore = new Restore(manager, repoEndpoint, volumeRestored(), "old-secret", null, List.of(), List.of());
+    manager.registerTask(backup);
+    manager.registerTask(restore);
 
     executor.passwd(backup, "new-secret");
 

@@ -41,7 +41,7 @@ class SymbolsTest {
   @Test
   void describeFollowsThePolicy() {
     Manager manager = new Manager();
-    Volume vol = new Volume(manager, dir.resolve("vol"));
+    Volume vol = Volume.create(manager, dir.resolve("vol"));
     Copy task = new Copy(manager,
       Endpoints.parse(manager, ":" + vol.tag() + ":src"),
       Endpoints.parse(manager, ":" + vol.tag() + ":dst"),

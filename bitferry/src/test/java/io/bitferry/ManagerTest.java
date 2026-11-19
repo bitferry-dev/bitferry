@@ -20,16 +20,18 @@ class ManagerTest {
   @BeforeEach
   void setUp() {
     manager = new Manager();
-    first = new Volume(manager, dir.resolve("first"));
-    second = new Volume(manager, dir.resolve("second"));
+    first = Volume.create(manager, dir.resolve("first"));
+    second = Volume.create(manager, dir.resolve("second"));
   }
 
   private Task replicateTask() {
     // Local source directory into the second volume's backup path
-    return new Replicate(manager,
+    Task task = new Replicate(manager,
       Endpoints.parse(manager, "local:" + dir.resolve("first").resolve("data")),
       Endpoints.parse(manager, ":" + second.tag() + ":backup"),
       null, List.of(), List.of());
+    manager.commit(task);
+    return task;
   }
 
   @Test
@@ -51,7 +53,7 @@ class ManagerTest {
       Endpoints.parse(manager, ":" + first.tag() + ":"),
       Endpoints.parse(manager, ":" + second.tag() + ":backup"),
       null, List.of(), List.of());
-    manager.commit();
+    manager.commit(task);
 
     // A fresh manager restoring only the first volume; the peer (second) volume is absent
     Manager restored = new Manager();
@@ -62,7 +64,7 @@ class ManagerTest {
     // The deletion must succeed in spite of the absent peer volume; the tombstone
     // is retained (invisible) until the peer volume returns and the task is collected
     assertDoesNotThrow(copy::delete);
-    assertDoesNotThrow(restored::commit);
+    assertDoesNotThrow(() -> restored.commit());
     assertTrue(copy.isDeleted());
 
     // The present volume's storage keeps the invisible tombstone
@@ -77,7 +79,7 @@ class ManagerTest {
   @Test
   void volumesAndTasksRoundTripThroughTheManager() {
     Task task = replicateTask();
-    manager.commit();
+    manager.commit(task);
 
     Manager restored = new Manager();
     restored.restore(List.of(dir.resolve("first"), dir.resolve("second")));
@@ -111,7 +113,7 @@ class ManagerTest {
 
   @Test
   void endpointsResolveAgainstTheNestedVolumesByTheLongestRoot() {
-    new Volume(manager, dir.resolve("first").resolve("nested"));
+    Volume.create(manager, dir.resolve("first").resolve("nested"));
     var endpoint = assertInstanceOf(VolumeEndpoint.class,
       manager.endpoint(dir.resolve("first").resolve("nested").resolve("deep")));
     assertEquals(dir.resolve("first").resolve("nested"), manager.volumes().get(endpoint.vtag()).root());

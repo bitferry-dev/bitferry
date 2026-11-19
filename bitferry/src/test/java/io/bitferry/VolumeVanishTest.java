@@ -20,7 +20,7 @@ class VolumeVanishTest {
     Manager manager = new Manager();
     Path root = dir.resolve("volume");
     Files.createDirectories(root);
-    Volume volume = new Volume(manager, root);
+    Volume volume = Volume.create(manager, root);
     volume.commit(); // The initial storage write (pristine -> live)
     assertTrue(Files.isRegularFile(root.resolve(".bitferry")));
 
@@ -45,7 +45,7 @@ class VolumeVanishTest {
     Manager manager = new Manager();
     Path root = dir.resolve("volume");
     Files.createDirectories(root);
-    Volume volume = new Volume(manager, root);
+    Volume volume = Volume.create(manager, root);
     volume.commit();
 
     // The volume disappears before the deletion commit

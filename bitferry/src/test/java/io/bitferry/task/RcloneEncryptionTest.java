@@ -22,7 +22,7 @@ class RcloneEncryptionTest {
   @BeforeEach
   void setUp() {
     manager = new Manager();
-    volume = new Volume(manager, dir.resolve("volume"));
+    volume = Volume.create(manager, dir.resolve("volume"));
   }
 
   private Endpoint volumeSource() {
@@ -85,7 +85,7 @@ class RcloneEncryptionTest {
   void encryptedTaskRoundTripsThroughTheStorage() throws IOException {
     Replicate task = new Replicate(manager, volumeSource(), volumeEncrypted(), null, List.of(), List.of());
     task.encrypt("Our secret password", null, Rclone.Encryption.options("@default"));
-    manager.commit();
+    manager.commit(task);
 
     // The obscured password token is stored in the vault of the source volume
     JsonNode storage = Storage.readJson(dir.resolve("volume").resolve(Bitferry.STORAGE));
@@ -110,7 +110,7 @@ class RcloneEncryptionTest {
   void dualPasswordTokensSupportTheSecondPassword() throws IOException {
     Replicate task = new Replicate(manager, volumeSource(), volumeEncrypted(), null, List.of(), List.of());
     task.encrypt("main-secret", "file-secret", Rclone.Encryption.options("@default"));
-    manager.commit();
+    manager.commit(task);
 
     Manager restored = new Manager();
     restored.restore(List.of(dir.resolve("volume")));
@@ -189,7 +189,7 @@ class RcloneEncryptionTest {
     // 1. Wrong password is refused and task is deregistered
     Replicate wrongPass = new Replicate(manager, src, enc, null, List.of(), List.of());
     wrongPass.encrypt("secretB", null, Rclone.Encryption.options("@default"));
-    BitferryError err = assertThrows(BitferryError.class, volume::commit);
+    BitferryError err = assertThrows(BitferryError.class, () -> manager.commit(wrongPass));
     assertTrue(err.getMessage().contains("the existing encrypted content in '" + encDir + "' is not compatible with the provided encryption options (wrong password or filename encryption mode)"));
     assertFalse(manager.tasks().containsKey(wrongPass.tag()));
 
@@ -199,21 +199,21 @@ class RcloneEncryptionTest {
     // 2. Wrong filename encryption mode (extended base32768 over base32) is refused
     Replicate wrongMode = new Replicate(manager, src, enc, null, List.of(), List.of());
     wrongMode.encrypt("secretA", null, Rclone.Encryption.options("@extended"));
-    err = assertThrows(BitferryError.class, volume::commit);
+    err = assertThrows(BitferryError.class, () -> manager.commit(wrongMode));
     assertTrue(err.getMessage().contains("the existing encrypted content in '" + encDir + "' is not compatible with the provided encryption options (wrong password or filename encryption mode)"));
     assertFalse(manager.tasks().containsKey(wrongMode.tag()));
 
     // 3. Decrypt task with wrong password is also refused
     Copy wrongDecrypt = new Copy(manager, enc, src, null, List.of(), List.of());
     wrongDecrypt.decrypt("secretB", null, Rclone.Encryption.options("@default"));
-    err = assertThrows(BitferryError.class, volume::commit);
+    err = assertThrows(BitferryError.class, () -> manager.commit(wrongDecrypt));
     assertTrue(err.getMessage().contains("the existing encrypted content in '" + encDir + "' is not compatible with the provided encryption options (wrong password or filename encryption mode)"));
     assertFalse(manager.tasks().containsKey(wrongDecrypt.tag()));
 
     // 4. Correct password encrypt task succeeds and persists
     Replicate correctPass = new Replicate(manager, src, enc, null, List.of(), List.of());
     correctPass.encrypt("secretA", null, Rclone.Encryption.options("@default"));
-    volume.commit();
+    manager.commit(correctPass);
     assertTrue(manager.tasks().containsKey(correctPass.tag()));
 
     restored = new Manager().restore(dir.resolve("volume"));
@@ -222,7 +222,7 @@ class RcloneEncryptionTest {
     // 5. Correct password decrypt task succeeds and persists
     Copy correctDecrypt = new Copy(manager, enc, src, null, List.of(), List.of());
     correctDecrypt.decrypt("secretA", null, Rclone.Encryption.options("@default"));
-    volume.commit();
+    manager.commit(correctDecrypt);
     assertTrue(manager.tasks().containsKey(correctDecrypt.tag()));
 
     restored = new Manager().restore(dir.resolve("volume"));

@@ -74,7 +74,7 @@ class AnsiFormatTest {
     assertEquals("@|blue " + local.root() + "|@", AnsiFormat.endpoint(local, AnsiFormat.Markup.PICOCLI));
 
     Manager manager = new Manager();
-    Volume vol = new Volume(manager, dir.resolve("vol"));
+    Volume vol = Volume.create(manager, dir.resolve("vol"));
 
     // Intact volume endpoint
     VolumeEndpoint intact = new VolumeEndpoint(manager, vol.tag(), "backup");
@@ -97,7 +97,7 @@ class AnsiFormatTest {
     assertEquals("\u001B[34m" + local.root() + "\u001B[0m", AnsiFormat.endpoint(local));
 
     Manager manager = new Manager();
-    Volume vol = new Volume(manager, dir.resolve("vol"));
+    Volume vol = Volume.create(manager, dir.resolve("vol"));
 
     // Intact volume endpoint
     VolumeEndpoint intact = new VolumeEndpoint(manager, vol.tag(), "backup");
@@ -114,8 +114,8 @@ class AnsiFormatTest {
     assertEquals("", AnsiFormat.task(null));
 
     Manager manager = new Manager();
-    Volume vol1 = new Volume(manager, dir.resolve("v1"));
-    Volume vol2 = new Volume(manager, dir.resolve("v2"));
+    Volume vol1 = Volume.create(manager, dir.resolve("v1"));
+    Volume vol2 = Volume.create(manager, dir.resolve("v2"));
 
     Task copyTask = new Copy(manager,
       Endpoints.parse(manager, ":" + vol1.tag() + ":src"),
@@ -144,26 +144,27 @@ class AnsiFormatTest {
     Manager manager = new Manager();
     assertEquals("0 task(s)", AnsiFormat.tasksSummary(manager));
 
-    Volume vol1 = new Volume(manager, dir.resolve("v1"));
-    Volume vol2 = new Volume(manager, dir.resolve("v2"));
+    Volume vol1 = Volume.create(manager, dir.resolve("v1"));
+    Volume vol2 = Volume.create(manager, dir.resolve("v2"));
 
     // 1 intact task
-    new Copy(manager,
+    manager.registerTask(new Copy(manager,
       Endpoints.parse(manager, ":" + vol1.tag() + ":"),
       Endpoints.parse(manager, ":" + vol2.tag() + ":"),
-      null, List.of(), List.of());
+      null, List.of(), List.of()));
 
     String summary1 = AnsiFormat.tasksSummary(manager);
     assertEquals("1 task(s) (\u001B[32m1 intact\u001B[0m)", summary1);
 
     // Add a stale task (referring to non-existent volume)
     Manager freshManager = new Manager();
-    new Volume(freshManager, dir.resolve("f1")); // only one volume
+    Volume.create(freshManager, dir.resolve("f1")); // only one volume
     // Copy the task into freshManager
     Task staleTask = new Copy(freshManager,
       new VolumeEndpoint(freshManager, "deadbeef", "."),
       new VolumeEndpoint(freshManager, "feedface", "."),
       null, List.of(), List.of());
+    freshManager.registerTask(staleTask);
 
     String summaryStale = AnsiFormat.tasksSummary(freshManager);
     assertEquals("1 task(s) (0 intact, \u001B[1;31m1 stale\u001B[0m)", summaryStale);

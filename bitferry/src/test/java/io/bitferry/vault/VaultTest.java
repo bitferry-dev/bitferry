@@ -27,7 +27,7 @@ class VaultTest {
   void setUp() {
     manager = new Manager();
     manager.backendExecutor(Executor.system(NOOP));
-    volume = new Volume(manager, dir.resolve("volume"));
+    volume = Volume.create(manager, dir.resolve("volume"));
   }
 
   private Endpoint volumeSource() {
@@ -45,7 +45,7 @@ class VaultTest {
   @Test
   void backupPasswordIsStoredInTheSourceVolumeStorage() throws IOException {
     Backup backup = new Backup(manager, volumeSource(), volumeRepo(), "Our secret password", null, null, null, null, List.of());
-    manager.commit();
+    manager.commit(backup);
 
     // The obscured token travels in the storage file's vault section
     JsonNode storage = Storage.readJson(dir.resolve("volume").resolve(Bitferry.STORAGE));
@@ -57,7 +57,7 @@ class VaultTest {
   @Test
   void restorePasswordIsStoredInTheDestinationVolumeStorage() throws IOException {
     Restore restore = new Restore(manager, volumeRepo(), volumeRestored(), "restore-pass", null, List.of(), List.of());
-    manager.commit();
+    manager.commit(restore);
 
     JsonNode storage = Storage.readJson(dir.resolve("volume").resolve(Bitferry.STORAGE));
     String token = storage.get("vault").get(restore.tag()).asString();
@@ -67,7 +67,7 @@ class VaultTest {
   @Test
   void passwordSurvivesTheManagerRoundTrip() throws IOException {
     Backup backup = new Backup(manager, volumeSource(), volumeRepo(), "Our secret password", null, null, null, null, List.of());
-    manager.commit();
+    manager.commit(backup);
 
     // A fresh manager restores the task and its password from the vault section lazily
     Manager restored = new Manager();
@@ -103,7 +103,7 @@ class VaultTest {
   @Test
   void vaultEntriesOfTheDeletedTasksArePurged() throws IOException {
     Backup backup = new Backup(manager, volumeSource(), volumeRepo(), "Our secret password", null, null, null, null, List.of());
-    manager.commit();
+    manager.commit(backup);
     assertTrue(Storage.readJson(dir.resolve("volume").resolve(Bitferry.STORAGE)).has("vault"));
 
     backup.delete();

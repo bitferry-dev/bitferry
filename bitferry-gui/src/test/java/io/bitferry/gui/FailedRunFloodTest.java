@@ -16,6 +16,7 @@ import org.junit.jupiter.api.Test;
 
 import java.io.BufferedWriter;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -112,7 +113,7 @@ class FailedRunFloodTest {
     // The mass-run selection aggregates the volume-owned tasks only, so the task
     // endpoints must reference a registered volume (the flood seam substitutes the
     // rclone execution; the endpoints are never touched by the backend)
-    Volume vol = new Volume(manager, Path.of(System.getProperty("java.io.tmpdir"), "floodtest-vol"));
+    Volume vol = Volume.create(manager, Files.createTempDirectory("floodtest-vol-"));
     Copy task = new Copy(manager, Endpoints.parse(manager, ":" + vol.tag() + ":src"), Endpoints.parse(manager, ":" + vol.tag() + ":dst"),
       null, List.of(), List.of());
     manager.registerTask(task);

@@ -120,7 +120,7 @@ public abstract class RcloneTaskCommand implements Callable<Integer>, HasCommonO
     if (m.volumes().values().stream().noneMatch(v -> task.refersVolume(v.tag()))) {
       throw new BitferryError("Task " + task.tag() + " does not belong to any registered volume; it cannot be persisted");
     }
-    m.commit();
+    m.commit(task);
     // The simulated creation writes nothing (the storages hold no such task): surface
     // it - the silent exit would read as a success (mirroring the backup advisory)
     if (m.simulate()) {

@@ -96,7 +96,7 @@ class SearchRootsTest {
 
     // Create a Bitferry volume in an isolated temp directory outside standard search paths
     Manager initMgr = new Manager();
-    Volume vol = new Volume(initMgr, sub);
+    Volume vol = Volume.create(initMgr, sub);
     initMgr.commit();
 
     // With search roots empty, AppContext should not discover the volume
