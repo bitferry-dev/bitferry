@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.PasswordField?>
+<?import javafx.scene.control.RadioButton?>
+<?import javafx.scene.control.TextField?>
+<?import javafx.scene.control.Tooltip?>
+<?import javafx.scene.control.ToggleGroup?>
+<?import javafx.scene.layout.ColumnConstraints?>
+<?import javafx.scene.layout.GridPane?>
+<?import javafx.scene.layout.HBox?>
+
+<!-- The security dialog form (the encryption and the vault): all rows declared
+     statically; the controller toggles the row visibility per the task family, the
+     carried crypt mode, and the operation mode (the creation vs the modification)
+     and re-lays the visible rows out consecutively (the indices below are the
+     declaration-order placeholders pinned by the controller's relayout). The crypt
+     mode itself rides the task form's radio row; the salt entries ride the rclone
+     family only (disabled for the restic backend). -->
+<GridPane fx:id="grid" hgap="8" vgap="8"
+          xmlns="http://javafx.com/javafx/17" xmlns:fx="http://javafx.com/fxml/1"
+          fx:controller="io.bitferry.gui.EncryptionDialogController">
+  <padding>
+    <Insets top="10" right="10" bottom="10" left="10"/>
+  </padding>
+  <columnConstraints>
+    <ColumnConstraints fx:id="labelColumn" halignment="RIGHT"/>
+    <ColumnConstraints hgrow="ALWAYS"/>
+  </columnConstraints>
+  <fx:define>
+    <ToggleGroup fx:id="passwordStorage"/>
+  </fx:define>
+  <children>
+    <Label fx:id="hintLabel" text="Encryption:" style="-fx-text-fill: #222222;"/>
+    <Label fx:id="noCryptHint" text="(none) — pick a crypt mode via the task form radios" style="-fx-text-fill: #222222;"/>
+
+    <Label fx:id="profileLabel" text="Encryption options:" style="-fx-text-fill: #222222;"/>
+    <HBox fx:id="profileControl" spacing="6">
+      <TextField fx:id="profile" promptText="extra crypt options, comma-separated (optional)" prefColumnCount="14" HBox.hgrow="ALWAYS">
+        <tooltip>
+          <Tooltip text="The extra crypt options passed to rclone (comma-separated); the filename encoding presets (@default, @extended) load via Edit"/>
+        </tooltip>
+      </TextField>
+      <Button fx:id="editProfile" text="Edit" onAction="#onEditProfile">
+        <tooltip>
+          <Tooltip text="Open list editor for item-by-item editing, reordering, and profile presets"/>
+        </tooltip>
+      </Button>
+    </HBox>
+
+    <Label fx:id="passwordLabel" text="Password:" style="-fx-text-fill: #222222;"/>
+    <PasswordField fx:id="password"/>
+
+    <Label fx:id="passwordConfirmLabel" text="Confirm:" style="-fx-text-fill: #222222;"/>
+    <PasswordField fx:id="passwordConfirm"/>
+
+    <Label fx:id="saltLabel" text="Salt:" style="-fx-text-fill: #222222;"/>
+    <PasswordField fx:id="salt" disable="true">
+      <tooltip>
+        <Tooltip text="The secondary crypt password (the filename encryption salt); left empty, none is set — required when reusing an existing crypt remote created with a custom salt. The restic backend keeps no salt"/>
+      </tooltip>
+    </PasswordField>
+
+    <Label fx:id="saltConfirmLabel" text="Confirm:" style="-fx-text-fill: #222222;"/>
+    <PasswordField fx:id="saltConfirm" disable="true"/>
+
+    <Label fx:id="keyringLabel" text="Password storage:" style="-fx-text-fill: #222222;"/>
+    <HBox fx:id="keyring" spacing="12" alignment="CENTER_LEFT">
+      <RadioButton fx:id="keyringChoice" text="user keyring (stays on this host)" toggleGroup="$passwordStorage" style="-fx-text-fill: #222222;"/>
+      <RadioButton fx:id="vaultChoice" text="volume vault (travels with the volume)" toggleGroup="$passwordStorage" selected="true" style="-fx-text-fill: #222222;"/>
+    </HBox>
+  </children>
+</GridPane>

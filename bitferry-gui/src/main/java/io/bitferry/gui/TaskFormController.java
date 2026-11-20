@@ -11,7 +11,6 @@ import io.bitferry.task.Restore;
 import io.bitferry.task.Restic;
 import io.bitferry.task.Task;
 import io.bitferry.task.Update;
-import io.bitferry.vault.KeyringVault;
 import io.bitferry.vault.Vault;
 import javafx.application.Platform;
 import javafx.fxml.FXML;
@@ -23,10 +22,11 @@ import javafx.scene.control.CheckBox;
 import javafx.scene.control.ChoiceDialog;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
-import javafx.scene.control.PasswordField;
 import javafx.scene.control.RadioButton;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.control.TextField;
+import javafx.scene.control.ToggleGroup;
+import javafx.scene.control.Tooltip;
 import javafx.scene.control.Tooltip;
 import javafx.scene.layout.ColumnConstraints;
 import javafx.scene.layout.GridPane;
@@ -140,10 +140,28 @@ public final class TaskFormController {
   private TextField execute;
 
   @FXML
-  private ComboBox<String> encryption;
+  private HBox encryptionControl;
 
   @FXML
-  private TextField profile;
+  private RadioButton cryptNoneChoice;
+
+  @FXML
+  private RadioButton cryptEncryptChoice;
+
+  @FXML
+  private RadioButton cryptDecryptChoice;
+
+  @FXML
+  private ToggleGroup encryptionMode;
+
+  @FXML
+  private Button editSecurity;
+
+  @FXML
+  private HBox securityControl;
+
+  @FXML
+  private Button editSecurityRestic;
 
   @FXML
   private Button editInclude;
@@ -155,34 +173,10 @@ public final class TaskFormController {
   private Button editExecute;
 
   @FXML
-  private Button editProfile;
-
-  @FXML
   private Button editForget;
 
   @FXML
   private Button editCheck;
-
-  @FXML
-  private PasswordField cryptPassword;
-
-  @FXML
-  private PasswordField cryptPasswordConfirm;
-
-  @FXML
-  private PasswordField password;
-
-  @FXML
-  private PasswordField passwordConfirm;
-
-  @FXML
-  private HBox keyring;
-
-  @FXML
-  private RadioButton keyringChoice;
-
-  @FXML
-  private RadioButton vaultChoice;
 
   @FXML
   private CheckBox format;
@@ -217,17 +211,7 @@ public final class TaskFormController {
   @FXML
   private Label encryptionLabel;
   @FXML
-  private Label profileLabel;
-  @FXML
-  private Label cryptPasswordLabel;
-  @FXML
-  private Label cryptPasswordConfirmLabel;
-  @FXML
-  private Label passwordLabel;
-  @FXML
-  private Label passwordConfirmLabel;
-  @FXML
-  private Label keyringLabel;
+  private Label securityLabel;
   @FXML
   private Label forgetLabel;
   @FXML
@@ -244,6 +228,12 @@ public final class TaskFormController {
   private AppContext context;
   private Task existing;
 
+  // The encryption and vault state edited via the security dialog: the crypt mode
+  // and options (the rclone family), the family-scoped password pair, and the
+  // password-storage request. The accessors below (and thereby the dialog apply
+  // flows in [Dialogs]) read it.
+  private EncryptionSettings settings = EncryptionSettings.NONE;
+
   // The auto-loaded (never user-edited) pre-filled defaults keyed by the field:
   // switching the operation replaces them with the new operation's defaults while
   // the user-edited content stays intact
@@ -254,24 +244,16 @@ public final class TaskFormController {
   // The static display wiring (the context and the existing task ride init())
   @FXML
   private void initialize() {
-    // The default operation and the no-encryption mode preselect (the predicates
-    // below read them)
+    // The default operation preselect (the predicates below read it)
     type.getSelectionModel().selectFirst();
-    encryption.getSelectionModel().selectFirst();
 
-    // Visibility predicates re-evaluated on type/encryption changes
+    // Visibility predicates re-evaluated on type changes
     BooleanSupplier restic = () -> "backup".equals(type()) || "restore".equals(type());
     BooleanSupplier backup = () -> "backup".equals(type());
-    BooleanSupplier rclone = () -> !restic.getAsBoolean();
     // The snapshot scope rides the creation mode only: the edit mode keeps the
     // existing task's scope (the endpoints are immutable there anyway)
     BooleanSupplier restoreScope = () -> existing == null && "restore".equals(type());
-    BooleanSupplier encrypted = () -> rclone.getAsBoolean() && encryption() != null;
-    BooleanSupplier cryptPasswordVisible = () -> existing == null && encrypted.getAsBoolean();
     BooleanSupplier formatVisible = () -> existing == null && backup.getAsBoolean();
-    // The password-storage row rides the modify mode too: the radio selection mirrors
-    // the task's current provider, and switching it migrates the token on apply
-    BooleanSupplier keyringVisible = () -> restic.getAsBoolean() || encrypted.getAsBoolean();
 
     rows.add(new Row(typeLabel, type, () -> true));
     rows.add(new Row(sourceLabel, source.getParent(), () -> true));
@@ -284,13 +266,13 @@ public final class TaskFormController {
     rows.add(new Row(includeLabel, includeControl, () -> true));
     rows.add(new Row(excludeLabel, exclude.getParent(), () -> true));
     rows.add(new Row(executeLabel, execute.getParent(), () -> true));
-    rows.add(new Row(encryptionLabel, encryption, rclone));
-    rows.add(new Row(profileLabel, profile.getParent(), encrypted));
-    rows.add(new Row(cryptPasswordLabel, cryptPassword, cryptPasswordVisible));
-    rows.add(new Row(cryptPasswordConfirmLabel, cryptPasswordConfirm, cryptPasswordVisible));
-    rows.add(new Row(passwordLabel, password, restic));
-    rows.add(new Row(passwordConfirmLabel, passwordConfirm, restic));
-    rows.add(new Row(keyringLabel, keyring, keyringVisible));
+    // The encryption mode radios with the inline security editor button (the rclone
+    // family only): the triple selection rides the task form, the button opens the
+    // security dialog and sleeps while (none) is chosen (nothing to configure)
+    rows.add(new Row(encryptionLabel, encryptionControl, () -> !restic.getAsBoolean()));
+    // The security row (the restic family): the repository password and the storage
+    // live in the security dialog (the crypt rows stay hidden there)
+    rows.add(new Row(securityLabel, securityControl, restic));
     rows.add(new Row(forgetLabel, forget.getParent(), backup));
     rows.add(new Row(checkLabel, check.getParent(), backup));
     rows.add(new Row(formatLabel, format, formatVisible));
@@ -329,29 +311,39 @@ public final class TaskFormController {
     Icons.equip(editInclude, Icons.Symbol.EDIT);
     Icons.equip(editExclude, Icons.Symbol.EDIT);
     Icons.equip(editExecute, Icons.Symbol.EDIT);
-    Icons.equip(editProfile, Icons.Symbol.EDIT);
+    Icons.equip(editSecurity, Icons.Symbol.EDIT);
+    Icons.equip(editSecurityRestic, Icons.Symbol.EDIT);
     Icons.equip(editForget, Icons.Symbol.EDIT);
     Icons.equip(editCheck, Icons.Symbol.EDIT);
 
-    // The encryption options edit button mirrors the disabled state of the profile entry
-    editProfile.disableProperty().bind(profile.disableProperty());
-
-    // The volume vault is the default destination (selected in the FXML); the keyring
-    // choice is offered (and honored) only when the OS keyring is usable on this host
-    // — otherwise it is grayed out and the vault stays the only selectable option
-    keyringChoice.setDisable(!KeyringVault.INSTANCE.available());
-    Tooltip.install(keyringChoice, new Tooltip(KeyringVault.INSTANCE.available()
-      ? "The OS keyring (Windows Credential Manager, macOS Keychain, GNOME Keyring): machine- and user-bound, recommended for the fixed volumes — the tokens do not travel with the removable media"
-      : "No usable OS keyring on this host — the volume vault keeps serving"));
-    Tooltip.install(vaultChoice, new Tooltip("The vault section of the storage of the volume hosting the unencrypted end: the token travels with the volume (recommended for the removable media)"));
+    // The security editor on the radio line sleeps while (none) is chosen: with no
+    // crypt mode there is nothing to configure (the restic family uses its own row)
+    editSecurity.disableProperty().bind(cryptNoneChoice.selectedProperty());
 
     Tooltip.install(source, new Tooltip(ENDPOINT_HINT));
     Tooltip.install(destination, new Tooltip(ENDPOINT_HINT));
+    Tooltip.install(encryptionControl, new Tooltip(
+      "The rclone crypt mode: encrypt the destination, decrypt the source, or none. "
+        + "The restic tasks keep no crypt mode (the repository password rides the security dialog)"));
 
-    // The operation/encryption changes refresh the empty (never user-edited) option
-    // entries with the new operation's defaults and lay the rows out
-    type.valueProperty().addListener((x, was, now) -> { loadDefaultProfiles(); relayout(); });
-    encryption.valueProperty().addListener((x, was, now) -> { loadDefaultProfiles(); relayout(); });
+    // The encryption mode radios carry into the settings: the dialog opens against
+    // the selection (the crypt rows and the secret visibility follow it)
+    encryptionMode.selectedToggleProperty().addListener((x, was, now) -> {
+      settings = new EncryptionSettings(radioMode(), settings.profileText(), settings.password(),
+        settings.passwordConfirm(), settings.salt(), settings.saltConfirm(), settings.keyring());
+    });
+
+    // The operation changes refresh the empty (never user-edited) option entries
+    // with the new operation's defaults and lay the rows out; crossing the
+    // restic/rclone family boundary drops the entered secrets (the crypt password
+    // and the salt must not ride into the repository or back)
+    type.valueProperty().addListener((x, was, now) -> {
+      if (isRestic(was) != isRestic(now)) {
+        settings = new EncryptionSettings(settings.mode(), settings.profileText(), "", "", "", "", settings.keyring());
+      }
+      loadDefaultProfiles();
+      relayout();
+    });
 
     // The first relayout ran before the scene existed (the pre-CSS font measurement):
     // re-run it once the dialog shows, so the column widths land with the real metrics
@@ -413,30 +405,29 @@ public final class TaskFormController {
         autoLoaded.put(execute, String.join(", ", curOpts));
       }
 
+      // The password-storage mirror: the settings carry the task's actual provider
+      // (switching it in the security dialog migrates the token upon the apply)
+      boolean keyring = existing.usesVault() && existing.vaultProvider().orElse(Vault.volume()) == Vault.keyring();
+
       if (existing instanceof Rclone rclone) {
+        // The stored encryption state mirrors into the settings: the crypt mode and
+        // the resolved options (the modification keeps them immutable via the
+        // security dialog); the stored passwords never echo back
         Rclone.Encryption enc = rclone.encryption();
-        if (enc != null && enc.operation() != null) {
-          encryption.setValue(enc.operation());
-          if (enc.options() != null && !enc.options().isEmpty()) {
-            profile.setText(String.join(", ", enc.options()));
-          }
-        } else {
-          encryption.setValue("(none)");
-        }
-        encryption.setDisable(true);
-        profile.setDisable(true);
-        cryptPassword.setDisable(true);
-        cryptPasswordConfirm.setDisable(true);
+        String mode = enc != null && enc.operation() != null ? enc.operation() : null;
+        String profileText = enc != null && enc.options() != null && !enc.options().isEmpty()
+          ? String.join(", ", enc.options()) : "";
+        settings = new EncryptionSettings(mode, profileText, "", "", "", "", keyring);
+      } else {
+        settings = new EncryptionSettings(null, "", "", "", "", "", keyring);
       }
+
+      // The stored crypt mode mirrors into the radios; the mode is the creation-time
+      // choice — the modification keeps it immutable
+      selectMode(settings.mode());
+      encryptionControl.setDisable(true);
 
       manual.setSelected(existing.isManual());
-
-      // The password-storage radios mirror the task's actual provider: switching the
-      // selection migrates the token upon the apply (the radio gray-out from the
-      // availability probe still applies)
-      if (existing.usesVault() && existing.vaultProvider().orElse(Vault.volume()) == Vault.keyring()) {
-        keyringChoice.setSelected(true);
-      }
 
       if (existing instanceof Backup backup) {
         if (backup.forget() != null && !backup.forget().isEmpty()) {
@@ -449,11 +440,6 @@ public final class TaskFormController {
           serve.setText(backup.cadence().format());
         }
         format.setDisable(true);
-      }
-
-      if (existing instanceof Restic) {
-        password.setPromptText("leave empty to keep current password");
-        passwordConfirm.setPromptText("confirm new password");
       }
     }
 
@@ -630,7 +616,6 @@ public final class TaskFormController {
   /// Refresh the profile-backed entries with the current operation's defaults
   private void loadDefaultProfiles() {
     loadDefaultProfile(execute, executeProfiles());
-    loadDefaultProfile(profile, encryption() != null ? Rclone.PROFILE : null);
     loadDefaultProfile(forget, Backup.FORGET);
     loadDefaultProfile(check, Backup.CHECK);
   }
@@ -699,9 +684,13 @@ public final class TaskFormController {
   }
 
   @FXML
-  private void onEditProfile() {
-    editList(profile, "Encryption Options",
-      "Edit encryption options (the crypt filename encoding profiles or the raw comma-separated options)", () -> Rclone.PROFILE);
+  private void onEditSecurity() {
+    EncryptionDialogController dialog = EncryptionDialogController.load(resticMode(), existing == null, settings);
+    EncryptionDialog.show(context, "Encryption",
+      existing == null
+        ? "Configure the encryption and the password storage of the new task"
+        : "Manage the encryption and the password storage of task " + existing.tag(),
+      dialog).ifPresent(s -> settings = s);
   }
 
   @FXML
@@ -745,21 +734,48 @@ public final class TaskFormController {
     return value;
   }
 
+  /// The crypt mode of the carried settings or null for none.
   String encryption() {
-    String value = encryption.getValue();
-    return "(none)".equals(value) ? null : value;
+    return settings.mode();
   }
 
+  /// The selected radio's crypt mode or null for (none).
+  private String radioMode() {
+    if (cryptEncryptChoice.isSelected()) return "encrypt";
+    if (cryptDecryptChoice.isSelected()) return "decrypt";
+    return null;
+  }
+
+  /// Mirror the crypt mode into the radios.
+  private void selectMode(String mode) {
+    if ("encrypt".equals(mode)) cryptEncryptChoice.setSelected(true);
+    else if ("decrypt".equals(mode)) cryptDecryptChoice.setSelected(true);
+    else cryptNoneChoice.setSelected(true);
+  }
+
+  /// The raw encryption options specifier carried by the settings.
   String profile() {
-    return profile.getText().trim();
+    return settings.profileText();
   }
 
+  /// The family-scoped password (the crypt password for the rclone tasks, the
+  /// repository password for the restic ones).
   String password() {
-    return resticMode() ? password.getText() : cryptPassword.getText();
+    return settings.password();
+  }
+
+  /// The optional crypt salt (the filename encryption secondary password); empty
+  /// for the restic family.
+  String salt() {
+    return settings.salt();
   }
 
   boolean resticMode() {
-    return "backup".equals(type()) || "restore".equals(type());
+    return isRestic(type());
+  }
+
+  private static boolean isRestic(String type) {
+    return "backup".equals(type) || "restore".equals(type);
   }
 
   Boolean format() {
@@ -791,9 +807,10 @@ public final class TaskFormController {
   }
 
   boolean keyring() {
-    // The keyring destination only when its radio is selected and selectable: the
-    // grayed-out choice (no usable OS keyring on the host) keeps serving the vault
-    return keyringChoice.isSelected() && !keyringChoice.isDisable();
+    // The settings carry the storage request; the grayed-out choice (no usable OS
+    // keyring on the host) cannot come back from the security dialog's radio, and
+    // the apply-side artifact guard keeps the doomed migrations out
+    return settings.keyring();
   }
 
   void validate() {
@@ -807,21 +824,13 @@ public final class TaskFormController {
           throw new BitferryError("Snapshot scope " + snapshotScope() + " does not name a live backup task");
         }
       }
-      if (resticMode()) {
-        if (password.getText().isEmpty()) throw new BitferryError("Password must be specified");
-        if (!password.getText().equals(passwordConfirm.getText())) throw new BitferryError("Passwords do not match");
+      // The repository password rides the security dialog: the form only guards the
+      // skipped-dialog path (the dialog itself enforces the pair and the match)
+      if (resticMode() && settings.password().isEmpty()) {
+        throw new BitferryError("Repository password must be specified — set it via the security dialog");
       }
-      if (encryption() != null) {
-        if (cryptPassword.getText().isEmpty()) throw new BitferryError("Encryption password must be specified");
-        if (!cryptPassword.getText().equals(cryptPasswordConfirm.getText())) throw new BitferryError("Encryption passwords do not match");
-      }
-    } else {
-      if (resticMode()) {
-        if (!password.getText().isEmpty() || !passwordConfirm.getText().isEmpty()) {
-          if (password.getText().isEmpty()) throw new BitferryError("Password must be specified");
-          if (!password.getText().equals(passwordConfirm.getText())) throw new BitferryError("Passwords do not match");
-        }
-      }
+      // The rclone encryption pair is validated inside the security dialog: the
+      // returned settings carry a matching non-empty pair whenever the mode is set
     }
   }
 

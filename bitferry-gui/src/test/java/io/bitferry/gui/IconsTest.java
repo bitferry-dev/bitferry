@@ -126,7 +126,7 @@ class IconsTest {
                 assertButtonGraphic(taskCtrl, "editInclude", Icons.Symbol.EDIT);
                 assertButtonGraphic(taskCtrl, "editExclude", Icons.Symbol.EDIT);
                 assertButtonGraphic(taskCtrl, "editExecute", Icons.Symbol.EDIT);
-                assertButtonGraphic(taskCtrl, "editProfile", Icons.Symbol.EDIT);
+                assertButtonGraphic(taskCtrl, "editSecurity", Icons.Symbol.EDIT);
                 assertButtonGraphic(taskCtrl, "editForget", Icons.Symbol.EDIT);
                 assertButtonGraphic(taskCtrl, "editCheck", Icons.Symbol.EDIT);
             } catch (Throwable t) {

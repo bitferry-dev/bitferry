@@ -221,7 +221,7 @@ final class Dialogs {
           default -> throw new BitferryError("Unknown task type " + form.type());
         };
         if (form.encryption() != null && task.supportsEncryption()) {
-          task.setEncryption(form.encryption(), form.password(), null, Rclone.Encryption.options(form.profile()), keyring);
+          task.setEncryption(form.encryption(), form.password(), form.salt(), Rclone.Encryption.options(form.profile()), keyring);
         }
         task.setManual(form.manual());
         Task candidate = task;

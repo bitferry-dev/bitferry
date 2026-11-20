@@ -6,7 +6,6 @@
 <?import javafx.scene.control.CheckBox?>
 <?import javafx.scene.control.ComboBox?>
 <?import javafx.scene.control.Label?>
-<?import javafx.scene.control.PasswordField?>
 <?import javafx.scene.control.RadioButton?>
 <?import javafx.scene.control.TextField?>
 <?import javafx.scene.control.Tooltip?>
@@ -37,7 +36,7 @@
         <ColumnConstraints hgrow="ALWAYS"/>
       </columnConstraints>
       <fx:define>
-        <ToggleGroup fx:id="passwordStorage"/>
+        <ToggleGroup fx:id="encryptionMode"/>
       </fx:define>
       <children>
         <Label fx:id="typeLabel" text="Type:" style="-fx-text-fill: #222222;"/>
@@ -132,46 +131,24 @@
         </HBox>
 
         <Label fx:id="encryptionLabel" text="Encryption:" style="-fx-text-fill: #222222;"/>
-        <ComboBox fx:id="encryption">
-          <items>
-            <FXCollections fx:factory="observableArrayList">
-              <String fx:value="(none)"/>
-              <String fx:value="encrypt"/>
-              <String fx:value="decrypt"/>
-            </FXCollections>
-          </items>
-        </ComboBox>
-
-        <Label fx:id="profileLabel" text="Encryption options:" style="-fx-text-fill: #222222;"/>
-        <HBox spacing="6">
-          <TextField fx:id="profile" promptText="extra crypt options, comma-separated (optional)" prefColumnCount="14" HBox.hgrow="ALWAYS">
+        <HBox fx:id="encryptionControl" spacing="6" alignment="CENTER_LEFT">
+          <RadioButton fx:id="cryptNoneChoice" text="(none)" toggleGroup="$encryptionMode" selected="true" style="-fx-text-fill: #222222;"/>
+          <RadioButton fx:id="cryptEncryptChoice" text="encrypt" toggleGroup="$encryptionMode" style="-fx-text-fill: #222222;"/>
+          <RadioButton fx:id="cryptDecryptChoice" text="decrypt" toggleGroup="$encryptionMode" style="-fx-text-fill: #222222;"/>
+          <Button fx:id="editSecurity" text="Encryption" onAction="#onEditSecurity" disable="true">
             <tooltip>
-              <Tooltip text="The extra crypt options passed to rclone (comma-separated); the filename encoding presets (@default, @extended) load via Edit"/>
-            </tooltip>
-          </TextField>
-          <Button fx:id="editProfile" text="Edit" onAction="#onEditProfile">
-            <tooltip>
-              <Tooltip text="Open list editor for item-by-item editing, reordering, and profile presets"/>
+              <Tooltip text="Open the encryption and vault editor: the crypt options, the passwords and the salt, and the password storage (requires a selected crypt mode)"/>
             </tooltip>
           </Button>
         </HBox>
 
-        <Label fx:id="cryptPasswordLabel" text="Password:" style="-fx-text-fill: #222222;"/>
-        <PasswordField fx:id="cryptPassword"/>
-
-        <Label fx:id="cryptPasswordConfirmLabel" text="Confirm:" style="-fx-text-fill: #222222;"/>
-        <PasswordField fx:id="cryptPasswordConfirm"/>
-
-        <Label fx:id="passwordLabel" text="Password:" style="-fx-text-fill: #222222;"/>
-        <PasswordField fx:id="password"/>
-
-        <Label fx:id="passwordConfirmLabel" text="Confirm:" style="-fx-text-fill: #222222;"/>
-        <PasswordField fx:id="passwordConfirm"/>
-
-        <Label fx:id="keyringLabel" text="Password storage:" style="-fx-text-fill: #222222;"/>
-        <HBox fx:id="keyring" spacing="12">
-          <RadioButton fx:id="keyringChoice" text="OS keyring — stays on this host" toggleGroup="$passwordStorage" style="-fx-text-fill: #222222;"/>
-          <RadioButton fx:id="vaultChoice" text="volume vault — travels with the volume" toggleGroup="$passwordStorage" selected="true" style="-fx-text-fill: #222222;"/>
+        <Label fx:id="securityLabel" text="Security:" style="-fx-text-fill: #222222;"/>
+        <HBox fx:id="securityControl" spacing="6">
+          <Button fx:id="editSecurityRestic" text="Encryption" onAction="#onEditSecurity">
+            <tooltip>
+              <Tooltip text="Open the encryption and vault editor: the repository password and the password storage"/>
+            </tooltip>
+          </Button>
         </HBox>
 
         <Label fx:id="forgetLabel" text="Retention:" style="-fx-text-fill: #222222;"/>

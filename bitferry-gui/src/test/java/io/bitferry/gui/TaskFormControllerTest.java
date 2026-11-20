@@ -13,8 +13,10 @@ import javafx.application.Platform;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
 import javafx.scene.control.ComboBox;
+import javafx.scene.control.RadioButton;
 import javafx.scene.control.TextField;
 import javafx.scene.layout.GridPane;
+import javafx.scene.layout.HBox;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -75,28 +77,48 @@ class TaskFormControllerTest {
         assertEquals("copy", form.type());
         // The rclone @default profile's concrete options pre-fill the execution entry
         assertEquals("--metadata", execute(form).getText());
-        // The mass-run participation defaults to on, the vault keeps the password
+        // The mass-run participation defaults to on, the vault keeps the password,
+        // and the security state starts unset (no encryption)
         assertFalse(form.manual());
         assertFalse(form.keyring());
+        assertNull(form.encryption());
+        assertEquals("", form.password());
+        assertEquals("", form.salt());
+        // The encryption mode radios: (none) preselected, and the inline security
+        // editor sleeps until a crypt mode is chosen
+        RadioButton noneChoice = field(form, "cryptNoneChoice");
+        assertTrue(noneChoice.isSelected());
+        RadioButton encryptChoice = field(form, "cryptEncryptChoice");
+        assertFalse(encryptChoice.isSelected());
+        Button editSecurity = field(form, "editSecurity");
+        assertTrue(editSecurity.isDisable());
     }
 
     @Test
     void rowsFollowTheOperationType() throws Exception {
         TaskFormController form = load(null);
 
-        // The rclone (copy) layout: the encryption row visible, the backup rows hidden
+        // The rclone (copy) layout: the encryption mode radio row (with the inline
+        // security editor) visible, the backup rows and the restic security row
+        // hidden; the secret details live in the security dialog, not the form
         List<String> present = rowLabels(form);
         assertTrue(present.contains("Encryption:"), present.toString());
+        assertFalse(present.contains("Security:"), present.toString());
+        assertFalse(present.contains("Encryption options:"), present.toString());
+        assertFalse(present.contains("Password storage:"), present.toString());
         assertFalse(present.contains("Retention:"), present.toString());
         assertFalse(present.contains("Serve:"), present.toString());
 
-        // The backup layout: the retention/check/serve rows swap in for the encryption
-        // ones, and the auto-loaded execution entry clears (the restic default is empty)
+        // The backup layout: the retention/check/serve rows swap in for the rclone
+        // operation rows (the encryption mode radios hide — restic keeps no crypt
+        // mode), the restic security row replaces them, and the auto-loaded
+        // execution entry clears (the restic default is empty)
         ComboBox<String> typeField = field(form, "type");
         runFx(() -> typeField.getSelectionModel().select("backup"));
         assertEquals("", execute(form).getText());
         present = rowLabels(form);
-        assertFalse(present.contains("Encryption options:"), present.toString());
+        assertFalse(present.contains("Encryption:"), present.toString());
+        assertTrue(present.contains("Security:"), present.toString());
         assertTrue(present.contains("Retention:"), present.toString());
         assertTrue(present.contains("Check:"), present.toString());
         assertTrue(present.contains("Serve:"), present.toString());
@@ -132,10 +154,13 @@ class TaskFormControllerTest {
         assertTrue(browseDestinationSmart.isDisable());
         assertTrue(browseDestinationLocal.isDisable());
         assertTrue(browseDestinationVolume.isDisable());
-        TextField profile = field(form, "profile");
-        Button editProfile = field(form, "editProfile");
-        assertTrue(profile.isDisable());
-        assertTrue(editProfile.isDisable());
+        // The crypt mode is the creation-time choice: the radio row rides disabled
+        // (the stored mode of this plain task is (none), so the inline security
+        // editor sleeps; the restic row's editor stays for its own family)
+        HBox encryptionControl = field(form, "encryptionControl");
+        assertTrue(encryptionControl.isDisable());
+        Button editSecurity = field(form, "editSecurity");
+        assertTrue(editSecurity.isDisable());
         assertEquals(task.source().describe(), source.getText());
         assertEquals("keep/**", include.getText());
         assertEquals("skip/**", exclude.getText());
@@ -150,8 +175,16 @@ class TaskFormControllerTest {
         TaskFormController form = load(null);
         Button browseSourceSmart = field(form, "browseSourceSmart");
         assertFalse(browseSourceSmart.isDisable());
-        Button editProfile = field(form, "editProfile");
-        assertFalse(editProfile.isDisable());
+        // The inline security editor follows the crypt mode: asleep at (none),
+        // awake once encrypt is chosen, asleep again on the way back
+        Button editSecurity = field(form, "editSecurity");
+        assertTrue(editSecurity.isDisable());
+        RadioButton encryptChoice = field(form, "cryptEncryptChoice");
+        runFx(() -> encryptChoice.setSelected(true));
+        assertFalse(editSecurity.isDisable());
+        RadioButton noneChoice = field(form, "cryptNoneChoice");
+        runFx(() -> noneChoice.setSelected(true));
+        assertTrue(editSecurity.isDisable());
         TextField exec = execute(form);
         assertEquals("--metadata", exec.getText());
 
