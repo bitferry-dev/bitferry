@@ -37,6 +37,7 @@ public class ExecuteCommand implements Callable<Integer>, HasCommonOptions {
       t -> t.process(null),
       "execute",
       "@|green All %d task(s) executed successfully.|@",
+      "@|yellow Some of the %d task(s) completed with warnings (partial success).|@",
       "@|red Some of the %d task(s) failed to execute.|@",
       "post-run commit failed");
   }

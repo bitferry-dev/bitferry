@@ -302,12 +302,12 @@ public abstract class Rclone extends Task implements IncludeFilters {
 
   /// The tool dispatch (the double dispatch landing on the executor's rclone slot).
   @Override
-  public boolean runWith(Executor executor, Consumer<String> output) {
+  public Outcome runWith(Executor executor, Consumer<String> output) {
     return executor.run(this, output);
   }
 
   @Override
-  public boolean serveWith(Executor executor, Consumer<String> output) {
+  public Outcome serveWith(Executor executor, Consumer<String> output) {
     return executor.serve(this, output);
   }
 

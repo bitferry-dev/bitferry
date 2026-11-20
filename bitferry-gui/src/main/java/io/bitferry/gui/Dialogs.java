@@ -466,8 +466,16 @@ final class Dialogs {
   private static void previewRepair(AppContext context, LogController logs, Task task, Repair.Operation operation) {
     runAsync(context, "Repair preview", () -> {
       List<String> preview = new ArrayList<>();
-      context.manager().repair(task, operation, true, preview::add);
-      Platform.runLater(() -> offerRepairExecution(context, logs, task, operation, preview));
+      boolean ok = context.manager().repair(task, operation, true, preview::add);
+      Platform.runLater(() -> {
+        if (!ok) {
+          alert(context, Alert.AlertType.ERROR, "Repair preview failed",
+            "Repair preview failed for task " + task.tag() + ": " + operation.label() + "."
+              + (preview.isEmpty() ? "" : "\n\n" + String.join("\n", preview)));
+          return;
+        }
+        offerRepairExecution(context, logs, task, operation, preview);
+      });
     }, logs);
   }
 

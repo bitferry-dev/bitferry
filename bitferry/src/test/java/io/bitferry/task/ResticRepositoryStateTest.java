@@ -23,8 +23,9 @@ class ResticRepositoryStateTest {
     ResticRepositoryState state = ResticRepositoryState.load(tempDir);
     assertTrue(state.isCorruptOrMissing());
 
-    // The corrupt or missing state is due for every task regardless of the cadence
+    // The corrupt or missing state is due for tasks with active cadence, but never for disabled cadence
     assertTrue(state.isDue("task-a", CADENCE));
+    assertFalse(state.isDue("task-a", null));
   }
 
   @Test
@@ -43,6 +44,7 @@ class ResticRepositoryStateTest {
     ResticRepositoryState state = ResticRepositoryState.load(tempDir);
     assertTrue(state.isCorruptOrMissing());
     assertTrue(state.isDue("task-a", CADENCE));
+    assertFalse(state.isDue("task-a", null));
 
     // Empty file also triggers
     Files.writeString(stateFile, "");

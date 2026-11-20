@@ -79,12 +79,20 @@ public class RepairCommand implements Callable<Integer>, HasCommonOptions {
       // the locks that would be removed); the real run keeps the captured channel so
       // the lock-conflict hint of the executor stays visible
       List<String> preview = new ArrayList<>();
-      m.repair(p.task(), p.operation(), true, preview::add);
+      boolean previewOk = m.repair(p.task(), p.operation(), true, preview::add);
       for (String line : preview) {
         out.println("  " + line);
       }
       if (preview.isEmpty() && !m.quiet) {
         out.println(Ansi.AUTO.string("  @|faint (no output - nothing to remove)|@"));
+      }
+      if (!previewOk) {
+        outcome = false;
+        if (!m.quiet) {
+          String status = Ansi.AUTO.string(Symbols.unicode() ? "@|red     ✗ failure|@" : "@|red     x failure|@");
+          out.println(status);
+        }
+        continue;
       }
       boolean ok = m.repair(p.task(), p.operation(), false, out::println);
       outcome = ok && outcome;

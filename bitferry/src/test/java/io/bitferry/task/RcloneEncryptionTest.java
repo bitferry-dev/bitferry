@@ -231,6 +231,55 @@ class RcloneEncryptionTest {
     assertTrue(restored.tasks().containsKey(correctDecrypt.tag()));
   }
 
+  @Test
+  void realRcloneConformanceWithFilenameEncryptionOffRejectsWrongPasswordAndPlaintext() throws Exception {
+    Assumptions.assumeTrue(available("rclone"), "rclone not available for the integration check");
+
+    Path plainDir = dir.resolve("fixture-plain-off");
+    Files.createDirectories(plainDir);
+    Files.writeString(plainDir.resolve("sample.txt"), "hello filename encryption off content");
+
+    Path encDir = dir.resolve("fixture-enc-off");
+    // Build encrypted fixture with password A and filename encryption off
+    ProcessBuilder pb = new ProcessBuilder(
+      "rclone", "sync", plainDir.toString(), ":crypt:",
+      "--crypt-remote", encDir.toString(),
+      "--crypt-filename-encryption", "off",
+      "--config", "/dev/null"
+    );
+    pb.environment().put("RCLONE_CRYPT_PASSWORD", Passwords.rcloneObscure("secretA"));
+    Process p = pb.start();
+    assertEquals(0, p.waitFor());
+
+    Endpoint src = Endpoints.parse(manager, ":" + volume.tag() + ":");
+    Endpoint enc = Endpoints.parse(manager, "local:" + encDir);
+    List<String> encOffOpts = List.of("--crypt-filename-encryption", "off");
+
+    // 1. Wrong password is refused even with filename encryption off
+    Replicate wrongPass = new Replicate(manager, src, enc, null, List.of(), List.of());
+    wrongPass.encrypt("secretB", null, encOffOpts);
+    BitferryError err = assertThrows(BitferryError.class, () -> manager.commit(wrongPass));
+    assertTrue(err.getMessage().contains("the existing encrypted content in '" + encDir + "' is not compatible with the provided encryption options (wrong password or filename encryption mode)"));
+    assertFalse(manager.tasks().containsKey(wrongPass.tag()));
+
+    // 2. Unencrypted plaintext destination is refused
+    Endpoint plainEndpoint = Endpoints.parse(manager, "local:" + plainDir);
+    Replicate plainTarget = new Replicate(manager, src, plainEndpoint, null, List.of(), List.of());
+    plainTarget.encrypt("secretA", null, encOffOpts);
+    err = assertThrows(BitferryError.class, () -> manager.commit(plainTarget));
+    assertTrue(err.getMessage().contains("the existing encrypted content in '" + plainDir + "' is not compatible with the provided encryption options (wrong password or filename encryption mode)"));
+    assertFalse(manager.tasks().containsKey(plainTarget.tag()));
+
+    // 3. Correct password succeeds and persists
+    Replicate correctPass = new Replicate(manager, src, enc, null, List.of(), List.of());
+    correctPass.encrypt("secretA", null, encOffOpts);
+    manager.commit(correctPass);
+    assertTrue(manager.tasks().containsKey(correctPass.tag()));
+
+    Manager restored = new Manager().restore(dir.resolve("volume"));
+    assertTrue(restored.tasks().containsKey(correctPass.tag()));
+  }
+
   private static boolean available(String executable) {
     String env = System.getenv(executable.toUpperCase());
     String command = env != null && !env.isBlank() ? env : executable;

@@ -91,10 +91,44 @@ final class RcloneExecutor {
       throw new BitferryError(refusalMessage(encryptedSide) + probeDetail(outputLines, exitCode));
     }
 
-    Set<String> cryptPaths = extractCryptPaths(outputLines);
+    CryptListing listing = extractCryptListing(outputLines);
     boolean filenameEncEnabled = isFilenameEncryptionEnabled(rclone.encryption().options());
-    if (cryptPaths.isEmpty() || (filenameEncEnabled && cryptPaths.equals(rawPaths))) {
+    if (listing.paths().isEmpty() || (filenameEncEnabled && listing.paths().equals(rawPaths))) {
       throw new BitferryError(refusalMessage(encryptedSide) + probeDetail(outputLines, exitCode));
+    }
+
+    // Secondary probe: decrypt actual file content to verify password and data format.
+    // Directory listing alone (lsjson) does not decrypt content; when filename encryption
+    // is off, lsjson succeeds even with a wrong password or unencrypted plaintext files.
+    List<String> catCmd = new ArrayList<>();
+    catCmd.add(ExecutorSupport.resolveExecutable("rclone"));
+    catCmd.add("cat");
+    catCmd.add("--head");
+    catCmd.add("1");
+    catCmd.add("--config");
+    catCmd.add(ExecutorSupport.isWindows() ? "NUL" : "/dev/null");
+    catCmd.add("--filter");
+    catCmd.add("- " + Bitferry.STORAGE + "*");
+    catCmd.add("--filter");
+    catCmd.add("- " + Bitferry.STORAGE + "*/**");
+    catCmd.addAll(rclone.encryption().options());
+    catCmd.add("--crypt-remote");
+    catCmd.add(encryptedSide);
+    catCmd.add(":crypt:");
+
+    ExecutorSupport.echoCommandLine(rclone.manager(), catCmd, null);
+
+    List<String> catLines = new ArrayList<>();
+    int catExit;
+    try {
+      catExit = commandExecutor.execute(catCmd, null, rclone.encryption().processEnvironment(), catLines::add);
+    } catch (IOException | InterruptedException e) {
+      if (e instanceof InterruptedException) Thread.currentThread().interrupt();
+      throw new BitferryError(refusalMessage(encryptedSide), e);
+    }
+
+    if (catExit != 0 || catLines.stream().anyMatch(RcloneExecutor::isDecryptionError)) {
+      throw new BitferryError(refusalMessage(encryptedSide) + probeDetail(catLines, catExit));
     }
   }
 
@@ -138,7 +172,9 @@ final class RcloneExecutor {
         || l.contains("not an encrypted file")
         || l.contains("bad magic")
         || l.contains("illegal base32")
-        || l.contains("illegal base32768");
+        || l.contains("illegal base32768")
+        || l.contains("bad password")
+        || l.contains("failed to authenticate");
   }
 
   private static boolean isFilenameEncryptionEnabled(List<String> options) {
@@ -155,7 +191,9 @@ final class RcloneExecutor {
     return true;
   }
 
-  private static Set<String> extractCryptPaths(List<String> outputLines) {
+  private record CryptListing(Set<String> paths, String sampleFile) {}
+
+  private static CryptListing extractCryptListing(List<String> outputLines) {
     List<String> jsonLines = new ArrayList<>();
     for (String line : outputLines) {
       // The escapes are stripped before the notice filter: the captured runs force
@@ -169,21 +207,30 @@ final class RcloneExecutor {
     }
     String jsonText = String.join("\n", jsonLines).trim();
     if (jsonText.isEmpty()) {
-      return Set.of();
+      return new CryptListing(Set.of(), null);
     }
     try {
       JsonNode root = Storage.mapper().readTree(jsonText);
       Set<String> paths = new HashSet<>();
+      String sampleFile = null;
       if (root.isArray()) {
         for (JsonNode item : root) {
           if (item.has("Path")) {
-            paths.add(item.get("Path").asString().replace('\\', '/'));
+            String p = item.get("Path").asString().replace('\\', '/');
+            paths.add(p);
+            boolean isDir = item.has("IsDir") && item.get("IsDir").asBoolean();
+            if (!isDir) {
+              long size = item.has("Size") ? item.get("Size").asLong() : 0;
+              if (sampleFile == null || size > 0) {
+                sampleFile = p;
+              }
+            }
           }
         }
       }
-      return paths;
+      return new CryptListing(paths, sampleFile);
     } catch (Exception e) {
-      return Set.of();
+      return new CryptListing(Set.of(), null);
     }
   }
 
@@ -273,8 +320,8 @@ final class RcloneExecutor {
     return List.of(ExecutorSupport.displayCommand(command(rclone, true, false)));
   }
 
-  /// Process the rclone-backed task. Return true on success.
-  boolean run(Rclone rclone, Consumer<String> output) {
+  /// Process the rclone-backed task.
+  Task.Outcome run(Rclone rclone, Consumer<String> output) {
     List<String> cmd = command(rclone, output == null, true);
     return ExecutorSupport.execute(commandExecutor, rclone.manager(), cmd, null, rclone.processEnvironment(), rclone.tag(), output);
   }
@@ -333,8 +380,8 @@ final class RcloneExecutor {
     return List.of(ExecutorSupport.displayCommand(serveCommand(rclone, true)));
   }
 
-  /// Perform service (integrity checking) on the rclone-backed task. Return true on success.
-  boolean serve(Rclone rclone, Consumer<String> output) {
+  /// Perform service (integrity checking) on the rclone-backed task.
+  Task.Outcome serve(Rclone rclone, Consumer<String> output) {
     List<String> cmd = serveCommand(rclone, output == null);
     return ExecutorSupport.execute(commandExecutor, rclone.manager(), cmd, null, rclone.processEnvironment(), rclone.tag(), output);
   }

@@ -134,12 +134,13 @@ public class Manager {
   /// timestamp. The equal-timestamp ties prefer the copy marked for deletion mirroring
   /// the task tombstones: the deletions must never lose a conflict.
   public void registerVolume(Volume volume) {
+    boolean volumePending = volume.pendingDeletion();
     synchronized (registryLock) {
       Volume existing = volumes.get(volume.tag());
       if (existing == null) {
         LOG.log(Level.INFO, () -> "Bitferry volume " + volume.tag() + " registered in " + this);
       } else if (existing.mtime().isBefore(volume.mtime())
-        || (existing.mtime().isEqual(volume.mtime()) && volume.pendingDeletion() && !existing.pendingDeletion())) {
+        || (existing.mtime().isEqual(volume.mtime()) && volumePending && !existing.pendingDeletion())) {
         volumes.remove(volume.tag());
         LOG.log(Level.INFO, () -> "Replaced already registered Bitferry volume " + volume.tag() + " with the one with newer timestamp");
       } else {
@@ -455,17 +456,21 @@ public class Manager {
   }
 
   /// Process the intact tasks matched by the specified (partial) tags or all intact tasks
-  /// forwarding output to the consumer (null for CLI pass-through). The task-level
-  /// failures (BitferryError - e.g. a vanished volume, a dropped vault token) isolate to
-  /// the failing task and fail the outcome: the remaining tasks still run.
+  /// forwarding output to the consumer (null for CLI pass-through). Return true on complete success.
   public boolean process(List<String> tags, java.util.function.Consumer<String> output) {
-    boolean outcome = true;
+    return processOutcome(tags, output) == Task.Outcome.SUCCESS;
+  }
+
+  /// Process the intact tasks matched by the specified (partial) tags or all intact tasks
+  /// forwarding output to the consumer, returning the three-way outcome.
+  public Task.Outcome processOutcome(List<String> tags, java.util.function.Consumer<String> output) {
+    Task.Outcome outcome = Task.Outcome.SUCCESS;
     for (Task t : selectTasks(tags).values()) {
       try {
-        outcome = t.process(output) && outcome;
+        outcome = outcome.and(t.process(output));
       } catch (BitferryError e) {
         LOG.log(Level.ERROR, () -> "Task " + t.tag() + " processing failure: " + e.getMessage());
-        outcome = false;
+        outcome = Task.Outcome.FAILURE;
       }
     }
     return outcome;
@@ -503,17 +508,21 @@ public class Manager {
   }
 
   /// Service the intact tasks matched by the specified (partial) tags or all intact tasks
-  /// forwarding output to the consumer (null for CLI pass-through). The task-level
-  /// failures (BitferryError) isolate to the failing task and fail the outcome: the
-  /// remaining tasks still run.
+  /// forwarding output to the consumer (null for CLI pass-through). Return true on complete success.
   public boolean serve(List<String> tags, java.util.function.Consumer<String> output) {
-    boolean outcome = true;
+    return serveOutcome(tags, output) == Task.Outcome.SUCCESS;
+  }
+
+  /// Service the intact tasks matched by the specified (partial) tags or all intact tasks
+  /// forwarding output to the consumer, returning the three-way outcome.
+  public Task.Outcome serveOutcome(List<String> tags, java.util.function.Consumer<String> output) {
+    Task.Outcome outcome = Task.Outcome.SUCCESS;
     for (Task t : selectTasks(tags).values()) {
       try {
-        outcome = t.serve(output) && outcome;
+        outcome = outcome.and(t.serve(output));
       } catch (BitferryError e) {
         LOG.log(Level.ERROR, () -> "Task " + t.tag() + " servicing failure: " + e.getMessage());
-        outcome = false;
+        outcome = Task.Outcome.FAILURE;
       }
     }
     return outcome;

@@ -119,11 +119,11 @@ public final class ResticRepositoryState {
   }
 
   /// Whether service is due for the given task per its entry and cadence. The
-  /// corrupt or missing state is due for every task; the disabled cadence is
-  /// never due.
+  /// disabled cadence is never due; otherwise corrupt or missing state is due
+  /// for every task with an active cadence.
   public boolean isDue(String tag, Cadence cadence) {
-    if (corruptOrMissing) return true;
     if (cadence == null) return false;
+    if (corruptOrMissing) return true;
     Entry entry = entry(tag);
     return cadence.isDue(entry.maintenance, entry.backups);
   }

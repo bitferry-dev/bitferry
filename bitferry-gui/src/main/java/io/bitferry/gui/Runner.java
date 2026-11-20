@@ -25,14 +25,26 @@ public final class Runner {
     void taskStarted(int index, int total, String tag);
 
     /// One task has finished with the running totals.
-    void taskFinished(int index, int total, int ok, int failed);
+    default void taskFinished(int index, int total, int ok, int partial, int failed) {
+      taskFinished(index, total, ok, failed);
+    }
+
+    default void taskFinished(int index, int total, int ok, int failed) {}
 
     /// The whole run finished with the outcome summary.
-    void runFinished(boolean outcome, int ok, int failed);
+    default void runFinished(boolean outcome, int ok, int partial, int failed) {
+      runFinished(outcome, ok, failed);
+    }
+
+    default void runFinished(boolean outcome, int ok, int failed) {}
 
     /// The run was aborted by the user: the running backend has been terminated and
     /// the remaining tasks skipped.
-    void runAborted(int ok, int failed);
+    default void runAborted(int ok, int partial, int failed) {
+      runAborted(ok, failed);
+    }
+
+    default void runAborted(int ok, int failed) {}
   }
 
   private final AppContext context;
@@ -92,13 +104,14 @@ public final class Runner {
     aborted = false;
     context.operations().execute(() -> {
       int ok = 0;
+      int partial = 0;
       int failed = 0;
       try {
         Manager manager = context.manager();
         List<Task> tasks = new ArrayList<>(manager.selectTasks(tags).values());
         if (tasks.isEmpty()) {
           logs.log("\u001B[33mNo intact tasks to " + (serve ? "service" : "execute") + "\u001B[0m");
-          done(listener, true, 0, 0);
+          done(listener, true, 0, 0, 0);
           return;
         }
         int total = tasks.size();
@@ -117,21 +130,34 @@ public final class Runner {
           int at = index;
           Platform.runLater(() -> listener.taskStarted(at, total, task.tag()));
           output.accept(String.format("\u001B[1m[%d/%d]\u001B[0m %s  %s", at, total, AnsiFormat.tag(task.tag()), AnsiFormat.task(task)));
-          boolean okTask;
+          Task.Outcome outcomeTask;
           try {
-            okTask = serve ? task.serve(output) : task.process(output);
+            outcomeTask = serve ? task.serve(output) : task.process(output);
           } catch (BitferryError e) {
             output.accept("\u001B[31mError: " + e.getMessage() + "\u001B[0m");
-            okTask = false;
+            outcomeTask = Task.Outcome.FAILURE;
           } catch (RuntimeException e) {
             output.accept("\u001B[31mUnexpected failure: " + e + "\u001B[0m");
-            okTask = false;
+            outcomeTask = Task.Outcome.FAILURE;
           }
-          output.accept(okTask ? "\u001B[32m    ✓ success\u001B[0m" : "\u001B[31m    ✗ failure\u001B[0m");
-          if (okTask) ok++; else failed++;
+          switch (outcomeTask) {
+            case SUCCESS -> {
+              output.accept("\u001B[32m    ✓ success\u001B[0m");
+              ok++;
+            }
+            case PARTIAL -> {
+              output.accept("\u001B[33m    ⚠ partial\u001B[0m");
+              partial++;
+            }
+            case FAILURE -> {
+              output.accept("\u001B[31m    ✗ failure\u001B[0m");
+              failed++;
+            }
+          }
           int okCount = ok;
+          int partialCount = partial;
           int failedCount = failed;
-          Platform.runLater(() -> listener.taskFinished(at, total, okCount, failedCount));
+          Platform.runLater(() -> listener.taskFinished(at, total, okCount, partialCount, failedCount));
         }
         // Persist the run bookkeeping (e.g. the equalize bisync baseline marker): only
         // the volumes whose state actually changed are rewritten. A failing commit is
@@ -146,35 +172,37 @@ public final class Runner {
         }
         if (aborted) {
           output.accept("\u001B[31m    ✗ run aborted\u001B[0m");
-          doneAborted(listener, ok, failed);
+          doneAborted(listener, ok, partial, failed);
         } else {
           output.accept("");
-          String summary = failed == 0
-            ? String.format("\u001B[32mAll %d task(s) %s successfully.\u001B[0m", total, serve ? "serviced" : "executed")
-            : String.format("\u001B[31mSome of the %d task(s) failed to %s.\u001B[0m", total, serve ? "service" : "execute");
+          String summary = failed > 0
+            ? String.format("\u001B[31mSome of the %d task(s) failed to %s.\u001B[0m", total, serve ? "service" : "execute")
+            : partial > 0
+              ? String.format("\u001B[33mSome of the %d task(s) %s with warnings (partial success).\u001B[0m", total, serve ? "serviced" : "executed")
+              : String.format("\u001B[32mAll %d task(s) %s successfully.\u001B[0m", total, serve ? "serviced" : "executed");
           output.accept(summary);
-          done(listener, failed == 0, ok, failed);
+          done(listener, failed == 0 && partial == 0, ok, partial, failed);
         }
       } catch (Throwable t) {
         // The runner must never wedge the toolbar: report and finish the run. The
         // Throwable (not the RuntimeException) - an Error escaping here would leave
         // the busy flag set forever (the whole GUI gated on it until the restart)
         logs.log("Run failed: " + t);
-        done(listener, false, ok, failed);
+        done(listener, false, ok, partial, failed);
       }
     });
     return true;
   }
 
-  private void done(Listener listener, boolean outcome, int ok, int failed) {
+  private void done(Listener listener, boolean outcome, int ok, int partial, int failed) {
     busy = false;
     aborted = false;
-    Platform.runLater(() -> listener.runFinished(outcome, ok, failed));
+    Platform.runLater(() -> listener.runFinished(outcome, ok, partial, failed));
   }
 
-  private void doneAborted(Listener listener, int ok, int failed) {
+  private void doneAborted(Listener listener, int ok, int partial, int failed) {
     busy = false;
     aborted = false;
-    Platform.runLater(() -> listener.runAborted(ok, failed));
+    Platform.runLater(() -> listener.runAborted(ok, partial, failed));
   }
 }

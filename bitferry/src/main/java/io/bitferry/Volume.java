@@ -35,7 +35,7 @@ public final class Volume {
 
   private boolean modified;
   private int generation;
-  private CommitState commitState;
+  private volatile CommitState commitState;
   private boolean live = true;
 
   // The identity (source/type pair) of the file system the root resides on, captured
@@ -215,9 +215,7 @@ public final class Volume {
   /// tombstones. Package-private: the commit state is internal bookkeeping (not a part
   /// of the storage descriptor).
   boolean pendingDeletion() {
-    synchronized (stateLock) {
-      return commitState == CommitState.DELETED;
-    }
+    return commitState == CommitState.DELETED;
   }
 
   /// Return the volume-owned tasks referring the volume through either source or destination endpoints.

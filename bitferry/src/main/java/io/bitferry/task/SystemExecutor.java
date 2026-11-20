@@ -34,45 +34,45 @@ public class SystemExecutor implements Executor {
   }
 
   @Override
-  public boolean run(Task task, Consumer<String> output) {
+  public Task.Outcome run(Task task, Consumer<String> output) {
     LOG.log(Level.INFO, () -> "Processing task " + task.tag());
     // The double dispatch: the task lands on its per-tool slot
     return task.runWith(this, output);
   }
 
   @Override
-  public boolean serve(Task task, Consumer<String> output) {
+  public Task.Outcome serve(Task task, Consumer<String> output) {
     LOG.log(Level.INFO, () -> "Servicing task " + task.tag());
     return task.serveWith(this, output);
   }
 
   @Override
-  public boolean run(Rclone task, Consumer<String> output) {
+  public Task.Outcome run(Rclone task, Consumer<String> output) {
     return rcloneExecutor.run(task, output);
   }
 
   @Override
-  public boolean serve(Rclone task, Consumer<String> output) {
+  public Task.Outcome serve(Rclone task, Consumer<String> output) {
     return rcloneExecutor.serve(task, output);
   }
 
   @Override
-  public boolean run(Backup task, Consumer<String> output) {
+  public Task.Outcome run(Backup task, Consumer<String> output) {
     return resticExecutor.runBackup(task, output);
   }
 
   @Override
-  public boolean run(Restore task, Consumer<String> output) {
+  public Task.Outcome run(Restore task, Consumer<String> output) {
     return resticExecutor.runRestore(task, output);
   }
 
   @Override
-  public boolean serve(Backup task, Consumer<String> output) {
+  public Task.Outcome serve(Backup task, Consumer<String> output) {
     return resticExecutor.serveBackup(task, output);
   }
 
   @Override
-  public boolean serve(Restore task, Consumer<String> output) {
+  public Task.Outcome serve(Restore task, Consumer<String> output) {
     return resticExecutor.serveRestore(task, output);
   }
 

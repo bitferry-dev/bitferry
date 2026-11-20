@@ -10,32 +10,32 @@ import java.util.function.*;
 public interface Executor {
 
   /// Execute the task's backend invocations forwarding the combined output line by line
-  /// to the specified callback (null for inherited stdio / CLI pass-through). Return true on success.
-  boolean run(Task task, Consumer<String> output);
+  /// to the specified callback (null for inherited stdio / CLI pass-through).
+  Task.Outcome run(Task task, Consumer<String> output);
 
   /// Execute the task with inherited stdio (CLI pass-through).
-  default boolean run(Task task) {
+  default Task.Outcome run(Task task) {
     return run(task, null);
   }
 
   /// Execute the rclone-backed task (the double-dispatch slot the task's runWith
   /// lands on).
-  default boolean run(Rclone task, Consumer<String> output) {
+  default Task.Outcome run(Rclone task, Consumer<String> output) {
     return run((Task) task, output);
   }
 
   /// Execute the restic-backed task.
-  default boolean run(Restic task, Consumer<String> output) {
+  default Task.Outcome run(Restic task, Consumer<String> output) {
     return run((Task) task, output);
   }
 
   /// Execute the backup task (the retention/service semantics are backup specific).
-  default boolean run(Backup task, Consumer<String> output) {
+  default Task.Outcome run(Backup task, Consumer<String> output) {
     return run((Restic) task, output);
   }
 
   /// Execute the restore task.
-  default boolean run(Restore task, Consumer<String> output) {
+  default Task.Outcome run(Restore task, Consumer<String> output) {
     return run((Restic) task, output);
   }
 
@@ -117,36 +117,37 @@ public interface Executor {
   }
 
   /// Perform service (integrity verification, snapshot retention, and garbage collection)
-  /// on the task or its target repository. Return true on success.
-  default boolean serve(Task task, Consumer<String> output) {
-    return true;
+  /// on the task or its target repository.
+  default Task.Outcome serve(Task task, Consumer<String> output) {
+    return Task.Outcome.SUCCESS;
+  }
+
+  /// Service the task with inherited stdio (CLI pass-through).
+  default Task.Outcome serve(Task task) {
+    return serve(task, null);
   }
 
   /// Service the rclone-backed task (the double-dispatch slot the task's serveWith
   /// lands on).
-  default boolean serve(Rclone task, Consumer<String> output) {
+  default Task.Outcome serve(Rclone task, Consumer<String> output) {
     return serve((Task) task, output);
   }
 
   /// Service the restic-backed task.
-  default boolean serve(Restic task, Consumer<String> output) {
+  default Task.Outcome serve(Restic task, Consumer<String> output) {
     return serve((Task) task, output);
   }
 
   /// Service the backup task (the check, the retention and the prune sequence).
-  default boolean serve(Backup task, Consumer<String> output) {
+  default Task.Outcome serve(Backup task, Consumer<String> output) {
     return serve((Restic) task, output);
   }
 
   /// Service the restore task (the repository integrity check).
-  default boolean serve(Restore task, Consumer<String> output) {
+  default Task.Outcome serve(Restore task, Consumer<String> output) {
     return serve((Restic) task, output);
   }
 
-  /// Perform service with inherited stdio (CLI pass-through).
-  default boolean serve(Task task) {
-    return serve(task, null);
-  }
 
   /// Return the backend command lines about to execute for servicing this task.
   default List<List<String>> serveCommands(Task task) {
@@ -190,11 +191,19 @@ public interface Executor {
     private Stub() {}
 
     @Override
-    public boolean run(Task task, Consumer<String> output) {
+    public Task.Outcome run(Task task, Consumer<String> output) {
       String message = "Backend execution is not implemented for task " + task.tag() + "; the complete backend port is upcoming";
       LOG.log(Level.WARNING, () -> message);
       if (output != null) output.accept(message);
-      return false;
+      return Task.Outcome.FAILURE;
+    }
+
+    @Override
+    public Task.Outcome serve(Task task, Consumer<String> output) {
+      String message = "Backend service is not implemented for task " + task.tag() + "; the complete backend port is upcoming";
+      LOG.log(Level.WARNING, () -> message);
+      if (output != null) output.accept(message);
+      return Task.Outcome.FAILURE;
     }
   }
 }

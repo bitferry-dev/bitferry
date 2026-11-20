@@ -37,6 +37,7 @@ public class ServeCommand implements Callable<Integer>, HasCommonOptions {
       t -> t.serve(null),
       "serve",
       "@|green All %d task(s) serviced successfully.|@",
+      "@|yellow Some of the %d task(s) completed with warnings (partial success).|@",
       "@|red Some of the %d task(s) failed servicing.|@",
       "post-service commit failed");
   }

@@ -65,4 +65,38 @@ class RestoreScopeTest {
     assertThrows(BitferryError.class, () -> Restore.resolveSnapshotTag(manager, repo, null));
     assertEquals(twin.tag(), Restore.resolveSnapshotTag(manager, repo, twin.tag()));
   }
+
+  @Test
+  void explicitScopeRejectsUnrelatedBackupRepository() {
+    Manager manager = new Manager();
+    Volume volume = Volume.create(manager, dir.resolve("volume"));
+    Endpoint repoA = Endpoints.parse(manager, "local:" + dir.resolve("repoA"));
+    Endpoint repoB = Endpoints.parse(manager, "local:" + dir.resolve("repoB"));
+    Endpoint source = Endpoints.parse(manager, ":" + volume.tag() + ":data");
+    Backup backupA = new Backup(manager, source, repoA, "password", null, null, null, null, List.of());
+    manager.registerTask(backupA);
+
+    BitferryError err = assertThrows(BitferryError.class, () -> Restore.resolveSnapshotTag(manager, repoB, backupA.tag()));
+    assertTrue(err.getMessage().contains("does not match restore repository"));
+  }
+
+  @Test
+  void scopeCandidatesMatchesEquivalentRepositoryPaths() throws Exception {
+    Manager manager = new Manager();
+    Volume volume = Volume.create(manager, dir.resolve("volume"));
+    Path realRepo = dir.resolve("realRepo");
+    Files.createDirectories(realRepo);
+    Path symlinkRepo = dir.resolve("symlinkRepo");
+    Files.createSymbolicLink(symlinkRepo, realRepo);
+
+    Endpoint repoReal = Endpoints.parse(manager, "local:" + realRepo);
+    Endpoint repoSymlink = Endpoints.parse(manager, "local:" + symlinkRepo);
+    Endpoint source = Endpoints.parse(manager, ":" + volume.tag() + ":data");
+
+    Backup backup = new Backup(manager, source, repoReal, "password", null, null, null, null, List.of());
+    manager.registerTask(backup);
+
+    assertEquals(List.of(backup.tag()), Restore.scopeCandidates(manager, repoSymlink));
+    assertEquals(backup.tag(), Restore.resolveSnapshotTag(manager, repoSymlink, backup.tag()));
+  }
 }

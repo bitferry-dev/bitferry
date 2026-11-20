@@ -2303,5 +2303,46 @@ class CliTest {
     cmd.setErr(new PrintWriter(err));
     assertEquals(0, cmd.execute("repair", "--all", "--force", backupTag), () -> "stderr: " + err);
     assertTrue(out.toString().contains("Remove all locks"), () -> "out: " + out);
+
+    // 4. Failed preview aborts the operation and returns nonzero
+    Path cfg = repoDir.resolve("config");
+    cfg.toFile().setWritable(true);
+    Files.writeString(cfg, "corrupted-content");
+    cmd = Main.createCommandLine();
+    out = new StringWriter();
+    err = new StringWriter();
+    cmd.setOut(new PrintWriter(out));
+    cmd.setErr(new PrintWriter(err));
+    assertNotEquals(0, cmd.execute("repair", backupTag));
+    assertTrue(out.toString().contains("failure"), () -> "out: " + out);
+  }
+
+  @Test
+  void runBatchReportsPartialSuccessAndReturnsCode3() throws IOException {
+    Path volDir = tempDir.resolve("partial_vol");
+    Path dstDir = tempDir.resolve("partial_dst");
+    Files.createDirectories(volDir);
+    Files.createDirectories(dstDir);
+    assertEquals(0, cmd.execute("create", "volume", volDir.toString()));
+    probeRoot(volDir);
+    String vtag = volumeTag(managerFor(volDir), volDir);
+    assertEquals(0, cmd.execute("create", "task", "copy", ":" + vtag + ":", "local:" + dstDir));
+
+    CommandLine commandLine = Main.createCommandLine();
+    StringWriter outWriter = new StringWriter();
+    commandLine.setOut(new PrintWriter(outWriter));
+    CommonOptions opts = new CommonOptions();
+
+    int exitCode = CliUtils.runBatch(commandLine.getCommandSpec(), opts, null,
+      t -> Task.Outcome.PARTIAL,
+      "execute",
+      "@|green All %d task(s) executed successfully.|@",
+      "@|yellow Some of the %d task(s) completed with warnings (partial success).|@",
+      "@|red Some of the %d task(s) failed to execute.|@",
+      "commit failed");
+
+    assertEquals(3, exitCode);
+    assertTrue(outWriter.toString().contains("partial"));
+    assertTrue(outWriter.toString().contains("completed with warnings"));
   }
 }

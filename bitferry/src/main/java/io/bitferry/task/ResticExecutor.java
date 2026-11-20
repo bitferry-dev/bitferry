@@ -409,20 +409,23 @@ final class ResticExecutor {
     String repo = restic.repoEndpoint().processOpts();
     List<String> cmd = new ArrayList<>();
     cmd.add(resolveExecutable());
-    cmd.add("unlock");
-    if (removeAll) {
-      cmd.add("--remove-all");
+    if (manager.simulate || dryRun) {
+      cmd.add("list");
+      cmd.add("locks");
+      cmd.add("--no-lock");
+    } else {
+      cmd.add("unlock");
+      if (removeAll) {
+        cmd.add("--remove-all");
+      }
     }
     cmd.addAll(commonOptions(manager));
-    if (manager.simulate || dryRun) {
-      cmd.add("--dry-run");
-    }
     cmd.add("-r");
     cmd.add(repo);
     // The password rides the environment like every restic invocation: unlock may
     // not need it (it operates on the locks directory), and a host requiring it
     // still resolves - passing it is unconditionally harmless
-    return ExecutorSupport.execute(commandExecutor, manager, cmd, null, restic.processEnvironment(), restic.tag(), output);
+    return ExecutorSupport.execute(commandExecutor, manager, cmd, null, restic.processEnvironment(), restic.tag(), output).ok();
   }
 
   // Remove the repository subdirectories upon the forced re-initialization. Any wipe
@@ -642,7 +645,7 @@ final class ResticExecutor {
     return sharing;
   }
 
-  boolean runBackup(Backup backup, Consumer<String> output) {
+  Task.Outcome runBackup(Backup backup, Consumer<String> output) {
     Manager manager = backup.manager();
     String repo = backup.destination().processOpts();
     Path repoDir = Path.of(repo);
@@ -660,20 +663,18 @@ final class ResticExecutor {
     // Service check before backup: the service covers the whole repository (every
     // co-repository retention policy), so it runs when any co-repository task's
     // cadence is due - not only this task's own one
-    if (backup.cadence() != null) {
-      boolean due = coRepo.stream().anyMatch(t -> state.isDue(t.tag(), t.cadence()));
-      if (due) {
-        LOG.log(Level.INFO, () -> "Serve cadence triggered for task " + backup.tag() + "; running service before backup");
-        if (output != null) {
-          output.accept("Serve cadence triggered for task " + backup.tag() + "; running service before backup");
-        }
-        boolean served = serveBackup(backup, output);
-        if (!served) {
-          String msg = "Service failed before backup for task " + backup.tag() + "; aborting backup";
-          LOG.log(Level.ERROR, () -> msg);
-          if (output != null) output.accept(msg);
-          return false;
-        }
+    boolean due = coRepo.stream().anyMatch(t -> state.isDue(t.tag(), t.cadence()));
+    if (due) {
+      LOG.log(Level.INFO, () -> "Serve cadence triggered for task " + backup.tag() + "; running service before backup");
+      if (output != null) {
+        output.accept("Serve cadence triggered for task " + backup.tag() + "; running service before backup");
+      }
+      Task.Outcome served = serveBackup(backup, output);
+      if (!served.ok()) {
+        String msg = "Service failed before backup for task " + backup.tag() + "; aborting backup";
+        LOG.log(Level.ERROR, () -> msg);
+        if (output != null) output.accept(msg);
+        return Task.Outcome.FAILURE;
       }
     }
 
@@ -685,14 +686,14 @@ final class ResticExecutor {
     // The exit code 3 is tolerated: restic reports the snapshot written with some
     // source files unreadable - a partial success (the outright failure would skip
     // the maintenance recording and skew the backups_since_maintenance cadence)
-    boolean success = ExecutorSupport.execute(commandExecutor, manager, cmd, cwd, backup.processEnvironment(), backup.tag(), output, 3);
-    if (!success) {
+    Task.Outcome outcome = ExecutorSupport.execute(commandExecutor, manager, cmd, cwd, backup.processEnvironment(), backup.tag(), output, 3);
+    if (outcome == Task.Outcome.FAILURE) {
       // The stored token may have gone stale (the password rotated by a co-repository
       // task while this volume was absent): re-sync from a sibling and retry once
-      if (!healStaleToken(backup, repo)) return false;
+      if (!healStaleToken(backup, repo)) return Task.Outcome.FAILURE;
       if (output != null) output.accept("Retrying the backup after the stale token re-sync");
-      success = ExecutorSupport.execute(commandExecutor, manager, cmd, cwd, backup.processEnvironment(), backup.tag(), output, 3);
-      if (!success) return false;
+      outcome = ExecutorSupport.execute(commandExecutor, manager, cmd, cwd, backup.processEnvironment(), backup.tag(), output, 3);
+      if (outcome == Task.Outcome.FAILURE) return Task.Outcome.FAILURE;
     }
 
     // Record completed backup in the task's own repository state entry (reloaded
@@ -703,10 +704,10 @@ final class ResticExecutor {
       fresh.save(repoDir);
     }
 
-    return true;
+    return outcome;
   }
 
-  boolean serveBackup(Backup backup, Consumer<String> output) {
+  Task.Outcome serveBackup(Backup backup, Consumer<String> output) {
     Manager manager = backup.manager();
     String repo = backup.destination().processOpts();
     Map<String, String> environment = backup.processEnvironment();
@@ -734,19 +735,19 @@ final class ResticExecutor {
     if (output != null) {
       output.accept("Checking repository " + repo);
     }
-    boolean checkOk = ExecutorSupport.execute(commandExecutor, manager, checkCmd, null, environment, backup.tag(), output);
+    boolean checkOk = ExecutorSupport.execute(commandExecutor, manager, checkCmd, null, environment, backup.tag(), output).isSuccess();
     if (!checkOk && healStaleToken(backup, repo)) {
       // The stored token went stale (rotated by a co-repository task while this volume
       // was absent): the re-synced token carries the rest of the service pass too
       environment = backup.processEnvironment();
       if (output != null) output.accept("Retrying the check after the stale token re-sync");
-      checkOk = ExecutorSupport.execute(commandExecutor, manager, checkCmd, null, environment, backup.tag(), output);
+      checkOk = ExecutorSupport.execute(commandExecutor, manager, checkCmd, null, environment, backup.tag(), output).isSuccess();
     }
     if (!checkOk) {
       String msg = "Service aborted for task " + backup.tag() + ": repository check failed";
       LOG.log(Level.ERROR, () -> msg);
       if (output != null) output.accept(msg);
-      return false;
+      return Task.Outcome.FAILURE;
     }
 
     // Step 2: Retention per co-repository task (each forget scopes to its own tag)
@@ -756,9 +757,9 @@ final class ResticExecutor {
       if (output != null) {
         output.accept("Applying retention policy of task " + task.tag() + " to repository " + repo);
       }
-      boolean forgetOk = ExecutorSupport.execute(commandExecutor, manager, forgetCmd, null, environment, backup.tag(), output);
+      boolean forgetOk = ExecutorSupport.execute(commandExecutor, manager, forgetCmd, null, environment, backup.tag(), output).isSuccess();
       if (!forgetOk) {
-        return false;
+        return Task.Outcome.FAILURE;
       }
     }
 
@@ -767,9 +768,9 @@ final class ResticExecutor {
     if (output != null) {
       output.accept("Pruning repository " + repo);
     }
-    boolean pruneOk = ExecutorSupport.execute(commandExecutor, manager, pruneCmd, null, environment, backup.tag(), output);
+    boolean pruneOk = ExecutorSupport.execute(commandExecutor, manager, pruneCmd, null, environment, backup.tag(), output).isSuccess();
     if (!pruneOk) {
-      return false;
+      return Task.Outcome.FAILURE;
     }
 
     // Step 4: Reset every co-repository task's maintenance entry (reloaded fresh)
@@ -778,10 +779,10 @@ final class ResticExecutor {
       fresh.recordServe(tags);
       fresh.save(repoDir);
     }
-    return true;
+    return Task.Outcome.SUCCESS;
   }
 
-  boolean serveRestore(Restore restore, Consumer<String> output) {
+  Task.Outcome serveRestore(Restore restore, Consumer<String> output) {
     Manager manager = restore.manager();
     String repo = restore.source().processOpts();
     Map<String, String> environment = restore.processEnvironment();
@@ -791,15 +792,15 @@ final class ResticExecutor {
     }
 
     List<String> checkCmd = serveCheckCommand(restore);
-    boolean ok = ExecutorSupport.execute(commandExecutor, manager, checkCmd, null, environment, restore.tag(), output);
-    if (!ok && healStaleToken(restore, repo)) {
+    Task.Outcome outcome = ExecutorSupport.execute(commandExecutor, manager, checkCmd, null, environment, restore.tag(), output);
+    if (!outcome.ok() && healStaleToken(restore, repo)) {
       environment = restore.processEnvironment();
-      ok = ExecutorSupport.execute(commandExecutor, manager, checkCmd, null, environment, restore.tag(), output);
+      outcome = ExecutorSupport.execute(commandExecutor, manager, checkCmd, null, environment, restore.tag(), output);
     }
-    return ok;
+    return outcome;
   }
 
-  boolean runRestore(Restore restore, Consumer<String> output) {
+  Task.Outcome runRestore(Restore restore, Consumer<String> output) {
     Manager manager = restore.manager();
     String repo = restore.source().processOpts();
     String target = restore.destination().processOpts();
@@ -815,11 +816,11 @@ final class ResticExecutor {
     }
 
     List<String> cmd = restoreCommand(restore);
-    boolean success = ExecutorSupport.execute(commandExecutor, manager, cmd, null, restore.processEnvironment(), restore.tag(), output);
-    if (!success && healStaleToken(restore, repo)) {
-      success = ExecutorSupport.execute(commandExecutor, manager, cmd, null, restore.processEnvironment(), restore.tag(), output);
+    Task.Outcome outcome = ExecutorSupport.execute(commandExecutor, manager, cmd, null, restore.processEnvironment(), restore.tag(), output);
+    if (!outcome.ok() && healStaleToken(restore, repo)) {
+      outcome = ExecutorSupport.execute(commandExecutor, manager, cmd, null, restore.processEnvironment(), restore.tag(), output);
     }
-    return success;
+    return outcome;
   }
 
   private static String resolveExecutable() {

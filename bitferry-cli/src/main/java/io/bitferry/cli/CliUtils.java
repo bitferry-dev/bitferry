@@ -341,19 +341,22 @@ public final class CliUtils {
   /// or the [Task#serve] service) the batch commands dispatch over.
   @FunctionalInterface
   public interface BatchOperation {
-    boolean run(Task task);
+    Task.Outcome run(Task task);
+  }
+
+  public static int runBatch(CommandSpec spec, CommonOptions options, List<String> tags, BatchOperation operation,
+                             String advisoryVerb, String allSummary, String someSummary, String commitFailureLabel) {
+    return runBatch(spec, options, tags, operation, advisoryVerb, allSummary,
+      "@|yellow Some of the %d task(s) completed with warnings (partial success).|@",
+      someSummary, commitFailureLabel);
   }
 
   /// Run the batch over the tasks matched by the specified (partial) tags (or all
   /// the intact tasks when no tags given): the stale-volume and the manual-only
   /// verbose advisories, the numbered per-task dispatch with the isolated failures,
-  /// the ✓/✗ marks and the summary, then the conditional post-batch commit. The
-  /// textual variants (the advisory verb, the summary templates carrying the '%d'
-  /// count, the commit-failure label) travel in verbatim from the callers keeping
-  /// the output byte-identical between the execute and the serve surfaces. Returns
-  /// the process exit code (0: every task succeeded).
+  /// the ✓/⚠/✗ marks and the summary, then the conditional post-batch commit.
   public static int runBatch(CommandSpec spec, CommonOptions options, List<String> tags, BatchOperation operation,
-                             String advisoryVerb, String allSummary, String someSummary, String commitFailureLabel) {
+                             String advisoryVerb, String allSummary, String partialSummary, String someSummary, String commitFailureLabel) {
     PrintWriter out = spec != null ? spec.commandLine().getOut() : new PrintWriter(System.out, true);
     PrintWriter err = spec != null ? spec.commandLine().getErr() : new PrintWriter(System.err, true);
     CommonOptions opts = resolveOptions(spec, options);
@@ -374,7 +377,7 @@ public final class CliUtils {
     // An empty selection succeeds silently
     if (tasks.isEmpty()) return 0;
     int n = tasks.size();
-    boolean outcome = true;
+    Task.Outcome overallOutcome = Task.Outcome.SUCCESS;
     int i = 0;
     for (Task t : tasks.values()) {
       i++;
@@ -382,46 +385,36 @@ public final class CliUtils {
         String line = String.format(Locale.ROOT, "@|bold [%d/%d]|@ @|cyan %s|@  %s", i, n, t.tag(), formatTask(t));
         out.println(Ansi.AUTO.string(line));
       }
-      // The task-level failures isolate to the failing task mirroring [Manager.process]
-      // and the GUI runner: a BitferryError (a vanished volume, a dropped vault token)
-      // used to abort the whole batch here, skipping the remaining tasks, the per-task
-      // status line, the summary and the post-batch commit
-      boolean ok;
+      Task.Outcome outcome;
       try {
-        ok = operation.run(t);
+        outcome = operation.run(t);
       } catch (BitferryError e) {
-        ok = false;
-        // The failures always speak: the quiet mode suppresses the chatter, not the
-        // diagnostics (the batch still exits 1 - exiting with zero output would be
-        // undiagnosable in the scripted flows)
+        outcome = Task.Outcome.FAILURE;
         err.println(Ansi.AUTO.string("@|red     error: " + e.getMessage() + "|@"));
       } catch (RuntimeException e) {
-        ok = false;
+        outcome = Task.Outcome.FAILURE;
         err.println(Ansi.AUTO.string("@|red     unexpected failure: " + e + "|@"));
         if (m.verbosity == Verbosity.DEBUG) e.printStackTrace(err);
       }
-      outcome = ok && outcome;
+      overallOutcome = overallOutcome.and(outcome);
       if (!m.quiet) {
-        // The ASCII approximations on the non-unicode consoles: the encoder would
-        // otherwise collapse the marks into the semantically lossy '?' (mirroring
-        // [TaskBreakdown.formatStatus])
-        String status = ok
-          ? Ansi.AUTO.string(Symbols.unicode() ? "@|green     ✓ success|@" : "@|green     ok success|@")
-          : Ansi.AUTO.string(Symbols.unicode() ? "@|red     ✗ failure|@" : "@|red     x failure|@");
+        String status = switch (outcome) {
+          case SUCCESS -> Ansi.AUTO.string(Symbols.unicode() ? "@|green     ✓ success|@" : "@|green     ok success|@");
+          case PARTIAL -> Ansi.AUTO.string(Symbols.unicode() ? "@|yellow     ⚠ partial|@" : "@|yellow     ~ partial|@");
+          case FAILURE -> Ansi.AUTO.string(Symbols.unicode() ? "@|red     ✗ failure|@" : "@|red     x failure|@");
+        };
         out.println(status);
       }
     }
     if (!m.quiet) {
       out.println();
-      String summary = outcome
-        ? String.format(Locale.ROOT, allSummary, n)
-        : String.format(Locale.ROOT, someSummary, n);
+      String summary = switch (overallOutcome) {
+        case SUCCESS -> String.format(Locale.ROOT, allSummary, n);
+        case PARTIAL -> String.format(Locale.ROOT, partialSummary, n);
+        case FAILURE -> String.format(Locale.ROOT, someSummary, n);
+      };
       out.println(Ansi.AUTO.string(summary));
     }
-    // Persist the post-batch state (the run bookkeeping and the post-service changes):
-    // only the volumes whose state actually changed are rewritten. A failing commit
-    // warns without failing the run outcome: the unmaterialized bookkeeping flips
-    // re-materialize upon the following commits.
     if (m.isModified()) {
       try {
         m.commit();
@@ -429,6 +422,10 @@ public final class CliUtils {
         err.println(Ansi.AUTO.string("@|red     ✗ " + commitFailureLabel + ": " + e.getMessage() + "|@"));
       }
     }
-    return outcome ? 0 : 1;
+    return switch (overallOutcome) {
+      case SUCCESS -> 0;
+      case PARTIAL -> 3;
+      case FAILURE -> 1;
+    };
   }
 }

@@ -96,7 +96,7 @@ public class Restore extends Restic implements IncludeFilters {
     return manager.tasks().values().stream()
       .filter(t -> t instanceof Backup backup && t.isLive() && !t.isDeleted())
       .map(t -> (Backup) t)
-      .filter(backup -> backup.destination().processOpts().equals(repository.processOpts()))
+      .filter(backup -> Restic.sameRepository(backup.destination().processOpts(), repository.processOpts()))
       .map(Task::tag)
       .distinct()
       .toList();
@@ -113,6 +113,10 @@ public class Restore extends Restic implements IncludeFilters {
       String tag = requested.trim();
       if (!(manager.tasks().get(tag) instanceof Backup backup) || backup.isDeleted()) {
         throw new BitferryError("Snapshot scope " + tag + " does not name a live backup task");
+      }
+      if (!Restic.sameRepository(backup.destination().processOpts(), repository.processOpts())) {
+        throw new BitferryError("Backup task " + tag + " targets repository " + backup.destination().describe()
+          + " and does not match restore repository " + repository.describe());
       }
       return tag;
     }
@@ -170,12 +174,12 @@ public class Restore extends Restic implements IncludeFilters {
   }
 
   @Override
-  public boolean runWith(Executor executor, Consumer<String> output) {
+  public Outcome runWith(Executor executor, Consumer<String> output) {
     return executor.run(this, output);
   }
 
   @Override
-  public boolean serveWith(Executor executor, Consumer<String> output) {
+  public Outcome serveWith(Executor executor, Consumer<String> output) {
     return executor.serve(this, output);
   }
 

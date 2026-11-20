@@ -117,10 +117,10 @@ public final class ExecutorSupport {
   private static final int DIAGNOSTIC_TAIL_LINES = 32;
 
   /// Execute the command through the executor seam echoing the command line and
-  /// reporting the failures to the logger and the output consumer. Return true
+  /// reporting the failures to the logger and the output consumer. Return Outcome.SUCCESS
   /// on the zero exit code.
-  static boolean execute(CommandExecutor executor, Manager manager, List<String> command, Path workingDirectory,
-                         Map<String, String> environment, String taskTag, Consumer<String> output) {
+  static Task.Outcome execute(CommandExecutor executor, Manager manager, List<String> command, Path workingDirectory,
+                              Map<String, String> environment, String taskTag, Consumer<String> output) {
     return execute(executor, manager, command, workingDirectory, environment, taskTag, output, new int[0]);
   }
 
@@ -128,7 +128,7 @@ public final class ExecutorSupport {
   /// with a warning line instead of a failure (e.g. the restic backup exits 3 when the
   /// snapshot was written but some source files could not be read - a partial success,
   /// not an outright failure: the outright failure would skew the maintenance cadence).
-  static boolean execute(CommandExecutor executor, Manager manager, List<String> command, Path workingDirectory,
+  static Task.Outcome execute(CommandExecutor executor, Manager manager, List<String> command, Path workingDirectory,
                          Map<String, String> environment, String taskTag, Consumer<String> output, int... toleratedExitCodes) {
     echoCommandLine(manager, command, output);
     // The output tail rides along when a consumer is present: the failure handling
@@ -153,7 +153,7 @@ public final class ExecutorSupport {
           String message = "Command completed with exit code " + exitCode + " for task " + taskTag + " (partial success)";
           LOG.log(Level.WARNING, () -> message);
           if (output != null) output.accept(message);
-          return true;
+          return Task.Outcome.PARTIAL;
         }
         String message = "Command failed with exit code " + exitCode + " for task " + taskTag;
         LOG.log(Level.ERROR, () -> message);
@@ -165,15 +165,15 @@ public final class ExecutorSupport {
             output.accept(hint);
           }
         }
-        return false;
+        return Task.Outcome.FAILURE;
       }
-      return true;
+      return Task.Outcome.SUCCESS;
     } catch (IOException | InterruptedException e) {
       if (e instanceof InterruptedException) Thread.currentThread().interrupt();
       String message = "Task " + taskTag + " processing failure: " + e.getMessage();
       LOG.log(Level.ERROR, () -> message);
       if (output != null) output.accept(message);
-      return false;
+      return Task.Outcome.FAILURE;
     }
   }
 

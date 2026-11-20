@@ -183,8 +183,8 @@ class SystemExecutorTest {
 
       // Execution echo prints generic "rclone", but actual execution receives the full bundled path
       List<String> output = new ArrayList<>();
-      boolean success = executor.run(sync, output::add);
-      assertTrue(success);
+      Task.Outcome success = executor.run(sync, output::add);
+      assertEquals(Task.Outcome.SUCCESS, success);
       assertEquals(1, recorder.invocations.size());
       assertEquals(bundledRclone, recorder.invocations.get(0).command().get(0));
       assertTrue(output.stream().anyMatch(line -> line.startsWith("rclone sync ")),
@@ -201,7 +201,7 @@ class SystemExecutorTest {
       assertEquals("restic", backupCmds.get(0).get(0));
 
       success = executor.run(backup, output::add);
-      assertTrue(success);
+      assertEquals(Task.Outcome.SUCCESS, success);
       assertFalse(recorder.invocations.isEmpty());
       assertEquals(bundledRestic, recorder.invocations.get(0).command().get(0));
       assertTrue(output.stream().anyMatch(line -> line.startsWith("restic backup ")),
@@ -246,9 +246,9 @@ class SystemExecutorTest {
     SystemExecutor executor = new SystemExecutor(recorder);
 
     Replicate task = new Replicate(manager, source(), destination(), null, List.of("*.txt"), List.of("*.bak"));
-    boolean result = executor.run(task, null);
+    Task.Outcome result = executor.run(task, null);
 
-    assertTrue(result);
+    assertEquals(Task.Outcome.SUCCESS, result);
     assertEquals(1, recorder.invocations.size());
     RecordingCommandExecutor.Invocation inv = recorder.invocations.get(0);
 
@@ -395,9 +395,9 @@ class SystemExecutorTest {
 
     Backup backup = new Backup(manager, volumeSource(), destination(), "secret", null, null, "@default", "@default", List.of("*.tmp"));
     manager.registerTask(backup);
-    boolean result = executor.run(backup, null);
+    Task.Outcome result = executor.run(backup, null);
 
-    assertTrue(result);
+    assertEquals(Task.Outcome.SUCCESS, result);
     // 4 invocations: service check, forget, prune before backup, then backup
     assertEquals(4, recorder.invocations.size());
 
@@ -449,9 +449,9 @@ class SystemExecutorTest {
     SystemExecutor executor = new SystemExecutor(recorder);
 
     Restore restore = new Restore(manager, destination(), volumeRestored(), "secret", null, List.of("docs/**"), List.of("*.tmp"));
-    boolean result = executor.run(restore, null);
+    Task.Outcome result = executor.run(restore, null);
 
-    assertTrue(result);
+    assertEquals(Task.Outcome.SUCCESS, result);
     assertEquals(1, recorder.invocations.size());
     assertEquals("secret", recorder.invocations.get(0).environment().get("RESTIC_PASSWORD"));
     List<String> cmd = recorder.invocations.get(0).command();
@@ -549,8 +549,8 @@ class SystemExecutorTest {
     assertFalse(serveOpts.contains("--force"));
     assertTrue(serveOpts.contains("--metadata"));
 
-    boolean ok = executor.serve(equalize, null);
-    assertTrue(ok);
+    Task.Outcome ok = executor.serve(equalize, null);
+    assertEquals(Task.Outcome.SUCCESS, ok);
     assertEquals(1, recorder.invocations.size());
     List<String> cmd = recorder.invocations.get(0).command();
     assertEquals("rclone", cmd.get(0));
@@ -575,8 +575,8 @@ class SystemExecutorTest {
     SystemExecutor executor = new SystemExecutor(SystemCommandExecutor.INSTANCE);
     manager.backendExecutor(executor);
     List<String> output = new ArrayList<>();
-    boolean ok = executor.serve(equalize, output::add);
-    assertTrue(ok, "Expected rclone check to succeed, but got: " + output);
+    Task.Outcome ok = executor.serve(equalize, output::add);
+    assertEquals(Task.Outcome.SUCCESS, ok, "Expected rclone check to succeed, but got: " + output);
   }
 
   @Test
@@ -587,9 +587,9 @@ class SystemExecutorTest {
 
     List<String> captured = new ArrayList<>();
     Replicate task = new Replicate(manager, source(), destination(), null, List.of(), List.of());
-    boolean result = executor.run(task, captured::add);
+    Task.Outcome result = executor.run(task, captured::add);
 
-    assertTrue(result);
+    assertEquals(Task.Outcome.SUCCESS, result);
     assertTrue(captured.contains("Transferred: 10/10"));
     assertTrue(captured.contains("100%"));
     assertTrue(captured.contains("Finished in 0.5s"));
@@ -603,9 +603,9 @@ class SystemExecutorTest {
 
     List<String> captured = new ArrayList<>();
     Replicate task = new Replicate(manager, source(), destination(), null, List.of(), List.of());
-    boolean result = executor.run(task, captured::add);
+    Task.Outcome result = executor.run(task, captured::add);
 
-    assertFalse(result);
+    assertEquals(Task.Outcome.FAILURE, result);
     assertTrue(captured.stream().anyMatch(msg -> msg.contains("Command failed with exit code 2")));
   }
 
@@ -786,7 +786,7 @@ class SystemExecutorTest {
     Backup b = sharedRepoTask("other", "@default", "@default");
     seedRepoState(a, b, true); // b is due: the service must fire and cover both tasks
 
-    assertTrue(executor.run(a, null));
+    assertEquals(Task.Outcome.SUCCESS, executor.run(a, null));
     List<String> subcommands = recorder.invocations.stream()
       .map(inv -> inv.command().get(1))
       .toList();
@@ -815,7 +815,7 @@ class SystemExecutorTest {
     Backup b = sharedRepoTask("other", null, "@default"); // b holds no retention policy
     seedRepoState(a, b, true);
 
-    assertTrue(executor.run(a, null));
+    assertEquals(Task.Outcome.SUCCESS, executor.run(a, null));
     List<String> subcommands = recorder.invocations.stream()
       .map(inv -> inv.command().get(1))
       .toList();
@@ -837,12 +837,30 @@ class SystemExecutorTest {
     Backup b = sharedRepoTask("other", "@default", "@default");
     seedRepoState(a, b, true); // a is fresh, b is due
 
-    assertTrue(executor.run(a, null));
+    assertEquals(Task.Outcome.SUCCESS, executor.run(a, null));
     List<String> subcommands = recorder.invocations.stream()
       .map(inv -> inv.command().get(1))
       .toList();
     // The service runs before the backup although task a's own entry is fresh: the
     // cadence check inspects all the co-repository entries
+    assertEquals(List.of("check", "forget", "forget", "prune", "backup"), subcommands);
+  }
+
+  @Test
+  void siblingCadenceTriggersServiceWhenRunningBackupHasNoCadence() throws IOException {
+    RecordingCommandExecutor recorder = new RecordingCommandExecutor();
+    SystemExecutor executor = new SystemExecutor(recorder);
+
+    // Task a has no cadence configured (manual only), but sibling b is due
+    Backup a = sharedRepoTask(null, "@default", null);
+    Backup b = sharedRepoTask("other", "@default", "@default");
+    seedRepoState(a, b, true);
+
+    assertEquals(Task.Outcome.SUCCESS, executor.run(a, null));
+    List<String> subcommands = recorder.invocations.stream()
+      .map(inv -> inv.command().get(1))
+      .toList();
+    // The service must still run before backup because sibling b's cadence is due
     assertEquals(List.of("check", "forget", "forget", "prune", "backup"), subcommands);
   }
 
@@ -855,7 +873,7 @@ class SystemExecutorTest {
     Backup b = sharedRepoTask("other", "@default", "@default");
     seedRepoState(a, b, false); // both fresh: no service
 
-    assertTrue(executor.run(a, null));
+    assertEquals(Task.Outcome.SUCCESS, executor.run(a, null));
     List<String> subcommands = recorder.invocations.stream()
       .map(inv -> inv.command().get(1))
       .toList();
@@ -882,7 +900,7 @@ class SystemExecutorTest {
       {"backup": null, "maintenance": "%s", "backups_since_maintenance": 0}""".formatted(Instant.now());
     Files.writeString(repoDir.resolve(ResticRepositoryState.LEGACY_FILENAME), legacyJson);
 
-    assertTrue(executor.run(a, null));
+    assertEquals(Task.Outcome.SUCCESS, executor.run(a, null));
 
     // The envelope file replaced the legacy one; both tasks seeded from the baseline
     assertTrue(Files.isRegularFile(repoDir.resolve(ResticRepositoryState.FILENAME)));
@@ -938,7 +956,7 @@ class SystemExecutorTest {
     b.updatePassword("fresh");
     seedRepoState(a, b, false); // both entries fresh: the service must not run
 
-    assertTrue(executor.run(a, null), "the run must succeed after the auto-heal");
+    assertEquals(Task.Outcome.SUCCESS, executor.run(a, null), "the run must succeed after the auto-heal");
 
     long backupRuns = commands.stream().filter(cmd -> cmd.size() > 1 && "backup".equals(cmd.get(1))).count();
     assertEquals(2, backupRuns, "the failed attempt plus the single retry after the re-sync");
@@ -979,9 +997,9 @@ class SystemExecutorTest {
 
     Replicate task = new Replicate(manager, volumeSource(), destination(), null, List.of(), List.of());
     task.encrypt("secret", null, Rclone.Encryption.options("@default"));
-    boolean result = executor.run(task, null);
+    Task.Outcome result = executor.run(task, null);
 
-    assertTrue(result);
+    assertEquals(Task.Outcome.SUCCESS, result);
     assertEquals(1, recorder.invocations.size());
     RecordingCommandExecutor.Invocation inv = recorder.invocations.get(0);
 
@@ -1009,9 +1027,9 @@ class SystemExecutorTest {
 
     Copy task = new Copy(manager, destination(), volumeRestored(), null, List.of(), List.of());
     task.decrypt("secret", "second", Rclone.Encryption.options("@default"));
-    boolean result = executor.run(task, null);
+    Task.Outcome result = executor.run(task, null);
 
-    assertTrue(result);
+    assertEquals(Task.Outcome.SUCCESS, result);
     RecordingCommandExecutor.Invocation inv = recorder.invocations.get(0);
     List<String> cmd = inv.command();
     int remote = cmd.indexOf("--crypt-remote");
@@ -1231,7 +1249,7 @@ class SystemExecutorTest {
     task.encrypt("secret", "secret2", Rclone.Encryption.options("@default"));
     executor.conform(task);
 
-    assertEquals(1, recorder.invocations.size());
+    assertEquals(2, recorder.invocations.size());
     RecordingCommandExecutor.Invocation inv = recorder.invocations.get(0);
     List<String> cmd = inv.command();
     assertEquals("rclone", cmd.get(0));
@@ -1249,6 +1267,14 @@ class SystemExecutorTest {
     assertEquals(":crypt:", cmd.get(cmd.size() - 1));
     assertEquals("secret", Passwords.rcloneReveal(inv.environment().get("RCLONE_CRYPT_PASSWORD")));
     assertEquals("secret2", Passwords.rcloneReveal(inv.environment().get("RCLONE_CRYPT_PASSWORD2")));
+
+    RecordingCommandExecutor.Invocation inv1 = recorder.invocations.get(1);
+    List<String> cmd1 = inv1.command();
+    assertEquals("rclone", cmd1.get(0));
+    assertEquals("cat", cmd1.get(1));
+    assertTrue(cmd1.contains("--head"));
+    assertTrue(cmd1.contains("1"));
+    assertEquals(":crypt:", cmd1.get(cmd1.size() - 1));
   }
 
   @Test
@@ -1388,8 +1414,8 @@ class SystemExecutorTest {
     state.recordBackup(backup.tag());
     state.save(repoDir);
 
-    boolean ok = executor.run(backup, null);
-    assertTrue(ok);
+    Task.Outcome ok = executor.run(backup, null);
+    assertEquals(Task.Outcome.SUCCESS, ok);
 
     // Only 1 invocation: backup (service was not due)
     assertEquals(1, recorder.invocations.size());
@@ -1419,8 +1445,8 @@ class SystemExecutorTest {
     for (int i = 0; i < 5; i++) state.recordBackup(backup.tag());
     state.save(repoDir);
 
-    boolean ok = executor.run(backup, null);
-    assertTrue(ok);
+    Task.Outcome ok = executor.run(backup, null);
+    assertEquals(Task.Outcome.SUCCESS, ok);
 
     // 4 invocations: check -> forget -> prune -> backup
     assertEquals(4, recorder.invocations.size());
@@ -1445,8 +1471,8 @@ class SystemExecutorTest {
     Endpoint repo = Endpoints.parse(manager, "local:" + repoDir);
 
     Backup backup = new Backup(manager, volumeSource(), repo, "secret", null, null, "@default", "@default", "7d,5", List.of());
-    boolean ok = executor.serve(backup, null);
-    assertFalse(ok);
+    Task.Outcome ok = executor.serve(backup, null);
+    assertEquals(Task.Outcome.FAILURE, ok);
 
     // Halted immediately after failed check: forget and prune never executed (the
     // extra invocation is the auto-heal diagnostic probe - no sibling exists here,
@@ -1504,8 +1530,8 @@ class SystemExecutorTest {
     SystemExecutor executor = new SystemExecutor(recorder);
 
     Replicate sync = new Replicate(manager, source(), destination(), null, List.of("*.txt"), List.of("*.bak"));
-    boolean ok = executor.serve(sync, null);
-    assertTrue(ok);
+    Task.Outcome ok = executor.serve(sync, null);
+    assertEquals(Task.Outcome.SUCCESS, ok);
 
     assertEquals(1, recorder.invocations.size());
     List<String> cmd = recorder.invocations.get(0).command();
@@ -1663,13 +1689,15 @@ class SystemExecutorTest {
     assertFalse(recorder.invocations.get(0).command().contains("--dry-run"));
 
     assertTrue(executor.repair(backup, Repair.UNLOCK_STALE, true, null));
-    assertTrue(recorder.invocations.get(1).command().contains("--dry-run"));
+    assertTrue(recorder.invocations.get(1).command().contains("list"));
+    assertTrue(recorder.invocations.get(1).command().contains("locks"));
     assertFalse(recorder.invocations.get(1).command().contains("--remove-all"));
 
     // The simulation mode degrades to the dry-run listing (mirroring the backup/forget flags)
     manager.simulate = true;
     assertTrue(executor.repair(backup, Repair.UNLOCK_STALE, false, null));
-    assertTrue(recorder.invocations.get(2).command().contains("--dry-run"));
+    assertTrue(recorder.invocations.get(2).command().contains("list"));
+    assertTrue(recorder.invocations.get(2).command().contains("locks"));
   }
 
   @Test

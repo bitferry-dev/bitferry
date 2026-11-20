@@ -242,6 +242,41 @@ public abstract class Task {
     return source.isIntact() && destination.isIntact();
   }
 
+  /// The task run outcome: SUCCESS (all files processed), PARTIAL (tolerated warnings e.g. unreadable files in restic), or FAILURE.
+  public enum Outcome {
+    SUCCESS,
+    PARTIAL,
+    FAILURE;
+
+    public boolean isSuccess() {
+      return this == SUCCESS;
+    }
+
+    public boolean isPartial() {
+      return this == PARTIAL;
+    }
+
+    public boolean isFailure() {
+      return this == FAILURE;
+    }
+
+    /// Whether the outcome is non-failing (the operation produced a usable result / snapshot).
+    public boolean ok() {
+      return this != FAILURE;
+    }
+
+    /// Combine with another outcome: FAILURE takes precedence over PARTIAL, which takes precedence over SUCCESS.
+    public Outcome and(Outcome other) {
+      if (this == FAILURE || other == FAILURE) return FAILURE;
+      if (this == PARTIAL || other == PARTIAL) return PARTIAL;
+      return SUCCESS;
+    }
+
+    public static Outcome of(boolean success) {
+      return success ? SUCCESS : FAILURE;
+    }
+  }
+
   /// The runtime execution status: whether the task participates in the mass runs
   /// (the no-tags execute/serve invocations). Copied from the persisted manual flag
   /// at the restoration time; the GUI checkbox toggles change this runtime state
@@ -542,7 +577,7 @@ public abstract class Task {
   /// volumes fail the processing early instead of the backend failing on the vanished
   /// paths), and the processing-in-progress guard rejects the re-entrancy (the task
   /// dispatched while its previous run is still going). Return true on success.
-  public boolean process(Consumer<String> output) {
+  public Outcome process(Consumer<String> output) {
     if (!processing.compareAndSet(false, true)) throw new BitferryError("Task " + tag + " is already being processed");
     try {
       LOG.log(Level.INFO, () -> "Processing task " + tag);
@@ -551,10 +586,10 @@ public abstract class Task {
         if (v != null) v.checkPresence();
       }
       materializePending();
-      boolean success = manager.backendExecutor().run(this, output);
-      // The bookkeeping rides the real successful runs only: the simulated runs change nothing
-      if (success && !manager.simulate) processed();
-      return success;
+      Outcome outcome = manager.backendExecutor().run(this, output);
+      // The bookkeeping rides the real successful and partial runs: the simulated runs change nothing
+      if (outcome.ok() && !manager.simulate) processed();
+      return outcome;
     } finally {
       processing.set(false);
     }
@@ -563,7 +598,7 @@ public abstract class Task {
   /// Service the task repository/endpoints by delegating to the manager's executor.
   /// The referred volumes are checked for presence, and the processing-in-progress guard
   /// rejects re-entrancy. Return true on success.
-  public boolean serve(Consumer<String> output) {
+  public Outcome serve(Consumer<String> output) {
     if (!processing.compareAndSet(false, true)) throw new BitferryError("Task " + tag + " is already being processed");
     try {
       LOG.log(Level.INFO, () -> "Servicing task " + tag);
@@ -596,19 +631,19 @@ public abstract class Task {
   /// The tool dispatch: the concrete task hands itself to the executor's per-tool
   /// slot (the double dispatch making the per-type executor overloads reachable
   /// through the static Task type). The base reports the unsupported backend.
-  public boolean runWith(Executor executor, Consumer<String> output) {
+  public Outcome runWith(Executor executor, Consumer<String> output) {
     String message = "Unsupported task backend for task " + tag + ": " + getClass().getName();
     LOG.log(Level.ERROR, message);
     if (output != null) output.accept(message);
-    return false;
+    return Outcome.FAILURE;
   }
 
   /// The service dispatch mirroring [runWith].
-  public boolean serveWith(Executor executor, Consumer<String> output) {
+  public Outcome serveWith(Executor executor, Consumer<String> output) {
     String message = "Unsupported backend for service of task " + tag + ": " + getClass().getName();
     LOG.log(Level.ERROR, message);
     if (output != null) output.accept(message);
-    return false;
+    return Outcome.FAILURE;
   }
 
   /// The command preview dispatch mirroring [runWith].

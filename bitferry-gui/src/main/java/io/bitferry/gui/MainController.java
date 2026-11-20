@@ -291,30 +291,42 @@ public final class MainController {
       }
 
       @Override
-      public void taskFinished(int index, int total, int ok, int failed) {
+      public void taskFinished(int index, int total, int ok, int partial, int failed) {
         progress.setProgress((double) index / total);
-        status.setText(doing + " " + index + "/" + total + " — " + ok + " ok, " + failed + " failed");
+        status.setText(doing + " " + index + "/" + total + " — " + ok + " ok"
+          + (partial > 0 ? ", " + partial + " with warnings" : "")
+          + ", " + failed + " failed");
         refreshPanes();
       }
 
       @Override
-      public void runFinished(boolean outcome, int ok, int failed) {
+      public void runFinished(boolean outcome, int ok, int partial, int failed) {
         setActionsDisabled(false);
-        progress.setProgress(ok + failed == 0 ? 0 : (double) ok / (ok + failed));
+        int totalFinished = ok + partial + failed;
+        progress.setProgress(totalFinished == 0 ? 0 : (double) (ok + partial) / totalFinished);
         String what = (sim ? "Simulated " : "") + (verb.equals("service") ? "service pass" : "run");
-        status.setText(outcome && ok == 0
-          ? "No intact tasks to " + action
-          : outcome
-            ? "All " + ok + " task(s) " + (verb.equals("service") ? "serviced" : "executed") + (sim ? " (simulated)" : "") + " successfully"
-            : what + " finished: " + ok + " ok, " + failed + " failed");
+        String statusText;
+        if (outcome && totalFinished == 0) {
+          statusText = "No intact tasks to " + action;
+        } else if (outcome) {
+          statusText = "All " + ok + " task(s) " + (verb.equals("service") ? "serviced" : "executed") + (sim ? " (simulated)" : "") + " successfully";
+        } else if (failed == 0 && partial > 0) {
+          statusText = what + " finished with warnings: " + ok + " ok, " + partial + " with warnings";
+        } else {
+          statusText = what + " finished: " + ok + " ok" + (partial > 0 ? ", " + partial + " partial" : "") + ", " + failed + " failed";
+        }
+        status.setText(statusText);
         refreshPanes();
       }
 
       @Override
-      public void runAborted(int ok, int failed) {
+      public void runAborted(int ok, int partial, int failed) {
         setActionsDisabled(false);
-        progress.setProgress(ok + failed == 0 ? 0 : (double) ok / (ok + failed));
-        status.setText((sim ? "Simulated run" : "Run") + " aborted — " + ok + " ok, " + failed + " failed, the rest skipped");
+        int totalFinished = ok + partial + failed;
+        progress.setProgress(totalFinished == 0 ? 0 : (double) (ok + partial) / totalFinished);
+        status.setText((sim ? "Simulated run" : "Run") + " aborted — " + ok + " ok"
+          + (partial > 0 ? ", " + partial + " with warnings" : "")
+          + ", " + failed + " failed, the rest skipped");
         refreshPanes();
       }
     };

@@ -6,6 +6,7 @@ import io.bitferry.endpoint.Endpoints;
 import io.bitferry.task.Copy;
 import io.bitferry.task.Executor;
 import io.bitferry.task.SystemCommandExecutor;
+import io.bitferry.task.Task;
 import javafx.application.Platform;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.Scene;
@@ -21,6 +22,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
+import java.util.function.Consumer;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -164,6 +166,77 @@ class FailedRunFloodTest {
       System.out.println("FailedRunFloodTest: max FX heartbeat gap " + maxGap.get() + " ms");
     } finally {
       heart.shutdownNow();
+      CountDownLatch closed = new CountDownLatch(1);
+      Platform.runLater(() -> {
+        Stage stage = stageRef.get();
+        if (stage != null) stage.close();
+        closed.countDown();
+      });
+      closed.await(5, TimeUnit.SECONDS);
+    }
+  }
+
+  @Test
+  void partialRunReportsWarningAndTracksPartialCount() throws Exception {
+    CountDownLatch sceneReady = new CountDownLatch(1);
+    AtomicReference<LogController> logsRef = new AtomicReference<>();
+    AtomicReference<Stage> stageRef = new AtomicReference<>();
+    Platform.runLater(() -> {
+      try {
+        FXMLLoader loader = new FXMLLoader(getClass().getResource("/io/bitferry/gui/log.fxml"));
+        TabPane root = loader.load();
+        Stage stage = new Stage();
+        stage.setScene(new Scene(root, 600, 300));
+        stage.show();
+        stageRef.set(stage);
+        logsRef.set(loader.getController());
+      } catch (Exception e) {
+        throw new RuntimeException(e);
+      } finally {
+        sceneReady.countDown();
+      }
+    });
+    assertTrue(sceneReady.await(10, TimeUnit.SECONDS), "scene setup timed out");
+    LogController logs = logsRef.get();
+
+    AppContext context = new AppContext();
+    Manager manager = context.manager();
+    manager.backendExecutor(new Executor() {
+      public Task.Outcome run(Task task, Consumer<String> output) {
+        if (output != null) output.accept("Warning: some files unreadable");
+        return Task.Outcome.PARTIAL;
+      }
+    });
+    manager.simulate(false);
+
+    Volume vol = Volume.create(manager, Files.createTempDirectory("partial-vol-"));
+    Copy task = new Copy(manager, Endpoints.parse(manager, ":" + vol.tag() + ":src"), Endpoints.parse(manager, ":" + vol.tag() + ":dst"),
+      null, List.of(), List.of());
+    manager.registerTask(task);
+
+    Runner runner = new Runner(context, logs);
+
+    CountDownLatch finished = new CountDownLatch(1);
+    AtomicReference<long[]> finishedTotals = new AtomicReference<>();
+    AtomicReference<Boolean> finalOutcome = new AtomicReference<>();
+    Runner.Listener listener = new Runner.Listener() {
+      @Override public void runStarted(int total) {}
+      @Override public void taskStarted(int index, int total, String tag) {}
+      @Override public void taskFinished(int index, int total, int ok, int partial, int failed) {
+        finishedTotals.set(new long[]{ok, partial, failed});
+      }
+      @Override public void runFinished(boolean outcome, int ok, int partial, int failed) {
+        finalOutcome.set(outcome);
+        finished.countDown();
+      }
+    };
+
+    try {
+      assertTrue(runner.submit(List.of(), listener), "runner rejected the submit");
+      assertTrue(finished.await(10, TimeUnit.SECONDS), "run did not finish in time");
+      assertArrayEquals(new long[]{0, 1, 0}, finishedTotals.get(), "the partial task must report 0 ok, 1 partial, 0 failed");
+      assertFalse(finalOutcome.get(), "partial run outcome must be false (not complete success)");
+    } finally {
       CountDownLatch closed = new CountDownLatch(1);
       Platform.runLater(() -> {
         Stage stage = stageRef.get();

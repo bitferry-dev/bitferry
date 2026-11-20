@@ -32,18 +32,18 @@ class ExecutorSupportTest {
     Manager manager = new Manager();
     List<String> cmd = List.of("restic", "backup");
     // Exit 3 without the tolerance stays a failure
-    assertFalse(ExecutorSupport.execute(exitingWith(3), manager, cmd, null, Map.of(), "t", line -> {}));
-    // Exit 3 tolerated: a success with the advisory line (the restic backup writes
+    assertEquals(Task.Outcome.FAILURE, ExecutorSupport.execute(exitingWith(3), manager, cmd, null, Map.of(), "t", line -> {}));
+    // Exit 3 tolerated: a partial success with the advisory line (the restic backup writes
     // the snapshot despite the unreadable source files - the outright failure would
     // skew the maintenance cadence)
     List<String> out = new ArrayList<>();
-    assertTrue(ExecutorSupport.execute(exitingWith(3), manager, cmd, null, Map.of(), "t", out::add, 3));
+    assertEquals(Task.Outcome.PARTIAL, ExecutorSupport.execute(exitingWith(3), manager, cmd, null, Map.of(), "t", out::add, 3));
     assertTrue(out.stream().anyMatch(line -> line.contains("partial success")), () -> "missing advisory: " + out);
     // A tolerated code differing from the actual one stays a failure
     List<String> out2 = new ArrayList<>();
-    assertFalse(ExecutorSupport.execute(exitingWith(3), manager, cmd, null, Map.of(), "t", out2::add, 2));
+    assertEquals(Task.Outcome.FAILURE, ExecutorSupport.execute(exitingWith(3), manager, cmd, null, Map.of(), "t", out2::add, 2));
     // The zero exit stays a plain success (with or without the tolerances)
-    assertTrue(ExecutorSupport.execute(exitingWith(0), manager, cmd, null, Map.of(), "t", line -> {}, 3));
+    assertEquals(Task.Outcome.SUCCESS, ExecutorSupport.execute(exitingWith(0), manager, cmd, null, Map.of(), "t", line -> {}, 3));
   }
 
   // The stub executor emitting the specified lines and exiting with the specified code
@@ -60,19 +60,19 @@ class ExecutorSupportTest {
     List<String> cmd = List.of("restic", "backup");
     // The restic lock-conflict report (the stderr travels the captured channel merged)
     List<String> out = new ArrayList<>();
-    assertFalse(ExecutorSupport.execute(
+    assertEquals(Task.Outcome.FAILURE, ExecutorSupport.execute(
       reporting(List.of("Fatal: unable to create lock in backend at ...: repository is already locked by PID 1234 on HOST by user"), 1),
       manager, cmd, null, Map.of(), "t", out::add));
     assertTrue(out.stream().anyMatch(line -> line.contains("repair action")), () -> "missing lock hint: " + out);
     // The exclusive-lock refusal wording of the other restic surfaces classifies too
     List<String> out2 = new ArrayList<>();
-    assertFalse(ExecutorSupport.execute(
+    assertEquals(Task.Outcome.FAILURE, ExecutorSupport.execute(
       reporting(List.of("Fatal: repository is already locked exclusively by PID 99 on host other"), 1),
       manager, cmd, null, Map.of(), "t", out2::add));
     assertTrue(out2.stream().anyMatch(line -> line.contains("repair action")));
     // The ordinary failures carry no hint (the classification must not over-fire)
     List<String> out3 = new ArrayList<>();
-    assertFalse(ExecutorSupport.execute(
+    assertEquals(Task.Outcome.FAILURE, ExecutorSupport.execute(
       reporting(List.of("Fatal: repository does not exist"), 1),
       manager, cmd, null, Map.of(), "t", out3::add));
     assertTrue(out3.stream().noneMatch(line -> line.contains("repair action")));

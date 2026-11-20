@@ -244,7 +244,7 @@ class TaskTest {
     manager.backendExecutor(Executor.stub());
     Replicate task = new Replicate(manager, source(), destination(), null, List.of(), List.of());
     manager.registerTask(task);
-    assertFalse(task.process(null));
+    assertEquals(Task.Outcome.FAILURE, task.process(null));
     assertFalse(manager.process());
   }
 
@@ -266,7 +266,7 @@ class TaskTest {
     // The backend executor whose repository initialization (the format) fails - e.g.
     // the restic init over the existing repository
     manager.backendExecutor(new Executor() {
-      public boolean run(Task task, java.util.function.Consumer<String> output) { return false; }
+      public Task.Outcome run(Task task, java.util.function.Consumer<String> output) { return Task.Outcome.FAILURE; }
       public void format(Task task) { throw new BitferryError("repository initialization failure"); }
     });
     Backup backup = new Backup(manager, volumeSource(), destination(), "secret", null, null, null, null, List.of());
@@ -285,7 +285,7 @@ class TaskTest {
   @Test
   void failedConformanceAbortsTheRegistration() {
     manager.backendExecutor(new Executor() {
-      public boolean run(Task task, java.util.function.Consumer<String> output) { return false; }
+      public Task.Outcome run(Task task, java.util.function.Consumer<String> output) { return Task.Outcome.FAILURE; }
       public void conform(Task task) { throw new BitferryError("encryption conformance failure"); }
     });
     Backup backup = new Backup(manager, volumeSource(), destination(), "secret", null, null, null, null, List.of());
@@ -322,7 +322,7 @@ class TaskTest {
 
     // The failed run leaves the baseline pending
     manager.backendExecutor(Executor.stub());
-    assertFalse(task.process(null));
+    assertEquals(Task.Outcome.FAILURE, task.process(null));
     assertFalse(task.resynced());
     assertEquals(List.of("bisync", "--resync", "--workdir", workdir), task.operationArgs());
 
@@ -333,17 +333,17 @@ class TaskTest {
     // The successful run establishes the baseline (rclone creates listings in workdir):
     // following runs execute plain bisync without mutating task descriptor or touching volume
     manager.backendExecutor(new Executor() {
-      public boolean run(Task t, java.util.function.Consumer<String> output) {
+      public Task.Outcome run(Task t, java.util.function.Consumer<String> output) {
         try {
           Files.createDirectories(task.workdir());
           Files.createFile(task.workdir().resolve("test.path1.lst"));
-          return true;
+          return Task.Outcome.SUCCESS;
         } catch (IOException e) {
           throw new RuntimeException(e);
         }
       }
     });
-    assertTrue(task.process(null));
+    assertEquals(Task.Outcome.SUCCESS, task.process(null));
     assertTrue(task.resynced());
     assertEquals(List.of("bisync", "--workdir", workdir), task.operationArgs());
     assertNull(task.serialize().get("resynced"));
