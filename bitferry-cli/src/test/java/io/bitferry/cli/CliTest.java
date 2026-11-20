@@ -958,6 +958,17 @@ class CliTest {
     code = executeWithPassword("brandNewSecret", "--force", "create", "task", "backup", ":" + vtag + ":", "local:" + repoDir);
     assertEquals(0, code, () -> "stderr: " + err.toString());
 
+    // 4b. Force (--force) against a not-yet-existing repository directory proceeds to init
+    Path nonExistentRepo = tempDir.resolve("cli_restic_non_existent_repo");
+    cmd = Main.createCommandLine();
+    out = new StringWriter();
+    err = new StringWriter();
+    cmd.setOut(new PrintWriter(out));
+    cmd.setErr(new PrintWriter(err));
+    code = executeWithPassword("freshSecret", "--force", "create", "task", "backup", ":" + vtag + ":", "local:" + nonExistentRepo);
+    assertEquals(0, code, () -> "stderr: " + err.toString());
+    assertTrue(Files.isRegularFile(nonExistentRepo.resolve("config")));
+
     // 5. Restore with bad password is refused
     cmd = Main.createCommandLine();
     out = new StringWriter();

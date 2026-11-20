@@ -75,8 +75,11 @@ final class ResticExecutor {
       // (non-restic) non-empty directory that happens to sit at the repository path.
       // The --force stays the explicit override for the task's own repository only.
       Path repoDir = Path.of(repo);
-      Set<String> siblings = new LinkedHashSet<>();
-      if (Files.isDirectory(repoDir)) {
+      if (Files.exists(repoDir)) {
+        if (!Files.isDirectory(repoDir)) {
+          throw new BitferryError("Repository path " + repo + " is not a directory");
+        }
+        Set<String> siblings = new LinkedHashSet<>();
         for (Task t : manager.liveTasks().values()) {
           if (t == backup || !(t instanceof Restic other)) continue;
           try {
@@ -88,22 +91,22 @@ final class ResticExecutor {
             if (hasRepository(repo) && ResticRepositoryState.load(repoDir).tags().contains(t.tag())) siblings.add(t.tag());
           }
         }
+        if (!siblings.isEmpty()) {
+          throw new BitferryError("Refusing to wipe the repository at " + repo + ": the co-repository task(s) "
+            + String.join(", ", siblings) + " share it and would lose their snapshots; delete or re-point them first");
+        }
+        boolean empty;
+        try {
+          empty = isEmptyDirectory(repoDir);
+        } catch (IOException e) {
+          throw new BitferryError("Cannot inspect the repository directory " + repo + ": " + e.getMessage(), e);
+        }
+        if (!hasRepository(repo) && !empty) {
+          throw new BitferryError("Refusing to wipe " + repo + ": it is not a restic repository (no config file) but is not empty; re-point the task or empty the directory explicitly");
+        }
+        LOG.log(Level.INFO, () -> "Wiping existing repository for task " + backup.tag() + " in " + repo);
+        wipeRepository(repoDir);
       }
-      if (!siblings.isEmpty()) {
-        throw new BitferryError("Refusing to wipe the repository at " + repo + ": the co-repository task(s) "
-          + String.join(", ", siblings) + " share it and would lose their snapshots; delete or re-point them first");
-      }
-      boolean empty;
-      try {
-        empty = isEmptyDirectory(repoDir);
-      } catch (IOException e) {
-        throw new BitferryError("Cannot inspect the repository directory " + repo + ": " + e.getMessage(), e);
-      }
-      if (Files.isDirectory(repoDir) && !hasRepository(repo) && !empty) {
-        throw new BitferryError("Refusing to wipe " + repo + ": it is not a restic repository (no config file) but is not empty; re-point the task or empty the directory explicitly");
-      }
-      LOG.log(Level.INFO, () -> "Wiping existing repository for task " + backup.tag() + " in " + repo);
-      wipeRepository(repoDir);
     } else if (hasRepository(repo)) {
       probeRepository(backup, repo);
       LOG.log(Level.INFO, () -> "Existing repository opened; attaching implicitly");
