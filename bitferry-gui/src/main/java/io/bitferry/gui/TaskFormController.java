@@ -78,6 +78,16 @@ public final class TaskFormController {
     Replicate.OPERATION, Rclone.PROCESS
   );
 
+  /// Single-line descriptions displayed next to the operation type selector.
+  static final Map<String, String> OPERATION_DESCRIPTIONS = Map.of(
+    Copy.OPERATION, "unconditional one-way source → destination copy (changed or missing files, no destination deletions)",
+    Update.OPERATION, "one-way source → destination update (newer or missing files, no destination deletions)",
+    Replicate.OPERATION, "one-way source → destination replication (newer or missing files, destination deletions)",
+    Equalize.OPERATION, "two-way source ↔ destination synchronization",
+    Backup.OPERATION, "incremental source → repository backup",
+    Restore.OPERATION, "latest snapshot repository → destination restore"
+  );
+
   /// The volume selector entry carrying the display form.
   private record VolumeChoice(Volume volume) {
     @Override
@@ -99,7 +109,13 @@ public final class TaskFormController {
   private ColumnConstraints labelColumn;
 
   @FXML
+  private HBox typeControl;
+
+  @FXML
   private ComboBox<String> type;
+
+  @FXML
+  private Label typeDescription;
 
   @FXML
   private TextField source;
@@ -246,6 +262,8 @@ public final class TaskFormController {
   private void initialize() {
     // The default operation preselect (the predicates below read it)
     type.getSelectionModel().selectFirst();
+    updateTypeDescription();
+    updateEndpointLabels();
 
     // Visibility predicates re-evaluated on type changes
     BooleanSupplier restic = () -> "backup".equals(type()) || "restore".equals(type());
@@ -255,7 +273,7 @@ public final class TaskFormController {
     BooleanSupplier restoreScope = () -> existing == null && "restore".equals(type());
     BooleanSupplier formatVisible = () -> existing == null && backup.getAsBoolean();
 
-    rows.add(new Row(typeLabel, type, () -> true));
+    rows.add(new Row(typeLabel, typeControl, () -> true));
     rows.add(new Row(sourceLabel, source.getParent(), () -> true));
     rows.add(new Row(destinationLabel, destination.getParent(), () -> true));
     // The restore snapshot scope: the source backup task whose snapshots the restore
@@ -342,6 +360,8 @@ public final class TaskFormController {
         settings = new EncryptionSettings(settings.mode(), settings.profileText(), "", "", "", "", settings.keyring());
       }
       loadDefaultProfiles();
+      updateTypeDescription();
+      updateEndpointLabels();
       relayout();
     });
 
@@ -445,6 +465,8 @@ public final class TaskFormController {
 
     // The new-task option entries start from the operation's default profiles
     loadDefaultProfiles();
+    updateTypeDescription();
+    updateEndpointLabels();
 
     relayout();
   }
@@ -705,6 +727,40 @@ public final class TaskFormController {
 
   String type() {
     return type.getValue();
+  }
+
+  private void updateTypeDescription() {
+    if (typeDescription != null) {
+      typeDescription.setText(OPERATION_DESCRIPTIONS.getOrDefault(type(), ""));
+    }
+  }
+
+  String typeDescription() {
+    return typeDescription != null ? typeDescription.getText() : "";
+  }
+
+  private void updateEndpointLabels() {
+    if (sourceLabel == null || destinationLabel == null) {
+      return;
+    }
+    if (Backup.OPERATION.equals(type())) {
+      sourceLabel.setText("Source:");
+      destinationLabel.setText("Repository:");
+    } else if (Restore.OPERATION.equals(type())) {
+      sourceLabel.setText("Repository:");
+      destinationLabel.setText("Destination:");
+    } else {
+      sourceLabel.setText("Source:");
+      destinationLabel.setText("Destination:");
+    }
+  }
+
+  String sourceLabel() {
+    return sourceLabel != null ? sourceLabel.getText() : "";
+  }
+
+  String destinationLabel() {
+    return destinationLabel != null ? destinationLabel.getText() : "";
   }
 
   String source() {

@@ -40,18 +40,21 @@
       </fx:define>
       <children>
         <Label fx:id="typeLabel" text="Type:" style="-fx-text-fill: #222222;"/>
-        <ComboBox fx:id="type">
-          <items>
-            <FXCollections fx:factory="observableArrayList">
-              <String fx:value="copy"/>
-              <String fx:value="update"/>
-              <String fx:value="replicate"/>
-              <String fx:value="equalize"/>
-              <String fx:value="backup"/>
-              <String fx:value="restore"/>
-            </FXCollections>
-          </items>
-        </ComboBox>
+        <HBox fx:id="typeControl" spacing="10" alignment="CENTER_LEFT">
+          <ComboBox fx:id="type">
+            <items>
+              <FXCollections fx:factory="observableArrayList">
+                <String fx:value="copy"/>
+                <String fx:value="update"/>
+                <String fx:value="replicate"/>
+                <String fx:value="equalize"/>
+                <String fx:value="backup"/>
+                <String fx:value="restore"/>
+              </FXCollections>
+            </items>
+          </ComboBox>
+          <Label fx:id="typeDescription" style="-fx-text-fill: #666666;"/>
+        </HBox>
 
         <Label fx:id="sourceLabel" text="Source:" style="-fx-text-fill: #222222;"/>
         <HBox spacing="6">

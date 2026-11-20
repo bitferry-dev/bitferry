@@ -33,8 +33,8 @@ public final class Repair {
   /// the terminated backends (an aborted run on the platforms where the backend
   /// termination is immediate and the lock cleanup never happens).
   public static final Operation UNLOCK_STALE = new Operation("unlock-stale",
-    "Remove stale locks",
-    "Remove the repository locks restic considers stale (their holding process is no longer running on this host); "
+    "remove stale locks",
+    "Remove the repository locks Restic considers stale (their holding process is no longer running on this host); "
       + "the locks of the running clients (here or on other hosts) stay",
     false);
 
@@ -44,8 +44,8 @@ public final class Repair {
   /// client is removed along, and two exclusive operations may then race the
   /// repository - the exact corruption the lock exists to prevent.
   public static final Operation UNLOCK_ALL = new Operation("unlock-all",
-    "Remove all locks",
-    "Remove every repository lock, including the ones of the possibly running clients on this or other hosts; "
+    "remove all locks",
+    "Remove every Restic repository lock, including the ones of the possibly running clients on this or other hosts; "
       + "destructive - proceed only when the holders are known dead",
     true);
 

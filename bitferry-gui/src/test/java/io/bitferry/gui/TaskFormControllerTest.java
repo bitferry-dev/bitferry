@@ -8,6 +8,7 @@ import io.bitferry.task.Copy;
 import io.bitferry.task.Equalize;
 import io.bitferry.task.IncludeFilters;
 import io.bitferry.task.Replicate;
+import io.bitferry.task.Restore;
 import io.bitferry.task.Task;
 import javafx.application.Platform;
 import javafx.scene.Node;
@@ -75,6 +76,9 @@ class TaskFormControllerTest {
     void newTaskFormStartsFromTheRcloneDefaults() throws Exception {
         TaskFormController form = load(null);
         assertEquals("copy", form.type());
+        assertEquals(TaskFormController.OPERATION_DESCRIPTIONS.get("copy"), form.typeDescription());
+        assertEquals("Source:", form.sourceLabel());
+        assertEquals("Destination:", form.destinationLabel());
         // The rclone @default profile's concrete options pre-fill the execution entry
         assertEquals("--metadata", execute(form).getText());
         // The mass-run participation defaults to on, the vault keeps the password,
@@ -116,12 +120,54 @@ class TaskFormControllerTest {
         ComboBox<String> typeField = field(form, "type");
         runFx(() -> typeField.getSelectionModel().select("backup"));
         assertEquals("", execute(form).getText());
+        assertEquals(TaskFormController.OPERATION_DESCRIPTIONS.get("backup"), form.typeDescription());
+        assertEquals("Source:", form.sourceLabel());
+        assertEquals("Repository:", form.destinationLabel());
         present = rowLabels(form);
         assertFalse(present.contains("Encryption:"), present.toString());
         assertTrue(present.contains("Security:"), present.toString());
         assertTrue(present.contains("Retention:"), present.toString());
         assertTrue(present.contains("Check:"), present.toString());
         assertTrue(present.contains("Serve:"), present.toString());
+    }
+
+    @Test
+    void typeDescriptionUpdatesWithSelectedOperation() throws Exception {
+        TaskFormController form = load(null);
+        ComboBox<String> typeField = field(form, "type");
+
+        for (String op : typeField.getItems()) {
+            runFx(() -> typeField.setValue(op));
+            assertEquals(TaskFormController.OPERATION_DESCRIPTIONS.get(op), form.typeDescription());
+            assertFalse(form.typeDescription().isBlank(), "description should not be blank for " + op);
+        }
+    }
+
+    @Test
+    void endpointLabelsUpdateWithSelectedOperation() throws Exception {
+        TaskFormController form = load(null);
+        ComboBox<String> typeField = field(form, "type");
+
+        // default copy
+        assertEquals("Source:", form.sourceLabel());
+        assertEquals("Destination:", form.destinationLabel());
+
+        // backup: Source -> Repository
+        runFx(() -> typeField.setValue("backup"));
+        assertEquals("Source:", form.sourceLabel());
+        assertEquals("Repository:", form.destinationLabel());
+
+        // restore: Repository -> Target
+        runFx(() -> typeField.setValue("restore"));
+        assertEquals("Repository:", form.sourceLabel());
+        assertEquals("Target:", form.destinationLabel());
+
+        // switch back to rclone operations
+        for (String op : List.of("copy", "update", "replicate", "equalize")) {
+            runFx(() -> typeField.setValue(op));
+            assertEquals("Source:", form.sourceLabel());
+            assertEquals("Destination:", form.destinationLabel());
+        }
     }
 
     @Test
@@ -261,6 +307,19 @@ class TaskFormControllerTest {
         assertEquals("backup", form.type());
         ComboBox<String> type = field(form, "type");
         assertTrue(type.isDisable());
+        assertEquals("Source:", form.sourceLabel());
+        assertEquals("Repository:", form.destinationLabel());
+
+        Restore restore = new Restore(manager,
+            Endpoints.parse(manager, "local:" + Files.createTempDirectory("bitferry-restore-repo")),
+            Endpoints.parse(manager, ":" + volume.tag() + ":restore-dst"),
+            "secret", null, List.of(), List.of(), false, null);
+        TaskFormController restoreForm = load(restore);
+        assertEquals("restore", restoreForm.type());
+        ComboBox<String> restoreType = field(restoreForm, "type");
+        assertTrue(restoreType.isDisable());
+        assertEquals("Repository:", restoreForm.sourceLabel());
+        assertEquals("Target:", restoreForm.destinationLabel());
     }
 
   @Test

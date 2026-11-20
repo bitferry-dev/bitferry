@@ -2302,7 +2302,7 @@ class CliTest {
     cmd.setOut(new PrintWriter(out));
     cmd.setErr(new PrintWriter(err));
     assertEquals(0, cmd.execute("repair", "--all", "--force", backupTag), () -> "stderr: " + err);
-    assertTrue(out.toString().contains("Remove all locks"), () -> "out: " + out);
+    assertTrue(out.toString().contains("remove all locks"), () -> "out: " + out);
 
     // 4. Failed preview aborts the operation and returns nonzero
     Path cfg = repoDir.resolve("config");

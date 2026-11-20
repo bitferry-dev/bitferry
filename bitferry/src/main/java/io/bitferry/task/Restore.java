@@ -149,7 +149,7 @@ public class Restore extends Restic implements IncludeFilters {
   /// target directory.
   @Override
   public List<EndpointEntry> endpointEntries() {
-    return List.of(new EndpointEntry("Repository:", source), new EndpointEntry("Target:", destination));
+    return List.of(new EndpointEntry("Repository:", source), new EndpointEntry("Destination:", destination));
   }
 
   /// The conformance dispatch: the override makes the call land on the executor's
