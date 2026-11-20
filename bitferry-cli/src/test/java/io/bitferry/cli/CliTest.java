@@ -1544,7 +1544,7 @@ class CliTest {
     assertTrue(rBreakdown.contains("Backend:       restic"));
     assertTrue(rBreakdown.contains("Operation:     restore"));
     assertTrue(rBreakdown.contains("Repository:"));
-    assertTrue(rBreakdown.contains("Target:"));
+    assertTrue(rBreakdown.contains("Destination:"));
     assertTrue(rBreakdown.contains("Vault Volume:  " + vtag));
     assertTrue(rBreakdown.contains("# Commands"));
     assertTrue(rBreakdown.contains("Execute:"));
@@ -2275,7 +2275,7 @@ class CliTest {
     cmd.setOut(new PrintWriter(out));
     cmd.setErr(new PrintWriter(err));
     assertEquals(0, cmd.execute("repair", backupTag), () -> "stderr: " + err);
-    assertTrue(out.toString().contains("Remove stale locks"), () -> "out: " + out);
+    assertTrue(out.toString().contains("remove stale locks"), () -> "out: " + out);
     assertTrue(out.toString().contains("success"), () -> "out: " + out);
 
     // 2. The repair on the rclone task: the backend provides no operations

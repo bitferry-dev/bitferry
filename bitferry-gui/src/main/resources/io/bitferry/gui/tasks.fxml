@@ -45,8 +45,8 @@
         <TableColumn fx:id="runnableColumn" text="Execute" prefWidth="70"/>
         <TableColumn fx:id="tagColumn" text="Tag" prefWidth="90"/>
         <TableColumn fx:id="operationColumn" text="Operation" prefWidth="110"/>
-        <TableColumn fx:id="sourceColumn" text="Source" prefWidth="240"/>
-        <TableColumn fx:id="destinationColumn" text="Destination" prefWidth="240"/>
+        <TableColumn fx:id="sourceColumn" text="Source" prefWidth="260"/>
+        <TableColumn fx:id="destinationColumn" text="Destination" prefWidth="260"/>
         <TableColumn fx:id="statusColumn" text="Status" prefWidth="90"/>
         <TableColumn fx:id="vaultColumn" text="Vault volume" prefWidth="160"/>
       </columns>

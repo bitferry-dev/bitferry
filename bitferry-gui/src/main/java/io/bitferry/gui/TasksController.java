@@ -1,14 +1,22 @@
 package io.bitferry.gui;
 
 import io.bitferry.*;
+import io.bitferry.endpoint.Endpoint;
+import io.bitferry.endpoint.LocalEndpoint;
+import io.bitferry.endpoint.VolumeEndpoint;
 import io.bitferry.task.*;
 import javafx.beans.property.*;
 import javafx.fxml.FXML;
+import javafx.geometry.Pos;
 import javafx.scene.control.*;
 import javafx.scene.control.cell.CheckBoxTableCell;
+import javafx.scene.layout.HBox;
+import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
 import javafx.scene.paint.Color;
 
 import java.util.*;
+import java.util.function.Function;
 
 /// The tasks tab controller: the management actions (create, execute, service,
 /// delete) over the tasks listing. The execution/service requests travel through
@@ -33,8 +41,8 @@ public final class TasksController {
       runnable.set(task.isRunnable());
       tag.set(task.tag());
       operation.set(task.displayOperation());
-      source.set(task.source().describe());
-      destination.set(task.destination().describe());
+      source.set(formatEndpoint(task.source()));
+      destination.set(formatEndpoint(task.destination()));
       boolean intact = task.isIntact();
       status.set(intact ? "✓ intact" : "✗ stale");
       statusColor.set(intact ? Color.web("#2e7d32") : Color.web("#c62828"));
@@ -44,6 +52,39 @@ public final class TasksController {
       } catch (BitferryError e) {
         vault.set("—");
       }
+    }
+
+    public Endpoint sourceEndpoint() {
+      return task.source();
+    }
+
+    public Endpoint destinationEndpoint() {
+      return task.destination();
+    }
+
+    public String sourceText() {
+      return source.get();
+    }
+
+    public String destinationText() {
+      return destination.get();
+    }
+
+    static String formatEndpoint(Endpoint endpoint) {
+      if (endpoint instanceof LocalEndpoint l) {
+        return l.root().toString();
+      } else if (endpoint instanceof VolumeEndpoint ve) {
+        if (ve.isIntact()) {
+          try {
+            return ":" + ve.vtag() + ": " + ve.processOpts();
+          } catch (Exception ignored) {
+            return ve.describe();
+          }
+        } else {
+          return ve.describe();
+        }
+      }
+      return endpoint != null ? endpoint.describe() : "";
     }
   }
 
@@ -170,7 +211,9 @@ public final class TasksController {
     tagColumn.setCellValueFactory(data -> data.getValue().tag);
     operationColumn.setCellValueFactory(data -> data.getValue().operation);
     sourceColumn.setCellValueFactory(data -> data.getValue().source);
+    sourceColumn.setCellFactory(column -> new EndpointTableCell(Row::sourceEndpoint));
     destinationColumn.setCellValueFactory(data -> data.getValue().destination);
+    destinationColumn.setCellFactory(column -> new EndpointTableCell(Row::destinationEndpoint));
     vaultColumn.setCellValueFactory(data -> data.getValue().vault);
     statusColumn.setCellValueFactory(data -> data.getValue().status);
     statusColumn.setCellFactory(column -> new TableCell<>() {
@@ -350,5 +393,116 @@ public final class TasksController {
         // and the wholesale swap keeps the GUI consistent with the fresh-CLI state.
         context.reload();
       }, logs);
+  }
+
+  /// The custom table cell for source and destination endpoints rendering full paths
+  /// with volume tags colored (cyan for intact, red for stale) and intact volume tags
+  /// displayed with a smaller font.
+  static final class EndpointTableCell extends TableCell<Row, String> {
+    private final Function<Row, Endpoint> endpointExtractor;
+    private final HBox box = new HBox();
+    private final Label tagLabel = new Label();
+    private final Label pathLabel = new Label();
+    private boolean isStale;
+
+    EndpointTableCell(Function<Row, Endpoint> endpointExtractor) {
+      this.endpointExtractor = endpointExtractor;
+      tagLabel.setStyle("-fx-font-size: 0.85em;");
+      tagLabel.setMinWidth(Region.USE_PREF_SIZE);
+      pathLabel.setTextOverrun(OverrunStyle.ELLIPSIS);
+      HBox.setHgrow(pathLabel, Priority.ALWAYS);
+      box.setAlignment(Pos.BASELINE_LEFT);
+      box.getChildren().addAll(tagLabel, pathLabel);
+
+      selectedProperty().addListener((obs, wasSelected, isSelected) -> updateColors(isSelected));
+    }
+
+    @Override
+    protected void updateItem(String item, boolean empty) {
+      super.updateItem(item, empty);
+      if (empty || item == null) {
+        setText(null);
+        setGraphic(null);
+        setTooltip(null);
+        return;
+      }
+      Row row = getTableRow() != null && getTableRow().getItem() instanceof Row r ? r : null;
+      if (row == null && getTableView() != null && getIndex() >= 0 && getIndex() < getTableView().getItems().size()) {
+        row = getTableView().getItems().get(getIndex());
+      }
+      update(row, item);
+      setText(null);
+      setGraphic(box);
+    }
+
+    void update(Row row, String fallback) {
+      Endpoint endpoint = row != null ? endpointExtractor.apply(row) : null;
+      render(endpoint, fallback);
+      updateColors(isSelected());
+    }
+
+    private void render(Endpoint endpoint, String fallback) {
+      if (endpoint instanceof LocalEndpoint l) {
+        isStale = false;
+        tagLabel.setText("");
+        tagLabel.setVisible(false);
+        tagLabel.setManaged(false);
+        String path = l.root().toString();
+        pathLabel.setText(path);
+        setTooltip(new Tooltip(path));
+      } else if (endpoint instanceof VolumeEndpoint ve) {
+        if (ve.isIntact()) {
+          isStale = false;
+          tagLabel.setText(":" + ve.vtag() + ": ");
+          tagLabel.setVisible(true);
+          tagLabel.setManaged(true);
+          String fullPath;
+          try {
+            fullPath = ve.processOpts();
+          } catch (Exception e) {
+            fullPath = ve.describe();
+          }
+          pathLabel.setText(fullPath);
+          setTooltip(new Tooltip(":" + ve.vtag() + ": " + fullPath));
+        } else {
+          isStale = true;
+          tagLabel.setText(":" + ve.vtag() + ":");
+          tagLabel.setVisible(true);
+          tagLabel.setManaged(true);
+          String sub = ve.path().equals(".") ? "" : ve.path();
+          pathLabel.setText(sub);
+          setTooltip(new Tooltip(ve.describe() + " (volume missing)"));
+        }
+      } else {
+        isStale = false;
+        tagLabel.setText("");
+        tagLabel.setVisible(false);
+        tagLabel.setManaged(false);
+        pathLabel.setText(fallback != null ? fallback : "");
+        setTooltip(fallback != null && !fallback.isEmpty() ? new Tooltip(fallback) : null);
+      }
+    }
+
+    void updateColors(boolean selected) {
+      if (selected) {
+        pathLabel.setTextFill(Color.WHITE);
+        tagLabel.setTextFill(isStale ? Color.web("#ffcdd2") : Color.web("#80deea"));
+      } else {
+        pathLabel.setTextFill(Color.web("#222222"));
+        tagLabel.setTextFill(isStale ? Color.web("#c62828") : Color.web("#00838f"));
+      }
+    }
+
+    Label tagLabel() {
+      return tagLabel;
+    }
+
+    Label pathLabel() {
+      return pathLabel;
+    }
+
+    boolean isStale() {
+      return isStale;
+    }
   }
 }

@@ -157,10 +157,10 @@ class TaskFormControllerTest {
         assertEquals("Source:", form.sourceLabel());
         assertEquals("Repository:", form.destinationLabel());
 
-        // restore: Repository -> Target
+        // restore: Repository -> Destination
         runFx(() -> typeField.setValue("restore"));
         assertEquals("Repository:", form.sourceLabel());
-        assertEquals("Target:", form.destinationLabel());
+        assertEquals("Destination:", form.destinationLabel());
 
         // switch back to rclone operations
         for (String op : List.of("copy", "update", "replicate", "equalize")) {
@@ -319,7 +319,7 @@ class TaskFormControllerTest {
         ComboBox<String> restoreType = field(restoreForm, "type");
         assertTrue(restoreType.isDisable());
         assertEquals("Repository:", restoreForm.sourceLabel());
-        assertEquals("Target:", restoreForm.destinationLabel());
+        assertEquals("Destination:", restoreForm.destinationLabel());
     }
 
   @Test
