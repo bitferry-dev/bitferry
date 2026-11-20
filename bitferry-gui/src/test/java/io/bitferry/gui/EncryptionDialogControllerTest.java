@@ -3,6 +3,7 @@ package io.bitferry.gui;
 import io.bitferry.BitferryError;
 import javafx.application.Platform;
 import javafx.scene.Node;
+import javafx.scene.control.ButtonType;
 import javafx.scene.control.PasswordField;
 import javafx.scene.control.RadioButton;
 import javafx.scene.control.TextField;
@@ -10,6 +11,7 @@ import javafx.scene.layout.GridPane;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
+import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -193,6 +195,30 @@ class EncryptionDialogControllerTest {
         }
         assertFalse(dialog.keyring());
         assertFalse(dialog.settings().keyring());
+    }
+
+    @Test
+    void showDialogReturnsSettingsOnOkAndEmptyOnCancel() throws Exception {
+        AppContext context = new AppContext();
+        EncryptionDialogController form = load(false, true,
+            new EncryptionSettings("encrypt", "", "pass1", "pass1", "", "", false));
+
+        var originalPrompter = EncryptionDialog.dialogPrompter;
+        try {
+            AtomicReference<Optional<EncryptionSettings>> okResult = new AtomicReference<>();
+            EncryptionDialog.dialogPrompter = d -> Optional.of(ButtonType.OK);
+            runFx(() -> okResult.set(EncryptionDialog.show(context, "Encryption", "Header", form)));
+            assertTrue(okResult.get().isPresent());
+            assertEquals("encrypt", okResult.get().get().mode());
+            assertEquals("pass1", okResult.get().get().password());
+
+            AtomicReference<Optional<EncryptionSettings>> cancelResult = new AtomicReference<>();
+            EncryptionDialog.dialogPrompter = d -> Optional.of(ButtonType.CANCEL);
+            runFx(() -> cancelResult.set(EncryptionDialog.show(context, "Encryption", "Header", form)));
+            assertTrue(cancelResult.get().isEmpty());
+        } finally {
+            EncryptionDialog.dialogPrompter = originalPrompter;
+        }
     }
 
     // The helpers: the FXML controller is loaded through its factory, the private

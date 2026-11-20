@@ -22,12 +22,15 @@ final class EncryptionDialog {
 
   private static final Color DARK_TEXT = Color.web("#222222");
 
+  /// The dialog prompter seam (swappable by the tests).
+  static java.util.function.Function<Dialog<ButtonType>, Optional<ButtonType>> dialogPrompter = Dialog::showAndWait;
+
   private EncryptionDialog() {}
 
   /// Static helper to display the security dialog and return the resulting settings.
   static Optional<EncryptionSettings> show(AppContext context, String title, String header,
                                            EncryptionDialogController form) {
-    Dialog<EncryptionSettings> dialog = new Dialog<>();
+    Dialog<ButtonType> dialog = new Dialog<>();
     if (context.ownerWindow != null) dialog.initOwner(context.ownerWindow);
     dialog.setTitle(title);
     dialog.setHeaderText(header);
@@ -81,6 +84,6 @@ final class EncryptionDialog {
         event.consume();
       }
     });
-    return dialog.showAndWait().filter(ButtonType.OK::equals).map(x -> form.settings());
+    return dialogPrompter.apply(dialog).filter(ButtonType.OK::equals).map(x -> form.settings());
   }
 }
