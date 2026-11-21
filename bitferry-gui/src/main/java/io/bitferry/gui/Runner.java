@@ -142,15 +142,15 @@ public final class Runner {
           }
           switch (outcomeTask) {
             case SUCCESS -> {
-              output.accept("\u001B[32m    ✓ success\u001B[0m");
+              output.accept("\u001B[32m✓ success\u001B[0m");
               ok++;
             }
             case PARTIAL -> {
-              output.accept("\u001B[33m    ⚠ partial\u001B[0m");
+              output.accept("\u001B[33m⚠ partial\u001B[0m");
               partial++;
             }
             case FAILURE -> {
-              output.accept("\u001B[31m    ✗ failure\u001B[0m");
+              output.accept("\u001B[31m✗ failure\u001B[0m");
               failed++;
             }
           }
@@ -171,7 +171,7 @@ public final class Runner {
           }
         }
         if (aborted) {
-          output.accept("\u001B[31m    ✗ run aborted\u001B[0m");
+          output.accept("\u001B[31m✗ run aborted\u001B[0m");
           doneAborted(listener, ok, partial, failed);
         } else {
           output.accept("");

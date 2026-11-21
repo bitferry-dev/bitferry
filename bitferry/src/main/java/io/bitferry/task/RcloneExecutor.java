@@ -91,9 +91,9 @@ final class RcloneExecutor {
       throw new BitferryError(refusalMessage(encryptedSide) + probeDetail(outputLines, exitCode));
     }
 
-    CryptListing listing = extractCryptListing(outputLines);
+    Set<String> cryptPaths = extractCryptPaths(outputLines);
     boolean filenameEncEnabled = isFilenameEncryptionEnabled(rclone.encryption().options());
-    if (listing.paths().isEmpty() || (filenameEncEnabled && listing.paths().equals(rawPaths))) {
+    if (cryptPaths.isEmpty() || (filenameEncEnabled && cryptPaths.equals(rawPaths))) {
       throw new BitferryError(refusalMessage(encryptedSide) + probeDetail(outputLines, exitCode));
     }
 
@@ -191,9 +191,7 @@ final class RcloneExecutor {
     return true;
   }
 
-  private record CryptListing(Set<String> paths, String sampleFile) {}
-
-  private static CryptListing extractCryptListing(List<String> outputLines) {
+  private static Set<String> extractCryptPaths(List<String> outputLines) {
     List<String> jsonLines = new ArrayList<>();
     for (String line : outputLines) {
       // The escapes are stripped before the notice filter: the captured runs force
@@ -207,30 +205,21 @@ final class RcloneExecutor {
     }
     String jsonText = String.join("\n", jsonLines).trim();
     if (jsonText.isEmpty()) {
-      return new CryptListing(Set.of(), null);
+      return Set.of();
     }
     try {
       JsonNode root = Storage.mapper().readTree(jsonText);
       Set<String> paths = new HashSet<>();
-      String sampleFile = null;
       if (root.isArray()) {
         for (JsonNode item : root) {
           if (item.has("Path")) {
-            String p = item.get("Path").asString().replace('\\', '/');
-            paths.add(p);
-            boolean isDir = item.has("IsDir") && item.get("IsDir").asBoolean();
-            if (!isDir) {
-              long size = item.has("Size") ? item.get("Size").asLong() : 0;
-              if (sampleFile == null || size > 0) {
-                sampleFile = p;
-              }
-            }
+            paths.add(item.get("Path").asString().replace('\\', '/'));
           }
         }
       }
-      return new CryptListing(paths, sampleFile);
+      return paths;
     } catch (Exception e) {
-      return new CryptListing(Set.of(), null);
+      return Set.of();
     }
   }
 

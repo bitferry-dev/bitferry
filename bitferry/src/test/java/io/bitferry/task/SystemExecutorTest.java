@@ -187,7 +187,8 @@ class SystemExecutorTest {
       assertEquals(Task.Outcome.SUCCESS, success);
       assertEquals(1, recorder.invocations.size());
       assertEquals(bundledRclone, recorder.invocations.get(0).command().get(0));
-      assertTrue(output.stream().anyMatch(line -> line.startsWith("rclone sync ")),
+      // The verbose echo is color-highlighted (the captured logs render the escapes)
+      assertTrue(output.stream().anyMatch(line -> line.startsWith(AnsiFormat.CYAN + "rclone sync ")),
         "Expected output to echo 'rclone sync ...' but got: " + output);
       assertFalse(output.stream().anyMatch(line -> line.contains(".mount_bitfer")),
         "Bundled path should not appear in verbose echo output");
@@ -204,7 +205,7 @@ class SystemExecutorTest {
       assertEquals(Task.Outcome.SUCCESS, success);
       assertFalse(recorder.invocations.isEmpty());
       assertEquals(bundledRestic, recorder.invocations.get(0).command().get(0));
-      assertTrue(output.stream().anyMatch(line -> line.startsWith("restic backup ")),
+      assertTrue(output.stream().anyMatch(line -> line.startsWith(AnsiFormat.CYAN + "restic backup ")),
         "Expected output to echo 'restic backup ...' but got: " + output);
       assertFalse(output.stream().anyMatch(line -> line.contains(".mount_bitfer")),
         "Bundled path should not appear in verbose echo output");
@@ -1728,5 +1729,54 @@ class SystemExecutorTest {
     assertEquals(List.of(Repair.UNLOCK_STALE, Repair.UNLOCK_ALL), Repair.operationsFor(backup));
     assertEquals(List.of(Repair.UNLOCK_STALE, Repair.UNLOCK_ALL), Repair.operationsFor(restore));
     assertEquals(List.of(), Repair.operationsFor(replicate));
+  }
+
+  @Test
+  void resticServiceOutputsTheStepAndCommandLinesInVerboseMode() throws IOException {
+    // The verbose captured runs (the GUI run log) carry the step narration and the
+    // color-highlighted command lines
+    Path repoDir = Files.createDirectories(dir.resolve("repo"));
+    Endpoint repo = Endpoints.parse(manager, "local:" + repoDir);
+    Backup backup = new Backup(manager, volumeSource(), repo, "secret", null, null, null, null, List.of());
+    RecordingCommandExecutor recorder = new RecordingCommandExecutor();
+    manager.backendExecutor(new SystemExecutor(recorder));
+    // The committed (live) task: the serve path must not carry the one-time init
+    manager.commit(backup);
+    manager.registerTask(backup);
+    manager.verbose(true);
+
+    List<String> output = new ArrayList<>();
+    manager.serve(List.of(backup.tag()), output::add);
+    assertEquals(3, recorder.invocations.size(), () -> "invocations: " + recorder.invocations);
+    assertEquals("init", recorder.invocations.get(0).command().get(1));
+    assertEquals("check", recorder.invocations.get(1).command().get(1));
+    assertEquals("prune", recorder.invocations.get(2).command().get(1));
+    assertTrue(output.stream().anyMatch(l -> l.contains("Checking repository")), () -> "missing step line: " + output);
+    assertTrue(output.stream().anyMatch(l -> l.contains("Pruning repository")), () -> "missing step line: " + output);
+    assertTrue(output.stream().anyMatch(l -> l.startsWith(AnsiFormat.CYAN + "restic check")), () -> "missing check command echo: " + output);
+    assertTrue(output.stream().anyMatch(l -> l.startsWith(AnsiFormat.CYAN + "restic prune")), () -> "missing prune command echo: " + output);
+    assertTrue(output.stream().anyMatch(l -> l.endsWith(AnsiFormat.RESET)), () -> "the echo must be color-highlighted: " + output);
+  }
+
+  @Test
+  void resticServiceStaysQuietWithoutVerbose() throws IOException {
+    // The normal run log carries the runner's marks and the diagnostics only: the
+    // step narration and the command echoes stay verbose-gated
+    Path repoDir = Files.createDirectories(dir.resolve("repo"));
+    Endpoint repo = Endpoints.parse(manager, "local:" + repoDir);
+    Backup backup = new Backup(manager, volumeSource(), repo, "secret", null, null, null, null, List.of());
+    RecordingCommandExecutor recorder = new RecordingCommandExecutor();
+    manager.backendExecutor(new SystemExecutor(recorder));
+    manager.commit(backup);
+    manager.registerTask(backup);
+    assertFalse(manager.verbose());
+
+    List<String> output = new ArrayList<>();
+    manager.serve(List.of(backup.tag()), output::add);
+    assertEquals(3, recorder.invocations.size(), () -> "invocations: " + recorder.invocations);
+    assertEquals("init", recorder.invocations.get(0).command().get(1));
+    assertEquals("check", recorder.invocations.get(1).command().get(1));
+    assertEquals("prune", recorder.invocations.get(2).command().get(1));
+    assertTrue(output.isEmpty(), () -> "the normal run log must stay quiet: " + output);
   }
 }

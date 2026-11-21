@@ -89,7 +89,7 @@ public class RepairCommand implements Callable<Integer>, HasCommonOptions {
       if (!previewOk) {
         outcome = false;
         if (!m.quiet) {
-          String status = Ansi.AUTO.string(Symbols.unicode() ? "@|red     ✗ failure|@" : "@|red     x failure|@");
+          String status = Ansi.AUTO.string(Symbols.unicode() ? "@|red ✗ failure|@" : "@|red x failure|@");
           out.println(status);
         }
         continue;
@@ -99,8 +99,8 @@ public class RepairCommand implements Callable<Integer>, HasCommonOptions {
       if (!m.quiet) {
         // The ASCII approximations on the non-unicode consoles (mirroring the batch runner)
         String status = ok
-          ? Ansi.AUTO.string(Symbols.unicode() ? "@|green     ✓ success|@" : "@|green     ok success|@")
-          : Ansi.AUTO.string(Symbols.unicode() ? "@|red     ✗ failure|@" : "@|red     x failure|@");
+          ? Ansi.AUTO.string(Symbols.unicode() ? "@|green ✓ success|@" : "@|green ok success|@")
+          : Ansi.AUTO.string(Symbols.unicode() ? "@|red ✗ failure|@" : "@|red x failure|@");
         out.println(status);
       }
     }

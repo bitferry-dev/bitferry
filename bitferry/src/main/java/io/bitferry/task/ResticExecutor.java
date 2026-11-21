@@ -666,9 +666,7 @@ final class ResticExecutor {
     boolean due = coRepo.stream().anyMatch(t -> state.isDue(t.tag(), t.cadence()));
     if (due) {
       LOG.log(Level.INFO, () -> "Serve cadence triggered for task " + backup.tag() + "; running service before backup");
-      if (output != null) {
-        output.accept("Serve cadence triggered for task " + backup.tag() + "; running service before backup");
-      }
+      ExecutorSupport.info(manager, output, () -> "Serve cadence triggered for task " + backup.tag() + "; running service before backup");
       Task.Outcome served = serveBackup(backup, output);
       if (!served.ok()) {
         String msg = "Service failed before backup for task " + backup.tag() + "; aborting backup";
@@ -678,9 +676,7 @@ final class ResticExecutor {
       }
     }
 
-    if (output != null) {
-      output.accept("Backing up " + backup.source().processOpts() + " into repository " + repo);
-    }
+    ExecutorSupport.info(manager, output, () -> "Backing up " + backup.source().processOpts() + " into repository " + repo);
 
     List<String> cmd = backupCommand(backup);
     // The exit code 3 is tolerated: restic reports the snapshot written with some
@@ -712,9 +708,7 @@ final class ResticExecutor {
     String repo = backup.destination().processOpts();
     Map<String, String> environment = backup.processEnvironment();
 
-    if (output != null) {
-      output.accept("Servicing repository " + repo);
-    }
+    ExecutorSupport.info(manager, output, () -> "Servicing repository " + repo);
 
     // The co-repository tasks: the service applies every sharing task's retention
     // policy (the per-task forget) and resets every sharing task's entry - whichever
@@ -732,9 +726,7 @@ final class ResticExecutor {
 
     // Step 1: Structural check (gatekeeper before any retention/prune)
     List<String> checkCmd = serveCheckCommand(backup);
-    if (output != null) {
-      output.accept("Checking repository " + repo);
-    }
+    ExecutorSupport.info(manager, output, () -> "Checking repository " + repo);
     boolean checkOk = ExecutorSupport.execute(commandExecutor, manager, checkCmd, null, environment, backup.tag(), output).isSuccess();
     if (!checkOk && healStaleToken(backup, repo)) {
       // The stored token went stale (rotated by a co-repository task while this volume
@@ -754,9 +746,7 @@ final class ResticExecutor {
     for (Backup task : coRepo) {
       List<String> forgetCmd = serveForgetCommand(task);
       if (forgetCmd == null) continue; // The task holds no retention policy
-      if (output != null) {
-        output.accept("Applying retention policy of task " + task.tag() + " to repository " + repo);
-      }
+      ExecutorSupport.info(manager, output, () -> "Applying retention policy of task " + task.tag() + " to repository " + repo);
       boolean forgetOk = ExecutorSupport.execute(commandExecutor, manager, forgetCmd, null, environment, backup.tag(), output).isSuccess();
       if (!forgetOk) {
         return Task.Outcome.FAILURE;
@@ -765,9 +755,7 @@ final class ResticExecutor {
 
     // Step 3: Prune (reclaim space)
     List<String> pruneCmd = pruneCommand(backup);
-    if (output != null) {
-      output.accept("Pruning repository " + repo);
-    }
+    ExecutorSupport.info(manager, output, () -> "Pruning repository " + repo);
     boolean pruneOk = ExecutorSupport.execute(commandExecutor, manager, pruneCmd, null, environment, backup.tag(), output).isSuccess();
     if (!pruneOk) {
       return Task.Outcome.FAILURE;
@@ -787,9 +775,7 @@ final class ResticExecutor {
     String repo = restore.source().processOpts();
     Map<String, String> environment = restore.processEnvironment();
 
-    if (output != null) {
-      output.accept("Checking repository " + repo);
-    }
+    ExecutorSupport.info(manager, output, () -> "Checking repository " + repo);
 
     List<String> checkCmd = serveCheckCommand(restore);
     Task.Outcome outcome = ExecutorSupport.execute(commandExecutor, manager, checkCmd, null, environment, restore.tag(), output);
@@ -805,15 +791,15 @@ final class ResticExecutor {
     String repo = restore.source().processOpts();
     String target = restore.destination().processOpts();
 
-    if (output != null) {
-      output.accept("Restoring repository " + repo + " into " + target);
+    ExecutorSupport.info(manager, output, () -> "Restoring repository " + repo + " into " + target);
+    ExecutorSupport.info(manager, output, () -> {
       String scope = restore.snapshotTag();
       // The scope advisory: the repo-wide fallback may select a sibling task's data
       // on a shared repository - say so instead of restoring silently
-      output.accept(scope != null && !scope.isBlank()
+      return scope != null && !scope.isBlank()
         ? "Snapshot scope: the newest snapshot of backup task " + scope
-        : "Snapshot scope: the newest " + Tags.MARKER + "-tagged snapshot of the repository (no source backup task configured)");
-    }
+        : "Snapshot scope: the newest " + Tags.MARKER + "-tagged snapshot of the repository (no source backup task configured)";
+    });
 
     List<String> cmd = restoreCommand(restore);
     Task.Outcome outcome = ExecutorSupport.execute(commandExecutor, manager, cmd, null, restore.processEnvironment(), restore.tag(), output);

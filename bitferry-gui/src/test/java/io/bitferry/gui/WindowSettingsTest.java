@@ -41,10 +41,6 @@ class WindowSettingsTest {
     // would terminate the toolkit when the last window closes, silently dropping the
     // later probes' runLaters
     Platform.setImplicitExit(false);
-    // The event-queue responsiveness probe: the first runLater must process promptly
-    long queued = System.currentTimeMillis();
-    Platform.runLater(() ->
-      System.err.println("probe: FX alive right after startup (queued " + queued + ", ran " + System.currentTimeMillis() + ")"));
     savedUserEntries = new HashMap<>();
     for (String key : KEYS) {
       String value = node.get(key, null);
@@ -62,15 +58,11 @@ class WindowSettingsTest {
   }
 
   // Run the action on the application thread collecting the failures for the test thread
-  private static void runFx(AtomicReference<Throwable> failure, CountDownLatch done, String step, Runnable action) {
-    System.err.println("probe: queued FX for " + step + " at " + System.currentTimeMillis());
+  private static void runFx(AtomicReference<Throwable> failure, CountDownLatch done, Runnable action) {
     Platform.runLater(() -> {
-      System.err.println("probe: entered FX for " + step + " at " + System.currentTimeMillis());
       try {
         action.run();
-        System.err.println("probe: completed FX for " + step);
       } catch (Throwable t) {
-        System.err.println("probe: failed FX for " + step + ": " + t);
         failure.set(t);
         done.countDown();
       }
@@ -94,22 +86,16 @@ class WindowSettingsTest {
     AtomicReference<Throwable> failure = new AtomicReference<>();
     CountDownLatch done = new CountDownLatch(1);
     AtomicReference<double[]> geometry = new AtomicReference<>();
-    runFx(failure, done, "apply", () -> {
+    runFx(failure, done, () -> {
       try {
         Stage stage = new Stage();
-        System.err.println("probe: stage created");
         WindowSettings settings = WindowSettings.load();
-        System.err.println("probe: loaded " + settings.getClass().getSimpleName());
         // The real app's ordering: the scene rides first, the settings apply after
         stage.setScene(new Scene(new Region()));
         settings.apply(stage);
-        System.err.println("probe: applied");
         settings.attach(stage);
-        System.err.println("probe: attached, showing");
         stage.show();
-        System.err.println("probe: shown");
         afterSettled(() -> {
-          System.err.println("probe: settled, reading geometry");
           try {
             geometry.set(new double[]{stage.getX(), stage.getY(), stage.getWidth(), stage.getHeight()});
             stage.close();
@@ -123,7 +109,6 @@ class WindowSettingsTest {
       }
     });
     assertTrue(done.await(15, TimeUnit.SECONDS), "the apply probe timed out");
-    System.err.println("probe: apply latch released, failure=" + failure.get());
     if (failure.get() != null) throw new IllegalStateException("apply probe failed", failure.get());
     double[] g = geometry.get();
     assertEquals(150, g[0], 1.0, "restored x");
@@ -139,7 +124,7 @@ class WindowSettingsTest {
 
     AtomicReference<Throwable> failure = new AtomicReference<>();
     CountDownLatch done = new CountDownLatch(1);
-    runFx(failure, done, "capture-round-trip", () -> {
+    runFx(failure, done, () -> {
       try {
         // The live session: the window lands wherever and is moved/resized
         Stage stage = new Stage();

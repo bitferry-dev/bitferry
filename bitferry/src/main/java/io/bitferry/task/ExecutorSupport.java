@@ -1,5 +1,6 @@
 package io.bitferry.task;
 
+import io.bitferry.AnsiFormat;
 import io.bitferry.Manager;
 
 import java.io.IOException;
@@ -15,6 +16,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.Supplier;
 
 /// Shared plumbing for the backend executors: the command line echo, the command
 /// execution through the executor seam with the outcome mapping, and the backend
@@ -25,15 +27,23 @@ public final class ExecutorSupport {
 
   private ExecutorSupport() {}
 
-  /// Echo the command line being executed in the verbose (and debug) mode: the
-  /// informational logging stays reserved for the debug mode, so the command
-  /// lines travel directly (to the captured-output consumer when present,
-  /// stderr otherwise) bypassing the logger.
+  /// Echo the command line being executed in the verbose (and debug) mode,
+  /// highlighted with color: the captured runs (the GUI run log) render the escapes,
+  /// the pass-through terminal translates them (jansi). The echo bypasses the logger.
   static void echoCommandLine(Manager manager, List<String> command, Consumer<String> output) {
     if (!manager.verbose()) return;
-    String commandLine = displayCommandLine(command);
+    String commandLine = AnsiFormat.CYAN + displayCommandLine(command) + AnsiFormat.RESET;
     if (output != null) output.accept(commandLine);
     else System.err.println(commandLine);
+  }
+
+  /// Emit the informational line into the captured output (the run log) in the
+  /// verbose (and debug) mode only: the normal run log carries the runner's marks
+  /// and the diagnostics, the step narration and the command echoes stay verbose.
+  /// The pass-through terminal (the null consumer) never sees them - the backend's
+  /// own output carries the progress there.
+  static void info(Manager manager, Consumer<String> output, Supplier<String> message) {
+    if (output != null && manager.verbose()) output.accept(message.get());
   }
 
   /// Format the command line for display, replacing bundled backend paths with generic

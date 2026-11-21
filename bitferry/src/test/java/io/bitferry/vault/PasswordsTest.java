@@ -79,22 +79,53 @@ class PasswordsTest {
   }
 
   private static String obscureWithRclone(String data) throws Exception {
-    Process process = new ProcessBuilder("rclone", "obscure", data).start();
-    try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
-      if (!process.waitFor(5, TimeUnit.SECONDS) || process.exitValue() != 0) {
-        throw new IllegalStateException("rclone obscure failed");
-      }
-      return reader.readLine().trim();
-    }
+    return runRclone("obscure", data);
   }
 
   private static String revealWithRclone(String data) throws Exception {
-    Process process = new ProcessBuilder("rclone", "reveal", data).start();
-    try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
-      if (!process.waitFor(5, TimeUnit.SECONDS) || process.exitValue() != 0) {
-        throw new IllegalStateException("rclone reveal failed");
+    return runRclone("reveal", data);
+  }
+
+  // Run the rclone subcommand, retrying once on failure: the fresh process spawn
+  // under the loaded test run (the parallel suite, the antivirus scanning) used to
+  // exceed the tight wait and flake the interoperability check - the crypto itself
+  // verifies in a fraction of the budget. The stderr travels into the failure
+  // message so the genuine rclone refusals stay diagnosable.
+  private static String runRclone(String subcommand, String data) throws Exception {
+    IllegalStateException failure = null;
+    for (int attempt = 0; attempt < 2; attempt++) {
+      Process process = new ProcessBuilder("rclone", subcommand, data).start();
+      StringBuilder stderr = new StringBuilder();
+      Thread errPump = new Thread(() -> {
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getErrorStream()))) {
+          String line;
+          while ((line = reader.readLine()) != null) {
+            stderr.append(line).append('\n');
+          }
+        } catch (IOException ignored) {
+          // The stream ends with the process
+        }
+      });
+      errPump.setDaemon(true);
+      errPump.start();
+      boolean exited;
+      try {
+        exited = process.waitFor(10, TimeUnit.SECONDS);
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        process.destroyForcibly();
+        throw e;
       }
-      return reader.readLine().trim();
+      if (exited && process.exitValue() == 0) {
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+          String line = reader.readLine();
+          return line == null ? "" : line.trim();
+        }
+      }
+      process.destroyForcibly();
+      failure = new IllegalStateException("rclone " + subcommand + " failed ("
+        + (exited ? "exit " + process.exitValue() : "timed out") + "): " + stderr.toString().trim());
     }
+    throw failure;
   }
 }

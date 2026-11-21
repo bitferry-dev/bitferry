@@ -399,9 +399,9 @@ public final class CliUtils {
       overallOutcome = overallOutcome.and(outcome);
       if (!m.quiet) {
         String status = switch (outcome) {
-          case SUCCESS -> Ansi.AUTO.string(Symbols.unicode() ? "@|green     ✓ success|@" : "@|green     ok success|@");
-          case PARTIAL -> Ansi.AUTO.string(Symbols.unicode() ? "@|yellow     ⚠ partial|@" : "@|yellow     ~ partial|@");
-          case FAILURE -> Ansi.AUTO.string(Symbols.unicode() ? "@|red     ✗ failure|@" : "@|red     x failure|@");
+          case SUCCESS -> Ansi.AUTO.string(Symbols.unicode() ? "@|green ✓ success|@" : "@|green ok success|@");
+          case PARTIAL -> Ansi.AUTO.string(Symbols.unicode() ? "@|yellow ⚠ partial|@" : "@|yellow ~ partial|@");
+          case FAILURE -> Ansi.AUTO.string(Symbols.unicode() ? "@|red ✗ failure|@" : "@|red x failure|@");
         };
         out.println(status);
       }

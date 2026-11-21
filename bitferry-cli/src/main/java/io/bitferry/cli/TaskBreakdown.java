@@ -164,13 +164,12 @@ public final class TaskBreakdown {
 
     // The repository-wide due evaluation: the service covers the whole repository,
     // so it triggers when any co-repository task's cadence is due - not only this
-    // task's own one (mirrors the executor's pre-backup gate). The evaluation is
-    // gated on this task's own cadence mirroring the executor's trigger: the run of
-    // a cadence-disabled task never services the repository, so reporting 'due'
-    // (even a sibling-attributed one) would contradict the run behavior. The live
-    // tasks only: the deletion tombstones are invisible for all the operations.
+    // task's own one, and the cadence-disabled triggering tasks included (mirrors
+    // the executor's pre-backup gate: the due sibling's retention would starve
+    // until some cadence-enabled task ran). The live tasks only: the deletion
+    // tombstones are invisible for all the operations.
     Backup dueTask = null;
-    if (cadence != null && state != null && !state.isCorruptOrMissing() && repoDir != null) {
+    if (state != null && !state.isCorruptOrMissing() && repoDir != null) {
       String repo = repoDir.toString();
       for (Task t : backup.manager().liveTasks().values()) {
         if (t.isIntact() && t instanceof Backup other && other.cadence() != null
