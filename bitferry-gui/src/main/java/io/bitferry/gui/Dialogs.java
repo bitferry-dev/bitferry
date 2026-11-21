@@ -28,6 +28,10 @@ final class Dialogs {
   /// Hook for tests to intercept dialogs instead of blocking on user interaction.
   static java.util.function.Function<Alert, Optional<ButtonType>> dialogPrompter = Dialog::showAndWait;
 
+  /// Hook for tests to intercept the volume discovery tri-choice (the location
+  /// outside the scanning policy) instead of blocking on user interaction.
+  static java.util.function.Function<Alert, Optional<ButtonType>> discoveryPrompter = Dialog::showAndWait;
+
   /// Center the dialog on the screen hosting the specified owner window (the primary
   /// screen when ownerless): the dialog size is only known after the showing layout
   /// pass, hence the shown-hook positioning. The owner-based screen resolution keeps
@@ -84,6 +88,29 @@ final class Dialogs {
       if (result.isEmpty() || result.get() != ButtonType.YES) return;
     }
 
+    // The discovery tri-choice: the location outside the volume scanning policy
+    // (the per-site scanned locations, the BITFERRY_PATH entries, the home
+    // directory, the mount roots - the probing is exact-root, no recursion) hosts
+    // the volume the next start will not discover - offer adding it to the
+    // per-site scanned locations list
+    boolean addToSearchRoots = false;
+    if (!io.bitferry.Paths.covers(canonical)) {
+      ButtonType createAndAdd = new ButtonType("Create and add", ButtonBar.ButtonData.OK_DONE);
+      ButtonType createWithout = new ButtonType("Create without adding", ButtonBar.ButtonData.NO);
+      Alert alert = new Alert(Alert.AlertType.CONFIRMATION,
+        "The location " + path + " is not scanned for volumes on the start - the volume will not be discovered automatically.\n\n"
+          + "Add the location to the scanned locations?",
+        createAndAdd, createWithout, ButtonType.CANCEL);
+      alert.setTitle("Volume discovery");
+      alert.setHeaderText(null);
+      if (context.ownerWindow != null) alert.initOwner(context.ownerWindow);
+      centerOnScreen(alert, context.ownerWindow);
+      Optional<ButtonType> choice = discoveryPrompter.apply(alert);
+      if (choice.isEmpty() || choice.get() == ButtonType.CANCEL) return;
+      addToSearchRoots = createAndAdd.equals(choice.get());
+    }
+    final boolean addOnCreate = addToSearchRoots;
+
     runAsync(context, "Create Bitferry volume", () -> {
       Manager manager = context.manager();
       Volume occ = manager.liveVolumes().values().stream()
@@ -107,6 +134,16 @@ final class Dialogs {
         Volume volume = Volume.create(manager, path);
         manager.commit();
         logs.log("Bitferry volume " + AnsiFormat.tag(volume.tag()) + " created at " + AnsiFormat.path(volume.root()));
+        // The discovery tri-choice follow-up: the created-and-added location rides
+        // the per-site scanned locations list (the next start discovers the volume)
+        if (addOnCreate) {
+          List<String> roots = new ArrayList<>(io.bitferry.Paths.load());
+          if (!roots.contains(canonical.toString())) {
+            roots.add(canonical.toString());
+            io.bitferry.Paths.save(roots);
+            logs.log("The location " + AnsiFormat.path(canonical) + " added to the scanned locations");
+          }
+        }
         context.fireModelChanged();
       } catch (RuntimeException e) {
         context.fireModelChanged();

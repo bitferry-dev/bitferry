@@ -1,13 +1,16 @@
 package io.bitferry.gui;
 
 import io.bitferry.Bitferry;
+import io.bitferry.Paths;
 import io.bitferry.Volume;
 import javafx.application.Platform;
 import javafx.scene.control.Alert;
+import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ButtonType;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Files;
@@ -16,6 +19,7 @@ import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.prefs.Preferences;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -36,9 +40,18 @@ class NewVolumeDialogTest {
   @AfterAll
   static void stopFx() {}
 
+  @BeforeEach
+  void stubDiscovery() {
+    // The volume-creation tests run at the temp dirs outside the scanning policy:
+    // the discovery tri-choice fires in every one of them - create without touching
+    // the search roots (the dedicated tests below intercept the tri-choice itself)
+    Dialogs.discoveryPrompter = alert -> Optional.of(ButtonType.NO);
+  }
+
   @AfterEach
   void resetPrompter() {
     Dialogs.dialogPrompter = javafx.scene.control.Dialog::showAndWait;
+    Dialogs.discoveryPrompter = javafx.scene.control.Dialog::showAndWait;
   }
 
   private void runFx(Runnable action) throws Exception {
@@ -244,6 +257,83 @@ class NewVolumeDialogTest {
         .noneMatch(v -> v.root().equals(canonical)), "Failed volume must not remain in manager.volumes");
     } finally {
       Files.deleteIfExists(blockedDir.resolve(Bitferry.STORAGE_IMAGE));
+    }
+  }
+
+  @Test
+  void creationOutsideTheScannedLocationsOffersTheTriChoice() throws Exception {
+    // The temp dir is outside the scanning policy (not listed, not home, not a
+    // mount root): the discovery tri-choice fires - "Create and add" creates the
+    // volume AND puts the location onto the per-site scanned locations list
+    Path tempDir = Files.createTempDirectory("bitferry-discovery-add-test-");
+    Preferences node = Preferences.userNodeForPackage(io.bitferry.Bitferry.class);
+    String savedRoots = node.get(Paths.key(), null);
+
+    try {
+      AppContext context = new AppContext();
+      LogController logs = new LogController();
+
+      AtomicReference<Alert> captured = new AtomicReference<>();
+      Dialogs.discoveryPrompter = alert -> {
+        captured.set(alert);
+        // The dialog's own button instance: the tri-choice maps by identity
+        return Optional.of(alert.getButtonTypes().stream()
+          .filter(b -> "Create and add".equals(b.getText()))
+          .findFirst().orElse(ButtonType.CANCEL));
+      };
+
+      runFx(() -> Dialogs.createVolume(context, logs, tempDir));
+      waitOperations(context);
+
+      assertNotNull(captured.get());
+      assertEquals("Volume discovery", captured.get().getTitle());
+      assertTrue(captured.get().getContentText().contains("not scanned for volumes"), () -> captured.get().getContentText());
+      assertEquals(3, captured.get().getButtonTypes().size());
+
+      Path canonical = Bitferry.canonicalize(tempDir);
+      Volume created = context.manager().liveVolumes().values().stream()
+        .filter(v -> v.root().equals(canonical))
+        .findFirst().orElse(null);
+      assertNotNull(created, "the create-and-add choice must create the volume");
+      assertTrue(Paths.load().contains(canonical.toString()), () -> "the location must join the scanned locations: " + Paths.load());
+    } finally {
+      if (savedRoots != null) {
+        node.put(Paths.key(), savedRoots);
+      } else {
+        node.remove(Paths.key());
+      }
+      node.flush();
+    }
+  }
+
+  @Test
+  void creationOutsideTheScannedLocations_cancelledCreatesNothing() throws Exception {
+    Path tempDir = Files.createTempDirectory("bitferry-discovery-cancel-test-");
+    Preferences node = Preferences.userNodeForPackage(io.bitferry.Bitferry.class);
+    String savedRoots = node.get(Paths.key(), null);
+
+    try {
+      AppContext context = new AppContext();
+      LogController logs = new LogController();
+
+      Dialogs.discoveryPrompter = alert -> Optional.of(ButtonType.CANCEL);
+
+      runFx(() -> Dialogs.createVolume(context, logs, tempDir));
+      waitOperations(context);
+
+      Path canonical = Bitferry.canonicalize(tempDir);
+      assertNull(context.manager().liveVolumes().values().stream()
+        .filter(v -> v.root().equals(canonical))
+        .findFirst().orElse(null), "the cancelled creation must not register the volume");
+      assertFalse(Files.exists(tempDir.resolve(Bitferry.STORAGE)), "the cancelled creation must write nothing");
+      assertFalse(Paths.load().contains(canonical.toString()), "the cancelled creation must not touch the scanned locations");
+    } finally {
+      if (savedRoots != null) {
+        node.put(Paths.key(), savedRoots);
+      } else {
+        node.remove(Paths.key());
+      }
+      node.flush();
     }
   }
 }

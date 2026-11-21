@@ -1,14 +1,17 @@
 package io.bitferry;
 
 import java.io.File;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.prefs.Preferences;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 /// The persisted search-roots helpers: the entry parsing discipline (the shared
-/// env/property/prefs composition) and the persistence refusing the separator-
-/// carrying entries (the joined format cannot represent them unambiguously).
+/// env/property/prefs composition), the persistence refusing the separator-
+/// carrying entries (the joined format cannot represent them unambiguously), and
+/// the scanning-policy coverage of the volume locations.
 class PathsTest {
 
   @Test
@@ -30,5 +33,33 @@ class PathsTest {
     // The refusal precedes any persistence: the clean-only save stays absent (this
     // test never writes the real preferences store)
     assertFalse(Paths.load().contains("/dirty"));
+  }
+
+  @Test
+  void coversReflectsTheScanningPolicy() throws Exception {
+    // The real persisted entries travel aside for the run (the listed-location leg)
+    Preferences node = Preferences.userNodeForPackage(Bitferry.class);
+    String saved = node.get(Paths.key(), null);
+
+    Path unlisted = Files.createTempDirectory("bitferry-covers-probe-");
+    try {
+      // The unlisted location outside home and the mount roots is not covered
+      assertFalse(Paths.covers(unlisted), () -> "unexpectedly covered: " + unlisted);
+      // The listed location rides the per-site scanned locations
+      Paths.save(List.of(unlisted.toString()));
+      assertTrue(Paths.covers(unlisted));
+      // The home directory and the mount roots are scanned by the policy
+      assertTrue(Paths.covers(Path.of(System.getProperty("user.home"))));
+      if (unlisted.getRoot() != null) {
+        assertTrue(Paths.covers(unlisted.getRoot()), () -> "the mount root must cover: " + unlisted.getRoot());
+      }
+    } finally {
+      if (saved != null) {
+        node.put(Paths.key(), saved);
+      } else {
+        node.remove(Paths.key());
+      }
+      node.flush();
+    }
   }
 }

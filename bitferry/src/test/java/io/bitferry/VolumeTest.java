@@ -125,8 +125,7 @@ class VolumeTest {
 
     Manager manager = new Manager();
     BitferryError e = assertThrows(BitferryError.class, () -> Volume.create(manager, restrictedRoot));
-    assertTrue(e.getMessage().contains("does not permit file creation"), () -> e.getMessage());
-    assertTrue(e.getMessage().contains("subdirectory"), () -> e.getMessage());
+    assertTrue(e.getMessage().contains("denies file creation"), () -> e.getMessage());
     assertTrue(manager.volumes().isEmpty(), "the failed creation registers nothing");
     // The directory creation stays permitted (the restriction is file-creation
     // specific), the probe residue cleaned

@@ -65,6 +65,39 @@ public final class Paths {
     return result;
   }
 
+  /// Whether the specified location is covered by the volume scanning policy: the
+  /// persisted per-site scanned locations, the BITFERRY_PATH entries, the
+  /// bitferry.path property, the user's home directory, or the mounted file system
+  /// roots. The probing is exact-root (no recursion), so the uncovered locations
+  /// host the volumes the next start will not discover - the frontends offer
+  /// adding them to the scanned locations upon the creation.
+  public static boolean covers(Path location) {
+    Path canonical = Bitferry.canonicalize(location);
+    List<Path> roots = new ArrayList<>();
+    String env = System.getenv("BITFERRY_PATH");
+    if (env != null && !env.isBlank()) {
+      roots.addAll(parseEntries(env));
+    }
+    roots.addAll(parseEntries(System.getProperty("bitferry.path")));
+    for (String entry : load()) {
+      try {
+        roots.add(Path.of(entry));
+      } catch (InvalidPathException ignored) {
+        // The unparseable entries cannot cover anything
+      }
+    }
+    roots.add(Path.of(System.getProperty("user.home")));
+    roots.addAll(Manager.mountPoints());
+    for (Path root : roots) {
+      try {
+        if (Bitferry.canonicalize(root).equals(canonical)) return true;
+      } catch (Exception ignored) {
+        // The unresolvable entries cannot cover anything
+      }
+    }
+    return false;
+  }
+
   /// Persist the volume search roots (the entries are trimmed, blanks dropped, and
   /// joined with [File#pathSeparator]; an empty list removes the key).
   public static void save(List<String> roots) {

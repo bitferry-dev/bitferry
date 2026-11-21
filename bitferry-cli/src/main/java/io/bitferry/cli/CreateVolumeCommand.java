@@ -49,6 +49,13 @@ public class CreateVolumeCommand implements Callable<Integer>, HasCommonOptions 
     Volume created = Volume.create(m, root);
     m.commit();
     spec.commandLine().getOut().println(Ansi.AUTO.string("Volume @|cyan " + created.tag() + "|@ created at " + created.root()));
+    // The discovery advisory: the location outside the volume scanning policy
+    // (the per-site scanned locations, the BITFERRY_PATH entries, the home
+    // directory, the mount roots - the probing is exact-root, no recursion) hosts
+    // the volume the next start will not discover
+    if (!io.bitferry.Paths.covers(created.root())) {
+      spec.commandLine().getErr().println(Ansi.AUTO.string("@|faint the location is not scanned for Bitferry volumes - the volume will not be discovered automatically (maintain the scanned locations in the GUI, or via the BITFERRY_PATH environment)|@"));
+    }
     // The simulated creation writes nothing (the storages hold no such volume):
     // surface it - the silent exit would read as a success (mirroring the backup
     // creation's advisory)

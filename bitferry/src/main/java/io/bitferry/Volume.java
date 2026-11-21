@@ -156,6 +156,35 @@ public final class Volume {
     }
   }
 
+  /// The reason the specified root cannot host the volume storage right now, or
+  /// null when it can: the absent or uncreatable root, or the file-creation denial
+  /// (the locations restricting the file creation - the drive roots, the managed
+  /// shares - and the read-only mounts). The creation enforces it via the probe;
+  /// the frontends may consult it before the attempt to surface the informational
+  /// dialogs instead of the raw failures.
+  public static String storabilityProblem(Path root) {
+    try {
+      Files.createDirectories(root);
+    } catch (IOException e) {
+      return "The directory " + root + " cannot be created: " + e.getMessage();
+    }
+    Path probe = root.resolve(Bitferry.STORAGE_PROBE);
+    try {
+      Files.createFile(probe);
+    } catch (AccessDeniedException e) {
+      return "The directory " + root + " denies file creation for this account";
+    } catch (IOException e) {
+      return "The directory " + root + " is not writable: " + e.getMessage();
+    } finally {
+      try {
+        Files.deleteIfExists(probe);
+      } catch (IOException ignored) {
+        // The empty probe residue is benign; its cleanup must not mask the outcome
+      }
+    }
+    return null;
+  }
+
   /// Create a new volume at the specified root committing its pristine state:
   /// the commit refuses to overwrite an existing foreign storage file unless the
   /// force option is enabled. The volume registers with the manager only upon the
@@ -164,32 +193,15 @@ public final class Volume {
   /// pending write for a following real commit to materialize.
   public static Volume create(Manager manager, Path root) {
     Volume volume = new Volume(manager, root);
-    // The storability probe: the root may accept directories while refusing files -
-    // the locations restricting the file creation (the drive roots, the managed
-    // shares, the read-only mounts) would fail the storage write mid-commit with
-    // the opaque 'saving failure'. The probe surfaces the restriction upfront
-    // with the actionable message; the simulation skips it (nothing is written).
-    // The not-yet-existing root is created here (the storage write below would
-    // create it anyway - the not-yet-existing root has nothing to verify).
+    // The storability enforcement: the root accepting directories while refusing
+    // files (the drive roots, the managed shares, the read-only mounts) would fail
+    // the storage write mid-commit with the opaque 'saving failure' - the probe
+    // surfaces the restriction upfront with the actionable message; the simulation
+    // skips it (nothing is written).
     if (!manager.simulate) {
-      try {
-        Files.createDirectories(root);
-      } catch (IOException e) {
-        throw new BitferryError("The directory " + root + " cannot be created: " + e.getMessage(), e);
-      }
-      Path probe = root.resolve(Bitferry.STORAGE_PROBE);
-      try {
-        Files.createFile(probe);
-      } catch (AccessDeniedException e) {
-        throw new BitferryError("The directory " + root + " denies file creation for this account");
-      } catch (IOException e) {
-        throw new BitferryError("The directory " + root + " is not writable: " + e.getMessage(), e);
-      } finally {
-        try {
-          Files.deleteIfExists(probe);
-        } catch (IOException ignored) {
-          // The empty probe residue is benign; its cleanup must not mask the outcome
-        }
+      String problem = storabilityProblem(root);
+      if (problem != null) {
+        throw new BitferryError(problem);
       }
     }
     volume.commit();
