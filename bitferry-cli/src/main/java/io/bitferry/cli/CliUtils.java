@@ -413,6 +413,10 @@ public final class CliUtils {
         case PARTIAL -> String.format(Locale.ROOT, partialSummary, n);
         case FAILURE -> String.format(Locale.ROOT, someSummary, n);
       };
+      // The simulation reminder rides the summary: a dry run's "executed successfully"
+      // reads exactly like a real one, and the durable bookkeeping (the repository
+      // state, the bisync baselines) recorded nothing
+      if (m.simulate) summary = summary + " (simulated)";
       out.println(Ansi.AUTO.string(summary));
     }
     if (m.isModified()) {

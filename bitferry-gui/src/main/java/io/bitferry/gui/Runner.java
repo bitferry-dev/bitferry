@@ -180,6 +180,12 @@ public final class Runner {
             : partial > 0
               ? String.format("\u001B[33mSome of the %d task(s) %s with warnings (partial success).\u001B[0m", total, serve ? "serviced" : "executed")
               : String.format("\u001B[32mAll %d task(s) %s successfully.\u001B[0m", total, serve ? "serviced" : "executed");
+          // The simulation reminder rides the summary: a dry run's "executed
+          // successfully" reads exactly like a real one, and the durable bookkeeping
+          // (the repository state, the bisync baselines) recorded nothing
+          if (manager.simulate) {
+            summary = summary + " \u001B[33m(simulated)\u001B[0m";
+          }
           output.accept(summary);
           done(listener, failed == 0 && partial == 0, ok, partial, failed);
         }
