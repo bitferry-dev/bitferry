@@ -28,6 +28,12 @@ public final class Bitferry {
   /// as well as per-task runtime metadata directories (.bitferry.<task_id>).
   public static final String STORAGE_PREFIX = STORAGE + "*";
 
+  /// The transient writability probe file: the volume creation attempts to create
+  /// and remove it in the root, refusing the roots that accept directories while
+  /// refusing files - such locations (the restricted drive roots, the managed
+  /// shares) would fail the storage write mid-commit with an opaque error.
+  public static final String STORAGE_PROBE = STORAGE + ".probe";
+
   /// Attempt to set the Windows hidden attribute (dos:hidden) on the given path if supported,
   /// keeping dotfiles and metadata directories hidden in Windows Explorer.
   public static void hideIfSupported(Path path) {

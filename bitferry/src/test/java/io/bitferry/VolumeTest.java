@@ -2,6 +2,7 @@ package io.bitferry;
 
 import java.io.*;
 import java.nio.file.*;
+import java.nio.file.attribute.*;
 import java.util.*;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.io.*;
@@ -90,6 +91,47 @@ class VolumeTest {
     manager.commit();
     assertFalse(Files.exists(dir.resolve("volume").resolve(Bitferry.STORAGE)));
     assertTrue(manager.liveVolumes().containsKey(volume.tag()));
+  }
+
+  @Test
+  void creationRefusesTheRootThatForbidsFileCreation() throws IOException {
+    // The root permitting directory creation while refusing file creation (the
+    // restricted drive roots, the managed shares): the storage write would fail
+    // mid-commit, so the creation probe refuses upfront with the actionable message
+    Path restrictedRoot = Files.createDirectories(dir.resolve("restricted-root"));
+    AclFileAttributeView view = Files.getFileAttributeView(restrictedRoot, AclFileAttributeView.class);
+    boolean aclApplied = false;
+    if (view != null) {
+      try {
+        List<AclEntry> acl = new ArrayList<>(view.getAcl());
+        acl.add(0, AclEntry.newBuilder()
+          .setType(AclEntryType.DENY)
+          .setPrincipal(view.getOwner())
+          .setPermissions(AclEntryPermission.ADD_FILE, AclEntryPermission.WRITE_DATA)
+          .build());
+        view.setAcl(acl);
+        // Verify the denial took (the file systems silently ignoring the entry
+        // must not turn the probe assertion into a false pass)
+        Files.createDirectories(restrictedRoot.resolve("directories-are-fine"));
+        try (var out = Files.newOutputStream(restrictedRoot.resolve("file-creation-denied"))) {
+          out.write(1);
+        }
+        aclApplied = Files.notExists(restrictedRoot.resolve("file-creation-denied"));
+      } catch (IOException ignored) {
+        // The ACL machinery unsupported or the denial ineffective: the probe goes untested here
+      }
+    }
+    Assumptions.assumeTrue(aclApplied, "the file-creation ACL denial is not supported on this file system");
+
+    Manager manager = new Manager();
+    BitferryError e = assertThrows(BitferryError.class, () -> Volume.create(manager, restrictedRoot));
+    assertTrue(e.getMessage().contains("does not permit file creation"), () -> e.getMessage());
+    assertTrue(e.getMessage().contains("subdirectory"), () -> e.getMessage());
+    assertTrue(manager.volumes().isEmpty(), "the failed creation registers nothing");
+    // The directory creation stays permitted (the restriction is file-creation
+    // specific), the probe residue cleaned
+    assertTrue(Files.isDirectory(restrictedRoot.resolve("directories-are-fine")));
+    assertFalse(Files.exists(restrictedRoot.resolve(Bitferry.STORAGE_PROBE)));
   }
 
   @Test

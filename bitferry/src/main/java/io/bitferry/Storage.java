@@ -96,6 +96,17 @@ public final class Storage {
       if (target.getFileName().toString().startsWith(".")) {
         Bitferry.hideIfSupported(target);
       }
+    } catch (AccessDeniedException e) {
+      // The restriction surfaced by name: the locations reserving the file creation
+      // (the drive roots, the managed shares) or refusing the writes (the read-only
+      // mounts) would otherwise dead-end the diagnosis with a bare 'access denied'
+      IOException enriched = new IOException("The location " + target + " does not permit file creation for this account", e);
+      try {
+        Files.deleteIfExists(image);
+      } catch (IOException suppressed) {
+        enriched.addSuppressed(suppressed);
+      }
+      throw enriched;
     } catch (IOException e) {
       try {
         Files.deleteIfExists(image);

@@ -164,6 +164,34 @@ public final class Volume {
   /// pending write for a following real commit to materialize.
   public static Volume create(Manager manager, Path root) {
     Volume volume = new Volume(manager, root);
+    // The storability probe: the root may accept directories while refusing files -
+    // the locations restricting the file creation (the drive roots, the managed
+    // shares, the read-only mounts) would fail the storage write mid-commit with
+    // the opaque 'saving failure'. The probe surfaces the restriction upfront
+    // with the actionable message; the simulation skips it (nothing is written).
+    // The not-yet-existing root is created here (the storage write below would
+    // create it anyway - the not-yet-existing root has nothing to verify).
+    if (!manager.simulate) {
+      try {
+        Files.createDirectories(root);
+      } catch (IOException e) {
+        throw new BitferryError("The directory " + root + " cannot be created: " + e.getMessage(), e);
+      }
+      Path probe = root.resolve(Bitferry.STORAGE_PROBE);
+      try {
+        Files.createFile(probe);
+      } catch (AccessDeniedException e) {
+        throw new BitferryError("The directory " + root + " denies file creation for this account");
+      } catch (IOException e) {
+        throw new BitferryError("The directory " + root + " is not writable: " + e.getMessage(), e);
+      } finally {
+        try {
+          Files.deleteIfExists(probe);
+        } catch (IOException ignored) {
+          // The empty probe residue is benign; its cleanup must not mask the outcome
+        }
+      }
+    }
     volume.commit();
     manager.registerVolume(volume);
     return volume;
