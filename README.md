@@ -2,13 +2,20 @@
 
 <div align="right"><i>Ein Backup ist kein Backup</i></div><br><br>
 
-The [Bitferry](https://github.com/okhlybov/bitferry) is aimed at establishing the automated file synchronization/replication/backup routes between multiple endpoints where the latter can be the local directories, online cloud remotes or portable offline storages.
+Bitferry is a task-based file synchronization and backup automation tool built on top of [Rclone](https://rclone.org) and [Restic](https://restic.net) utilities.
 
-The intended usage ranges from maintaining simple directory copy to another location (disk, mount point) to complex many-to-many (online/offline) data replication/backup solution employing portable media as additional data storage and a means of data propagation between the offsites.
+What makes Bitferry different from just running the backend tools directly is the way it tracks the data locations.
 
 The core idea that drives Bitferry is the conversion of full (absolute) endpoints' paths into the volume-relative ones, where the volume is a data file which is put along the endpoint's data and denotes the root of the directory hierarchy. This makes data position-independent which means that Bitferry is then able to restore the tasks' source-destination endpoint connections in spite of the volume location changes, which is a likely scenario in case of portable storage (different UNIX mount points, Windows drives etc.).
 
-Bitferry is effectively a frontend to the [Rclone](https://rclone.org) and [Restic](https://restic.net) tools.
+
+## Use cases
+
+* Maintain an update-only files copy in a separate location on the same site
+
+* Maintain offline secure two way file synchronization between two offsites
+
+* Maintain an incremental files backup on a portable medium with multiple offsite copies of the repository
 
 
 ## Features
@@ -27,20 +34,29 @@ Bitferry is effectively a frontend to the [Rclone](https://rclone.org) and [Rest
 
 * Command line and graphical frontends
 
-* Operating system keyring / volume vault password storage
+* Operating system keyring / per-volume vault password storage
 
 * Online cloud storage relay
 
 * Offline portable storage (USB flash, HDDs, SSDs etc.) relay with the automatic media change detection
 
 
-## Use cases
+## Purpose
 
-* Maintain an update-only files copy in a separate location on the same site
+Suppose you have a (large amount of) data which needs to be either distributed across many storages or simply backed up. For example, consider a terabyte private media archive one can not afford to lose.
 
-* Maintain offline secure two way file synchronization between two offsites
+As the data gets periodically updated, there is a need for regular synchronization. When the use of online cloud storage is not an option due to storage space or security reasons, the good ol' offline backing up comes back into play.
 
-* Maintain an incremental files backup on a portable medium with multiple offsite copies of the repository
+A sane backup strategy mandates the data copies to be physically separated - be it a next room (building, city or planet) computer or just an external drive. Or, even better, the two computers' storages - a primary, where all activity takes place, a mirror storage which holds the backup, and a portable storage (USB flash disk, external HDD or SSD - whatever) which serves as both an intermediate storage and a means of propagating the changes between the primary and the mirror.
+
+In a more complex scenario there may be multiple one-way or two-way point-to-point data transfer routes between the storages, employing the portable storage as a "shuttle" or a "ferry" - which is exactly where the Bitferry name comes from.
+
+All in all, every such data route boils down to copying or synchronizing the contents of two local directories or maintaining an incremental backup of them. However, since the portable storage is involved, the actual file paths may change between the runs as a storage can be mounted under different mount points on *NIX systems or change the disk drive on Windows systems. Besides, the portable storage may be compromised while carrying confidential data which calls for the end-to-end encryption on the data routes.
+
+While the [Rclone](https://rclone.org) and [Restic](https://restic.net) themselves are great tools for local file synchronization and backup, typing the command lines to be executed in this case becomes tedious and error prone where the possible cost of error is a backup corruption due to wrong paths or misspelled flags.
+
+This is where the [Bitferry](https://github.com/okhlybov/bitferry) comes in.
+It is designed to automatize the Rclone and Restic operations by memorizing the task definitions and detecting the proper source and destination locations wherever they are, regardless of where the involved storages appear the next time.
 
 
 ## Implementation
@@ -60,7 +76,7 @@ Download the release package for your platform from the [releases](https://githu
 
 * Windows -- run the MSI installer. It installs the application for the current user (no administrator rights required), puts the `bitferry` command line launcher on the user `PATH` and adds the Start Menu shortcut launching the graphical frontend
 
-* Linux -- make the downloaded AppImage executable and run it (just dont forget to make it executable with `chmod +x` prior running). The optional `install` argument integrates it with the desktop environment and the `PATH` (the `uninstall` argument undoes that), while running the AppImage directly keeps working as is
+* Linux -- make the downloaded AppImage executable and run it (just don't forget to make it executable with `chmod +x` before running). The optional `install` argument integrates it with the desktop environment and the `PATH` (the `uninstall` argument undoes that), while running the AppImage directly keeps working as is
 
 * The other platforms -- unpack the runtime image tree and run the `bitferry` launcher from its `bin` directory
 
@@ -126,6 +142,8 @@ bitferry
 ```shell
 bitferry execute -vn 807
 ```
+
+Here `-n` requests the dry run (make no on-disk changes) and `-v` produces the verbose output; `807` is the partial task tag matched against the full `80709087` one.
 
 <details>
 <summary>...</summary>
