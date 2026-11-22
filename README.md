@@ -269,15 +269,17 @@ Commands:
 
 * Bugs and feature requests are welcome at the [issue tracker](https://github.com/bitferry-io/bitferry/issues)
 
+* The Bitferry builds upon [Mclone](https://github.com/okhlybov/mclone) project's basic ideas.
+
 * Bitferry itself is distributed under the terms of the [BSD 3-Clause "New" or "Revised" License](https://github.com/bitferry-io/bitferry/blob/master/LICENSE)
 
   The packaged distributions however bundle the third-party components which are governed by their own licenses:
 
   * The [OpenJDK](https://openjdk.org/legal/gplv2+ce.html)/[OpenJFX](https://openjfx.io/) Java runtime which powers the application itself - the GNU General Public License, version 2, with the Classpath Exception; the runtime images carry the complete third-party legal notices in their `legal` directory
 
-  * The [Rclone](https://github.com/rclone/rclone/blob/master/COPYING) executable - the [MIT License](https://opensource.org/license/mit)
+  * The [Rclone](https://github.com/rclone/rclone/blob/master/COPYING) project - the [MIT License](https://opensource.org/license/mit)
 
-  * The [Restic](https://github.com/restic/restic/blob/master/LICENSE) executable - the [BSD 2-Clause License](https://opensource.org/license/bsd-2-clause)
+  * The [Restic](https://github.com/restic/restic/blob/master/LICENSE) project - the [BSD 2-Clause License](https://opensource.org/license/bsd-2-clause)
 
 
 ## The rest is about to come

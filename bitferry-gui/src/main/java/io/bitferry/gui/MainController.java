@@ -35,7 +35,7 @@ public final class MainController {
   private Hyperlink homeSite;
 
   /// The project home site the info line links to.
-  private static final String HOME_SITE = "https://github.com/okhlybov/jackferry";
+  private static final String HOME_SITE = "https://github.com/bitferry-io/bitferry";
 
   /// The host services opening the home site in the system browser (injected by
   /// the Application; null in the headless tests - the click degrades to the log).
