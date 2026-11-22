@@ -298,6 +298,76 @@ class SystemExecutorTest {
   }
 
   @Test
+  void simulatedEqualizeUsesDisposableWorkdirForFreshBaseline() {
+    RecordingCommandExecutor recorder = new RecordingCommandExecutor();
+    SystemExecutor executor = new SystemExecutor(recorder);
+    manager.simulate = true;
+    Equalize task = new Equalize(manager, source(), destination(), null, List.of(), List.of());
+    Path real = task.workdir();
+
+    assertEquals(Task.Outcome.SUCCESS, executor.run(task, null));
+
+    List<String> command = recorder.invocations.get(0).command();
+    Path temporary = Path.of(command.get(command.indexOf("--workdir") + 1));
+    assertNotEquals(real, temporary);
+    assertTrue(command.contains("--dry-run"));
+    assertTrue(command.contains("--resync"));
+    assertFalse(Files.exists(real), "A fresh simulation must not create the persistent workdir");
+    assertFalse(Files.exists(temporary), "The temporary workdir must be removed after a successful run");
+    assertEquals(real, task.workdir(), "The task must address the persistent workdir again after the run");
+  }
+
+  @Test
+  void simulatedEqualizeCopiesBaselineWithoutChangingPersistentState() throws IOException {
+    RecordingCommandExecutor recorder = new RecordingCommandExecutor();
+    SystemExecutor executor = new SystemExecutor(recorder);
+    manager.simulate = true;
+    Equalize task = new Equalize(manager, source(), destination(), null, List.of(), List.of());
+    Path real = task.workdir();
+    Files.createDirectories(real);
+    Path path1 = real.resolve("old-session.path1.lst");
+    Path path2 = real.resolve("old-session.path2.lst");
+    Files.writeString(path1, "original path1 baseline");
+    Files.writeString(path2, "original path2 baseline");
+
+    assertEquals(Task.Outcome.SUCCESS, executor.run(task, null));
+
+    List<String> command = recorder.invocations.get(0).command();
+    Path temporary = Path.of(command.get(command.indexOf("--workdir") + 1));
+    assertNotEquals(real, temporary);
+    assertTrue(command.contains("--dry-run"));
+    assertFalse(command.contains("--resync"), "The copied baseline must select plain bisync mode");
+    assertEquals("original path1 baseline", Files.readString(path1));
+    assertEquals("original path2 baseline", Files.readString(path2));
+    try (var files = Files.list(real)) {
+      assertEquals(Set.of(path1.getFileName().toString(), path2.getFileName().toString()),
+        files.map(p -> p.getFileName().toString()).collect(java.util.stream.Collectors.toSet()),
+        "Session-name preparation must rename only the copied listings");
+    }
+    assertFalse(Files.exists(temporary), "The copied baseline must be removed after the run");
+    assertEquals(real, task.workdir());
+  }
+
+  @Test
+  void simulatedEqualizeCleansUpTemporaryWorkdirAfterFailure() {
+    RecordingCommandExecutor recorder = new RecordingCommandExecutor();
+    recorder.returnCode = 1;
+    SystemExecutor executor = new SystemExecutor(recorder);
+    manager.simulate = true;
+    Equalize task = new Equalize(manager, source(), destination(), null, List.of(), List.of());
+    Path real = task.workdir();
+
+    assertEquals(Task.Outcome.FAILURE, executor.run(task, null));
+
+    List<String> command = recorder.invocations.get(0).command();
+    Path temporary = Path.of(command.get(command.indexOf("--workdir") + 1));
+    assertNotEquals(real, temporary);
+    assertFalse(Files.exists(real));
+    assertFalse(Files.exists(temporary), "The temporary workdir must be removed after a failed run");
+    assertEquals(real, task.workdir());
+  }
+
+  @Test
   void rcloneManagerFlagsAreReflectedInArguments() {
     RecordingCommandExecutor recorder = new RecordingCommandExecutor();
     SystemExecutor executor = new SystemExecutor(recorder);

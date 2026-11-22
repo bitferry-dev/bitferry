@@ -518,6 +518,16 @@ public abstract class Task {
   /// Perform the encryption and backend target conformance validation against existing data.
   protected void conform() {}
 
+  /// Publish credentials staged by a newly created task. The credential-bearing
+  /// operations override this; the other tasks have no external credential state.
+  public void publishCredentials() {}
+
+  /// Finalize a credential publication after the task descriptor has been committed.
+  public void credentialsCommitted() {}
+
+  /// Roll back a credential publication when the surrounding task or volume commit fails.
+  public void rollbackCredentials() {}
+
   /// Post-processing bookkeeping hook invoked after a successful real (non-simulated) run.
   /// The runs are otherwise stateless: the hook lets the operations record their durable
   /// outcomes (e.g. the equalize bisync baseline marker) for the following commit
@@ -527,7 +537,8 @@ public abstract class Task {
   /// Commit the task performing the pending FSM transitions. The one-time
   /// initialization of the pristine task (the backend conformance probing and
   /// the repository formatting) registers the task upon its success only: the
-  /// registration rides the fully constructed task mirroring [restore].
+  /// registration rides the fully constructed task mirroring [restore]. Staged
+  /// credentials publish only after those validations and only outside simulation.
   public void commit() {
     loop:
     while (true) switch (commitState) {
@@ -535,7 +546,9 @@ public abstract class Task {
         try {
           conform();
           format();
+          if (!manager.simulate) publishCredentials();
         } catch (BitferryError e) {
+          rollbackCredentials();
           // Abort the materialization of a simulated creation (the task registered
           // upon its simulated initialization; the real one just failed - it must
           // not stay registered re-failing every following commit). A fresh real
@@ -554,6 +567,9 @@ public abstract class Task {
         return;
       }
       case LIVE -> {
+        // A failed volume commit rolls the credential write back to its staged state;
+        // the next real commit retries the publication before persisting the descriptor.
+        if (!manager.simulate) publishCredentials();
         return;
       }
       // The deletion is effected by the omission of the dead tasks from the future

@@ -175,10 +175,18 @@ public class Manager {
 
   /// Commit the given newly created task performing its one-time backend
   /// initialization (the task registers itself upon the success only - see
-  /// [Task#commit]), then commit the live volumes persisting the result.
+  /// [Task#commit]), then commit the live volumes persisting the result. The
+  /// credential publication rides the same transaction: a failure rolls it back.
   public Manager commit(Task task) {
-    task.commit();
-    return commit();
+    try {
+      task.commit();
+      commit();
+      task.credentialsCommitted();
+      return this;
+    } catch (RuntimeException | Error e) {
+      task.rollbackCredentials();
+      throw e;
+    }
   }
 
   /// Drop the task from the registry: the abort of a failed materialization of a
@@ -447,6 +455,10 @@ public class Manager {
       try {
         volume.commit();
       } catch (BitferryError e) {
+        // A task may have published its keyring token before this volume's storage
+        // failed. Roll back every still-pending write; successfully committed tasks
+        // have already cleared that marker and remain untouched.
+        for (Task task : volume.tasks().values()) task.rollbackCredentials();
         LOG.log(Level.ERROR, () -> "Commit failure(s) for Bitferry volume " + volume.tag() + ": " + e.getMessage());
         problems.add(e.getMessage());
       }

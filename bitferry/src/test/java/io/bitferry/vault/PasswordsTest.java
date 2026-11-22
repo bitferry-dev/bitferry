@@ -12,35 +12,35 @@ class PasswordsTest {
   @Test
   void obscureRevealRoundTrips() {
     for (String secret : List.of("Our secret password", "p@$$w0rd !#", "пароль с юникодом", "x", "a".repeat(100))) {
-      assertEquals(secret, Passwords.reveal(Passwords.obscure(secret)));
+      assertEquals(secret, Passwords.bitferryReveal(Passwords.bitferryObscure(secret)));
     }
   }
 
   @Test
   void obscuringIsRandomizedAndJittered() {
     // The fresh random salt and dynamic padding make each obscured form distinct
-    String first = Passwords.obscure("same-secret");
-    String second = Passwords.obscure("same-secret");
+    String first = Passwords.bitferryObscure("same-secret");
+    String second = Passwords.bitferryObscure("same-secret");
     assertNotEquals(first, second);
-    assertEquals("same-secret", Passwords.reveal(first));
-    assertEquals("same-secret", Passwords.reveal(second));
+    assertEquals("same-secret", Passwords.bitferryReveal(first));
+    assertEquals("same-secret", Passwords.bitferryReveal(second));
 
     Set<Integer> lengths = new HashSet<>();
     for (int i = 0; i < 20; i++) {
-      lengths.add(Passwords.obscure("same-secret").length());
+      lengths.add(Passwords.bitferryObscure("same-secret").length());
     }
     assertTrue(lengths.size() > 1, "Dynamic null padding must produce varying token lengths");
   }
 
   @Test
   void nullPasswordIsRejected() {
-    assertThrows(BitferryError.class, () -> Passwords.obscure(null));
+    assertThrows(BitferryError.class, () -> Passwords.bitferryObscure(null));
   }
 
   @Test
   void garbageTokensAreRejected() {
-    assertThrows(BitferryError.class, () -> Passwords.reveal("not base64 at all!!"));
-    assertThrows(BitferryError.class, () -> Passwords.reveal(Base64.getUrlEncoder().withoutPadding().encodeToString(new byte[4])));
+    assertThrows(BitferryError.class, () -> Passwords.bitferryReveal("not base64 at all!!"));
+    assertThrows(BitferryError.class, () -> Passwords.bitferryReveal(Base64.getUrlEncoder().withoutPadding().encodeToString(new byte[4])));
   }
 
   @Test

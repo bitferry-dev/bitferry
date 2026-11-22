@@ -72,10 +72,65 @@ public class Equalize extends Rclone {
     return source;
   }
 
+  // The isolated workdir of the currently executing simulated run. Null outside that
+  // run, so every other operation (including command previews and real runs) addresses
+  // the persistent baseline directly.
+  private Path simulatedWorkdir;
+
   /// The root-contained hidden directory for this task's bisync listings and state:
-  /// <endpoint-root>/.bitferry.<task_id>
+  /// <endpoint-root>/.bitferry.<task_id>. During a simulated run this returns the
+  /// temporary copy instead, keeping both Bitferry's preparation and rclone's own
+  /// dry-run listing files away from the persistent baseline.
   public Path workdir() {
+    return simulatedWorkdir != null ? simulatedWorkdir : persistentWorkdir();
+  }
+
+  private Path persistentWorkdir() {
     return Path.of(workdirEndpoint().processOpts()).resolve(Bitferry.STORAGE + "." + tag());
+  }
+
+  /// Copy the persistent bisync state into a temporary workdir for an accurate dry run:
+  /// an existing baseline keeps the run in plain bisync mode, while its absence leaves
+  /// the simulated run in the initial --resync mode. The temporary state is removed by
+  /// cleanupAfterRun() regardless of the backend outcome.
+  private void prepareSimulatedWorkdir() {
+    Path persistent = persistentWorkdir();
+    try {
+      simulatedWorkdir = Files.createTempDirectory("bitferry-" + tag() + "-bisync-dry-run-");
+      if (Files.isDirectory(persistent)) {
+        try (var stream = Files.walk(persistent)) {
+          for (Path source : stream.filter(p -> !p.equals(persistent)).toList()) {
+            Path target = simulatedWorkdir.resolve(persistent.relativize(source).toString());
+            if (Files.isDirectory(source)) {
+              Files.createDirectories(target);
+            } else {
+              Files.copy(source, target);
+            }
+          }
+        }
+      }
+    } catch (IOException e) {
+      cleanupSimulatedWorkdir();
+      throw new BitferryError("Failed to isolate the simulated bisync workdir for task " + tag() + ": " + e.getMessage(), e);
+    }
+  }
+
+  private void cleanupSimulatedWorkdir() {
+    Path temporary = simulatedWorkdir;
+    simulatedWorkdir = null;
+    if (temporary == null) return;
+    try (var stream = Files.walk(temporary)) {
+      for (Path entry : stream.sorted(Comparator.reverseOrder()).toList()) {
+        Files.deleteIfExists(entry);
+      }
+    } catch (IOException e) {
+      LOG.log(Level.WARNING, () -> "Failed to remove the simulated bisync workdir " + temporary + ": " + e.getMessage());
+    }
+  }
+
+  @Override
+  void cleanupAfterRun() {
+    cleanupSimulatedWorkdir();
   }
 
   /// Return true if the bisync baseline is established (the initial --resync has completed
@@ -188,6 +243,9 @@ public class Equalize extends Rclone {
 
   @Override
   public void prepare(List<String> endpoints) {
+    if (manager.simulate) {
+      prepareSimulatedWorkdir();
+    }
     String path1 = endpoints.get(endpoints.size() - 2);
     String path2 = endpoints.get(endpoints.size() - 1);
     prepareWorkdir(path1, path2);

@@ -93,6 +93,10 @@ public abstract class Rclone extends Task implements IncludeFilters {
   /// Pre-execution hook for concrete rclone operations (e.g. preparing working directories).
   public void prepare(List<String> endpoints) {}
 
+  /// Post-execution cleanup hook. Equalize uses it to remove the isolated temporary
+  /// workdir of a simulated bisync run; the other operations have nothing to release.
+  void cleanupAfterRun() {}
+
   /// Return the human-readable operation label incorporating the encryption mode when active.
   @Override
   public String displayOperation() {
@@ -125,6 +129,21 @@ public abstract class Rclone extends Task implements IncludeFilters {
   }
 
   @Override
+  public void publishCredentials() {
+    if (usesVault()) encryption.publishCredentials(manager.simulate);
+  }
+
+  @Override
+  public void credentialsCommitted() {
+    if (usesVault()) encryption.credentialsCommitted();
+  }
+
+  @Override
+  public void rollbackCredentials() {
+    if (usesVault()) encryption.rollbackCredentials();
+  }
+
+  @Override
   public boolean supportsEncryption() {
     return true;
   }
@@ -138,9 +157,8 @@ public abstract class Rclone extends Task implements IncludeFilters {
     return this;
   }
 
-  /// Configure the encrypt mode obscuring and storing the password pair with the
-  /// vault provider right upon the call. The password pair is optional (e.g. the
-  /// filename-only encryption).
+  /// Configure the encrypt mode staging the password pair in memory until the
+  /// successful real commit publishes it to the selected vault provider.
   public Rclone encrypt(String password, String password2, List<String> options) {
     return encrypt(password, password2, options, false);
   }
@@ -150,7 +168,7 @@ public abstract class Rclone extends Task implements IncludeFilters {
   public Rclone encrypt(String password, String password2, List<String> options, boolean keyring) {
     this.encryption = new Encrypt(this, options);
     this.encryption.selectVault(keyring);
-    this.encryption.storePasswords(password, password2);
+    this.encryption.stagePasswords(password, password2);
     return this;
   }
 
@@ -164,7 +182,7 @@ public abstract class Rclone extends Task implements IncludeFilters {
   public Rclone decrypt(String password, String password2, List<String> options, boolean keyring) {
     this.encryption = new Decrypt(this, options);
     this.encryption.selectVault(keyring);
-    this.encryption.storePasswords(password, password2);
+    this.encryption.stagePasswords(password, password2);
     return this;
   }
 
@@ -330,6 +348,8 @@ public abstract class Rclone extends Task implements IncludeFilters {
   /// obscured password pair stored with the vault provider.
   public abstract static class Encryption {
 
+    private static final System.Logger LOG = System.getLogger(Rclone.class.getName());
+
     protected final List<String> options;
     // The selected (creation-time) and holding (retrieval-resolved) vault providers
     private Vault vault = Vault.volume();
@@ -337,6 +357,9 @@ public abstract class Rclone extends Task implements IncludeFilters {
     private String cachedPassword;
     private String cachedPassword2;
     private boolean cached;
+    // Newly configured encryption stays memory-only until the surrounding real commit.
+    private boolean credentialsPending;
+    private boolean credentialWriteAttempted;
 
     protected Encryption(List<String> options) {
       this.options = options;
@@ -379,19 +402,46 @@ public abstract class Rclone extends Task implements IncludeFilters {
     /// Raises [BitferryError] for the endpoints residing outside Bitferry volumes.
     public abstract Volume vaultVolume(Rclone task);
 
-    /// Store the password pair with the vault provider caching the plain
-    /// values. The target provider is the one currently holding the credentials (the updates
-    /// keep the storage kind), falling back to the creation-time selection; the stale
-    /// entries in the other provider are dropped.
-    void storePasswords(String password, String password2) {
+    /// Cache a newly configured password pair without writing either credential provider.
+    void stagePasswords(String password, String password2) {
       if (password == null || password.isEmpty()) throw new BitferryError("Password must be specified for task " + task().tag());
-      Vault target = holding != null ? holding : vault;
-      target.store(task(), password, password2);
-      if (target != Vault.volume()) Vault.volume().delete(task());
-      if (target != Vault.keyring()) Vault.keyring().delete(task());
       cachedPassword = password;
       cachedPassword2 = password2;
       cached = true;
+      credentialsPending = true;
+    }
+
+    /// The target provider is the one currently holding the credentials, falling back
+    /// to the creation-time selection; stale entries in the other provider are dropped.
+    private void writePasswords() {
+      Vault target = holding != null ? holding : vault;
+      target.store(task(), cachedPassword, cachedPassword2);
+      if (target != Vault.volume()) Vault.volume().delete(task());
+      if (target != Vault.keyring()) Vault.keyring().delete(task());
+    }
+
+    void publishCredentials(boolean simulate) {
+      if (!credentialsPending || credentialWriteAttempted || simulate) return;
+      credentialWriteAttempted = true;
+      writePasswords();
+    }
+
+    void credentialsCommitted() {
+      if (!credentialsPending || !credentialWriteAttempted) return;
+      credentialsPending = false;
+      credentialWriteAttempted = false;
+    }
+
+    void rollbackCredentials() {
+      if (!credentialsPending || !credentialWriteAttempted) return;
+      for (Vault provider : List.of(Vault.volume(), Vault.keyring())) {
+        try {
+          provider.delete(task());
+        } catch (RuntimeException e) {
+          LOG.log(System.Logger.Level.WARNING, () -> "Failed to roll back the credentials of task " + task().tag() + ": " + e.getMessage());
+        }
+      }
+      credentialWriteAttempted = false;
     }
 
     /// Return the task's crypt password, retrieving and caching it from the vault
@@ -463,6 +513,8 @@ public abstract class Rclone extends Task implements IncludeFilters {
     /// vault volume fixed), the per-volume vault otherwise. Creation-time only.
     void selectVault(boolean keyringRequested) {
       this.vault = Vault.select(task(), keyringRequested);
+      // Preserve creation-time endpoint validation without writing credentials.
+      task().vaultVolume();
     }
 
     void copySecretsFrom(Encryption other) {
@@ -471,6 +523,8 @@ public abstract class Rclone extends Task implements IncludeFilters {
       this.cachedPassword = other.cachedPassword;
       this.cachedPassword2 = other.cachedPassword2;
       this.cached = other.cached;
+      this.credentialsPending = other.credentialsPending;
+      this.credentialWriteAttempted = other.credentialWriteAttempted;
     }
 
     Vault vault() {
@@ -486,7 +540,7 @@ public abstract class Rclone extends Task implements IncludeFilters {
     /// Move the stored crypt credentials to the requested provider (the volume vault or
     /// the OS keyring): credentials are read from the provider holding them, stored with
     /// the target one, and the stale entry is dropped from the other (mirroring the
-    /// storePasswords stale-drop). The already-there request is a no-op; migrating
+    /// writePasswords stale-drop). The already-there request is a no-op; migrating
     /// to the keyring requires a usable OS keyring.
     void migrateVault(boolean toKeyring) {
       Vault target = toKeyring ? Vault.keyring() : Vault.volume();
@@ -598,11 +652,6 @@ public abstract class Rclone extends Task implements IncludeFilters {
     @Override
     public Volume vaultVolume(Rclone task) {
       throw new BitferryError("Directory endpoint must reside within a Bitferry volume");
-    }
-
-    @Override
-    void storePasswords(String password, String password2) {
-      // Encryption is not configured; nothing to store
     }
 
     @Override

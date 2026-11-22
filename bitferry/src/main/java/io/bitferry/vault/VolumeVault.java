@@ -13,8 +13,8 @@ public final class VolumeVault implements Vault {
 
   @Override
   public void store(Task task, String password, String salt) {
-    String encPassword = Passwords.obscure(password);
-    String encSalt = salt != null && !salt.isEmpty() ? Passwords.obscure(salt) : null;
+    String encPassword = Passwords.bitferryObscure(password);
+    String encSalt = salt != null && !salt.isEmpty() ? Passwords.bitferryObscure(salt) : null;
     task.vaultVolume().writeVault(task.tag(), new Volume.VaultEntry(encPassword, encSalt));
   }
 
@@ -23,8 +23,8 @@ public final class VolumeVault implements Vault {
     Volume volume = task.vaultVolume();
     Volume.VaultEntry entry = volume.readVault(task.tag());
     if (entry == null || entry.password() == null) return null;
-    String plainPassword = Passwords.reveal(entry.password());
-    String plainSalt = entry.salt() != null ? Passwords.reveal(entry.salt()) : null;
+    String plainPassword = Passwords.bitferryReveal(entry.password());
+    String plainSalt = entry.salt() != null ? Passwords.bitferryReveal(entry.salt()) : null;
     return new VaultCredentials(plainPassword, plainSalt);
   }
 

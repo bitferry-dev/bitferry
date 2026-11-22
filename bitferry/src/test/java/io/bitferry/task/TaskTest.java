@@ -197,8 +197,10 @@ class TaskTest {
     Task restoredRestore = Task.restore(manager, restore.serialize());
     assertEquals(List.of(), restoredRestore.processOptions());
 
-    // The round trip through the actual volume storage keeps the cleared state too
-    manager.commit();
+    // The round trip through the actual volume storage keeps the cleared state too.
+    // Restoring descriptors above does not dirty the volume, so force the explicit save.
+    manager.force = true;
+    manager.commit(copy);
     Manager reloaded = new Manager().restore(dir.resolve("volume"));
     Task stored = reloaded.tasks().get(copy.tag());
     assertEquals(List.of(), stored.processOptions());
@@ -587,8 +589,10 @@ class TaskTest {
     Path workdir = task.workdir();
     Files.createDirectories(workdir);
     Files.writeString(workdir.resolve("session.path1.lst"), "listing");
-    // The restic task's repository password rides the volume vault
+    // The restic task's repository password rides the volume vault after its commit
+    manager.backendExecutor(Executor.system((command, workingDirectory, environment, output) -> 0));
     Backup backup = new Backup(manager, volumeSource(), destination(), "secret", null, null, null, null, List.of());
+    manager.commit(backup);
     assertNotNull(volume.readVault(backup.tag()));
 
     // The simulated deletion touches nothing: the workdir and the vault token survive

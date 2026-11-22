@@ -519,6 +519,9 @@ public final class Volume {
         modified = false;
       }
     }
+    // The storage dump is the commit boundary for the staged credentials. Failed
+    // task commits have already rolled themselves back and carry no attempted write.
+    for (Task task : ts.values()) task.credentialsCommitted();
     if (!problems.isEmpty()) throw new BitferryError("Task commit failure(s) in volume " + tag + ": " + String.join("; ", problems));
   }
 

@@ -53,7 +53,7 @@ class VaultTest {
     assertNotNull(entry);
     String token = entry.get("password").asString();
     assertNotEquals("Our secret password", token); // Never the plain form
-    assertEquals("Our secret password", Passwords.reveal(token));
+    assertEquals("Our secret password", Passwords.bitferryReveal(token));
   }
 
   @Test
@@ -65,7 +65,7 @@ class VaultTest {
     JsonNode entry = storage.get("vault").get(restore.tag());
     assertNotNull(entry);
     String token = entry.get("password").asString();
-    assertEquals("restore-pass", Passwords.reveal(token));
+    assertEquals("restore-pass", Passwords.bitferryReveal(token));
   }
 
   @Test

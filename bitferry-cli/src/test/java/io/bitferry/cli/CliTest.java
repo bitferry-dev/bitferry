@@ -2037,8 +2037,8 @@ class CliTest {
     JsonNode storage = Storage.readJson(volDir.resolve(Bitferry.STORAGE));
     JsonNode entry = storage.get("vault").get(task.tag());
     assertNotNull(entry);
-    assertEquals("data-secret", Passwords.reveal(entry.get("password").asString()));
-    assertEquals("custom-salt", Passwords.reveal(entry.get("salt").asString()));
+    assertEquals("data-secret", Passwords.bitferryReveal(entry.get("password").asString()));
+    assertEquals("custom-salt", Passwords.bitferryReveal(entry.get("salt").asString()));
   }
 
   @Test

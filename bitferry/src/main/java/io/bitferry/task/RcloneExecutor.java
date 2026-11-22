@@ -228,8 +228,8 @@ final class RcloneExecutor {
   /// the interactive progress display travels only with the passthrough runs, while
   /// the verbosity applies to both modes. The prepare flag gates the endpoint
   /// preparation side effects (the equalize bisync workdir creation, the stale
-  /// session listing renames): the actual runs (and the dry-run simulations, which
-  /// execute the real command shape) carry them, the command previews stay read-only
+  /// session listing renames): the actual runs carry them directly, while dry-run
+  /// simulations prepare an isolated workdir copy. Command previews stay read-only
   /// - 'info task' must not touch the disk.
   List<String> command(Rclone rclone, boolean passthrough, boolean prepare) {
     Manager manager = rclone.manager();
@@ -309,10 +309,15 @@ final class RcloneExecutor {
     return List.of(ExecutorSupport.displayCommand(command(rclone, true, false)));
   }
 
-  /// Process the rclone-backed task.
+  /// Process the rclone-backed task. The finally hook releases per-run preparation
+  /// resources even when command construction or backend execution fails.
   Task.Outcome run(Rclone rclone, Consumer<String> output) {
-    List<String> cmd = command(rclone, output == null, true);
-    return ExecutorSupport.execute(commandExecutor, rclone.manager(), cmd, null, rclone.processEnvironment(), rclone.tag(), output);
+    try {
+      List<String> cmd = command(rclone, output == null, true);
+      return ExecutorSupport.execute(commandExecutor, rclone.manager(), cmd, null, rclone.processEnvironment(), rclone.tag(), output);
+    } finally {
+      rclone.cleanupAfterRun();
+    }
   }
 
   List<String> serveCommand(Rclone rclone, boolean passthrough) {

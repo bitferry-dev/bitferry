@@ -21,6 +21,8 @@ public abstract class Restic extends Task {
 
   // The process options and the route ride the TaskBase (the hoisted plumbing)
 
+  private static final System.Logger LOG = System.getLogger(Restic.class.getName());
+
   private final Vault vault;
   // The provider currently holding the token (resolved upon the retrieval); guides
   // the password updates back into the store the token lives in
@@ -28,6 +30,10 @@ public abstract class Restic extends Task {
   private String cachedPassword;
   private boolean cached;
   private boolean conformed;
+  // New tasks stage their token in memory until validation and the surrounding commit
+  // succeed. The attempted marker includes partial writes so rollback covers them too.
+  private boolean credentialsPending;
+  private boolean credentialWriteAttempted;
 
   // The transient runtime flag (the probe-conformance state): not a part of the
   // storage descriptor
@@ -41,8 +47,8 @@ public abstract class Restic extends Task {
   }
 
   /// Constructor for a new task instance; the processing options profile route is
-  /// passed explicitly by the concrete classes. The password is obscured and stored
-  /// with the vault provider right upon the creation.
+  /// passed explicitly by the concrete classes. The password is staged in memory and
+  /// published by the successful real commit rather than written by the constructor.
   // The this-escape is deliberate mirroring the Task constructors: the vault provider
   // merely receives the task reference for the token storage keyed by the task tag
   @SuppressWarnings("this-escape")
@@ -63,7 +69,9 @@ public abstract class Restic extends Task {
     this.vault = Vault.select(this, keyring);
     this.processRoute = processRoute;
     this.processOptions = optional(process, processRoute);
-    setPassword(password);
+    // Preserve creation-time endpoint validation without touching either provider.
+    vaultVolume();
+    stagePassword(password);
   }
 
   /// Constructor for restoring an existing task from the descriptor's fields;
@@ -114,18 +122,64 @@ public abstract class Restic extends Task {
     touch();
   }
 
+  private void validatePassword(String password) {
+    if (password == null || password.isEmpty()) throw new BitferryError("password must be specified for task " + tag);
+  }
+
+  /// Cache a newly created task's password without writing either credential provider.
+  private void stagePassword(String password) {
+    validatePassword(password);
+    cachedPassword = password;
+    cached = true;
+    credentialsPending = true;
+  }
+
   /// Store the password with the vault provider caching the plain value.
   /// The target provider is the one currently holding the credentials (the password updates
   /// and the key rotations keep the storage kind), falling back to the creation-time
   /// selection; the stale entries in the other provider are dropped.
   private void setPassword(String password) {
-    if (password == null || password.isEmpty()) throw new BitferryError("password must be specified for task " + tag);
+    validatePassword(password);
+    writePassword(password);
+    cachedPassword = password;
+    cached = true;
+    credentialsPending = false;
+    credentialWriteAttempted = false;
+  }
+
+  private void writePassword(String password) {
     Vault target = holding != null ? holding : vault;
     target.store(this, password, null);
     if (target != Vault.volume()) Vault.volume().delete(this);
     if (target != Vault.keyring()) Vault.keyring().delete(this);
-    cachedPassword = password;
-    cached = true;
+  }
+
+  @Override
+  public void publishCredentials() {
+    if (!credentialsPending || credentialWriteAttempted || manager.simulate) return;
+    credentialWriteAttempted = true;
+    writePassword(cachedPassword);
+  }
+
+  @Override
+  public void credentialsCommitted() {
+    if (!credentialsPending || !credentialWriteAttempted) return;
+    credentialsPending = false;
+    credentialWriteAttempted = false;
+  }
+
+  @Override
+  public void rollbackCredentials() {
+    if (!credentialsPending || !credentialWriteAttempted) return;
+    for (Vault provider : List.of(Vault.volume(), Vault.keyring())) {
+      try {
+        provider.delete(this);
+      } catch (RuntimeException e) {
+        LOG.log(System.Logger.Level.WARNING, () -> "Failed to roll back the credentials of task " + tag + ": " + e.getMessage());
+      }
+    }
+    // Keep the plain value cached and pending so a corrected commit can retry.
+    credentialWriteAttempted = false;
   }
 
   /// Return the task's repository password, retrieving and caching it from the vault

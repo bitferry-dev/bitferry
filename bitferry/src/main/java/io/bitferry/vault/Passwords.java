@@ -45,7 +45,7 @@ public final class Passwords {
   /// Obscure a secret value using ARCFOUR-drop256 with a fresh random salt and randomized
   /// leading null padding, returning the unpadded base64url encoding of the salt followed
   /// by the ciphertext.
-  public static String obscure(String data) {
+  public static String bitferryObscure(String data) {
     if (data == null) throw new BitferryError("Cannot obscure null password");
     try {
       byte[] plaintext = data.getBytes(StandardCharsets.UTF_8);
@@ -71,7 +71,7 @@ public final class Passwords {
   }
 
   /// Reveal a value obscured by [obscure].
-  public static String reveal(String obscured) {
+  public static String bitferryReveal(String obscured) {
     byte[] raw;
     try {
       raw = Base64.getUrlDecoder().decode(obscured);

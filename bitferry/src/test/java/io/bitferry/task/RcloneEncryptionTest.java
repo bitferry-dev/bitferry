@@ -92,7 +92,7 @@ class RcloneEncryptionTest {
     JsonNode entry = storage.get("vault").get(task.tag());
     assertNotNull(entry);
     String token = entry.get("password").asString();
-    assertEquals("Our secret password", Passwords.reveal(token));
+    assertEquals("Our secret password", Passwords.bitferryReveal(token));
 
     // A fresh manager restores the task with its encryption mode and password
     Manager restored = new Manager();
