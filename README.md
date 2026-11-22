@@ -51,6 +51,8 @@ A sane backup strategy mandates the data copies to be physically separated - be 
 
 In a more complex scenario there may be multiple one-way or two-way point-to-point data transfer routes between the storages, employing the portable storage as a "shuttle" or a "ferry" - which is exactly where the Bitferry name comes from.
 
+This time-honored practice of moving data by physically carrying it around is affectionately known as the [sneakernet](https://en.wikipedia.org/wiki/Sneakernet). Its most cinematic incarnation is perhaps the 1995 cyberpunk movie *[Johnny Mnemonic](https://en.wikipedia.org/wiki/Johnny_Mnemonic_(film))*, where the protagonist is a human data courier carrying sensitive information in his head - well, Bitferry does essentially the same, except it is a file on a USB stick rather than an overloaded brain.
+
 All in all, every such data route boils down to copying or synchronizing the contents of two local directories or maintaining an incremental backup of them. However, since the portable storage is involved, the actual file paths may change between the runs as a storage can be mounted under different mount points on *NIX systems or change the disk drive on Windows systems. Besides, the portable storage may be compromised while carrying confidential data which calls for the end-to-end encryption on the data routes.
 
 While the [Rclone](https://rclone.org) and [Restic](https://restic.net) themselves are great tools for local file synchronization and backup, typing the command lines to be executed in this case becomes tedious and error prone where the possible cost of error is a backup corruption due to wrong paths or misspelled flags.
