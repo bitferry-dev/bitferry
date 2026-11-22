@@ -47,7 +47,7 @@ Suppose you have a (large amount of) data which needs to be either distributed a
 
 As the data gets periodically updated, there is a need for regular synchronization. When the use of online cloud storage is not an option due to storage space or security reasons, the good ol' offline backing up comes back into play.
 
-A sane backup strategy mandates the data copies to be physically separated - be it a next room (building, city or planet) computer or just an external drive. Or, even better, the two computers' storages - a primary, where all activity takes place, a mirror storage which holds the backup, and a portable storage (USB flash disk, external HDD or SSD - whatever) which serves as both an intermediate storage and a means of propagating the changes between the primary and the mirror.
+A sane backup strategy mandates the data copies to be physically separated - be it a next room (building, city or planet) computer or just an external drive. Or, even better, the two computers' storages - a primary, where all activity takes place, a mirror storage which holds the backup, and a portable storage (USB flash drive, external HDD or SSD - whatever) which serves as both an intermediate storage and a means of propagating the changes between the primary and the mirror.
 
 In a more complex scenario there may be multiple one-way or two-way point-to-point data transfer routes between the storages, employing the portable storage as a "shuttle" or a "ferry" - which is exactly where the Bitferry name comes from.
 
@@ -57,15 +57,15 @@ All in all, every such data route boils down to copying or synchronizing the con
 
 While the [Rclone](https://rclone.org) and [Restic](https://restic.net) themselves are great tools for local file synchronization and backup, typing the command lines to be executed in this case becomes tedious and error prone where the possible cost of error is a backup corruption due to wrong paths or misspelled flags.
 
-This is where the [Bitferry](https://github.com/okhlybov/bitferry) comes in.
+This is where [Bitferry](https://github.com/bitferry-io/bitferry) comes in.
 It is designed to automatize the Rclone and Restic operations by memorizing the task definitions and detecting the proper source and destination locations wherever they are, regardless of where the involved storages appear the next time.
 
 
 ## Implementation
 
-The Bitferry itself is written in the [Java](https://openjdk.org) programming language organized as a set of the Java platform modules: the core library along with the two frontends - the command line interface and the graphical one. Being a Java code, the Bitferry requires the platform-specific Java runtime, version 25 or higher, which however is bundled with every packaged distribution so no separate runtime installation is needed.
+Bitferry itself is written in the [Java](https://openjdk.org) programming language organized as a set of the Java platform modules: the core library along with the two frontends - the command line interface and the graphical one. Being a Java code, Bitferry requires the platform-specific Java runtime, version 25 or higher, which however is bundled with every packaged distribution so no separate runtime installation is needed.
 
-The source code is hosted on [GitHub](https://github.com/okhlybov/bitferry) and the binary releases in form of the platform-specific packages (the Windows MSI installer, the Linux AppImage, the portable zip/tar.gz archives and the plain runtime image trees) are produced by the [Gradle](https://gradle.org) build.
+The source code is hosted on [GitHub](https://github.com/bitferry-io/bitferry) and the binary releases in form of the platform-specific packages (the Windows MSI installer, the Linux AppImage, the portable zip/tar.gz archives and the plain runtime image trees) are produced by the [Gradle](https://gradle.org) build.
 
 In addition, the platform-specific [Rclone](https://github.com/rclone/rclone/releases) and [Restic](https://github.com/restic/restic/releases) executables ship inside the packaged distributions. The standalone deployments resolve them through the `RCLONE` and `RESTIC` environment variables or through the `PATH` directory list.
 
@@ -74,7 +74,7 @@ In addition, the platform-specific [Rclone](https://github.com/rclone/rclone/rel
 
 ### Install Bitferry
 
-Download the release package for your platform from the [releases](https://github.com/okhlybov/bitferry/releases) page and install it:
+Download the release package for your platform from the [releases](https://github.com/bitferry-io/bitferry/releases) page and install it:
 
 * Windows -- run the MSI installer. It installs the application for the current user (no administrator rights required), puts the `bitferry` command line launcher on the user `PATH` and adds the Start Menu shortcut launching the graphical frontend
 
@@ -129,6 +129,19 @@ bitferry create task replicate /data /mnt/usb-drive/backup
 > On Windows, e.g. `bitferry create task replicate D:\data E:\backup`.
 
 The task family offers the copy, update, replicate (one way synchronization) and equalize (two way synchronization) operations on top of Rclone along with the incremental backup and restore ones on top of Restic. Passing the `-e`/`--encrypt` flag encrypts the destination with the password prompted interactively.
+
+The quick reference of the task operations (the short aliases in parentheses):
+
+| Operation | Backend | Direction | Extraneous files in destination | Typical use case |
+| --- | --- | --- | --- | --- |
+| `copy` (`c`) | Rclone | one way | left as is | Copy files, overwriting the existing destination ones unconditionally |
+| `update` (`u`) | Rclone | one way | left as is | Copy new and modified files only, keeping the untouched destination files intact |
+| `replicate` (`s`) | Rclone | one way | deleted (destination is made an exact mirror of the source) | Maintain the identical 1-way replica of the source |
+| `equalize` (`e`) | Rclone | two way | synchronized in both directions | Reconcile the changes made on either side between the two offsites |
+| `backup` (`b`) | Restic | one way, into the repository | managed through the snapshots and the retention policy | Deduplicated incremental backup with the point-in-time recovery |
+| `restore` (`r`) | Restic | out of the repository | not applicable | Extract the snapshots (or their subsets) back to the filesystem |
+
+Beyond the execution of the tasks themselves, the `bitferry serve` command performs the service operations on the matched tasks and repositories - the integrity checks, the snapshot retention and the repository pruning - while the `bitferry repair` one remedies the occasional backend inconsistencies, e.g. removes the stale Restic repository locks or rebuilds the broken Rclone bisync baselines.
 
 ### Review the changes
 
@@ -254,9 +267,17 @@ Commands:
 
 * The full documentation resides in the built-in command line help: run `bitferry --help` and drill down into the subcommand help screens (e.g. `bitferry create task --help`) for the complete reference of the volume and task management options
 
-* Bugs and feature requests are welcome at the [issue tracker](https://github.com/okhlybov/bitferry/issues)
+* Bugs and feature requests are welcome at the [issue tracker](https://github.com/bitferry-io/bitferry/issues)
 
-* Bitferry is distributed under the terms of the [BSD 3-Clause "New" or "Revised" License](https://github.com/okhlybov/bitferry/blob/master/LICENSE)
+* Bitferry itself is distributed under the terms of the [BSD 3-Clause "New" or "Revised" License](https://github.com/bitferry-io/bitferry/blob/master/LICENSE)
+
+  The packaged distributions however bundle the third-party components which are governed by their own licenses:
+
+  * The [OpenJDK](https://openjdk.org/legal/gplv2+ce.html)/[OpenJFX](https://openjfx.io/) Java runtime which powers the application itself - the GNU General Public License, version 2, with the Classpath Exception; the runtime images carry the complete third-party legal notices in their `legal` directory
+
+  * The [Rclone](https://github.com/rclone/rclone/blob/master/COPYING) executable - the [MIT License](https://opensource.org/license/mit)
+
+  * The [Restic](https://github.com/restic/restic/blob/master/LICENSE) executable - the [BSD 2-Clause License](https://opensource.org/license/bsd-2-clause)
 
 
 ## The rest is about to come

@@ -1,5 +1,4 @@
-
-- warn about unreachable volumes after creation
+- "serve": "7d,5" -- structured json entry
 
 - restic restore ergonomics - select the snapshot tag (or latest)
 
