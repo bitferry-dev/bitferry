@@ -96,11 +96,15 @@ Every package carries its own Java runtime along with the bundled backend tools,
 bitferry create volume /data
 ```
 
+> On Windows the command looks the same, only the path differs, e.g. `bitferry create volume D:\data`.
+
 ### Prepare destination Bitferry volume for a mounted portable storage
 
 ```shell
 bitferry create volume /mnt/usb-drive
 ```
+
+> On Windows the portable storage is just another drive letter, e.g. `bitferry create volume E:\`.
 
 The volumes are discovered automatically upon the start at the mounted filesystem roots, in the user's home directory and in the additional locations maintained through the GUI or the `BITFERRY_PATH` environment variable.
 
@@ -121,6 +125,8 @@ bitferry
 ```shell
 bitferry create task replicate /data /mnt/usb-drive/backup
 ```
+
+> On Windows, e.g. `bitferry create task replicate D:\data E:\backup`.
 
 The task family offers the copy, update, replicate (one way synchronization) and equalize (two way synchronization) operations on top of Rclone along with the incremental backup and restore ones on top of Restic. Passing the `-e`/`--encrypt` flag encrypts the destination with the password prompted interactively.
 
@@ -197,6 +203,8 @@ All 1 task(s) executed successfully.
 ls -l /mnt/usb-drive/backup
 ```
 
+> On Windows, use `dir E:\backup` instead.
+
 <details>
 <summary>...</summary>
 
@@ -241,6 +249,15 @@ Commands:
 ```
 
 </details>
+
+## Links
+
+* The full documentation resides in the built-in command line help: run `bitferry --help` and drill down into the subcommand help screens (e.g. `bitferry create task --help`) for the complete reference of the volume and task management options
+
+* Bugs and feature requests are welcome at the [issue tracker](https://github.com/okhlybov/bitferry/issues)
+
+* Bitferry is distributed under the terms of the [BSD 3-Clause "New" or "Revised" License](https://github.com/okhlybov/bitferry/blob/master/LICENSE)
+
 
 ## The rest is about to come
 
