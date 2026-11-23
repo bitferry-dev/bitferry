@@ -1,6 +1,6 @@
 /// The Bitferry core library implementing the domain model: the volumes, the
 /// tasks, the endpoints, the password vault and the `.bitferry` storage.
-module io.bitferry {
+module org.bitferry {
   // The storage (de)serialization travels through the Jackson machinery whose
   // types (JsonNode, ObjectMapper) surface in the exported API
   requires transitive tools.jackson.databind;
@@ -18,14 +18,14 @@ module io.bitferry {
   // The persistent user preferences (e.g. search roots)
   requires java.prefs;
 
-  exports io.bitferry;
-  exports io.bitferry.endpoint;
-  exports io.bitferry.task;
-  exports io.bitferry.vault;
+  exports org.bitferry;
+  exports org.bitferry.endpoint;
+  exports org.bitferry.task;
+  exports org.bitferry.vault;
 
   // The Jackson machinery reflects over the model classes (the creators, the
   // properties) when running on the module path (jlink/jpackage images)
-  opens io.bitferry to tools.jackson.databind;
-  opens io.bitferry.endpoint to tools.jackson.databind;
-  opens io.bitferry.task to tools.jackson.databind;
+  opens org.bitferry to tools.jackson.databind;
+  opens org.bitferry.endpoint to tools.jackson.databind;
+  opens org.bitferry.task to tools.jackson.databind;
 }

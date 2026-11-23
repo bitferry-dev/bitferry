@@ -28,8 +28,8 @@ application {
     // warning-free and keeps working on the future JDKs with the integrity by default
     applicationDefaultJvmArgs = ['--enable-native-access=org.fusesource.jansi,com.sun.jna']
     applicationName = 'bitferry'
-    mainModule = 'io.bitferry.cli'
-    mainClass = 'io.bitferry.cli.Main'
+    mainModule = 'org.bitferry.cli'
+    mainClass = 'org.bitferry.cli.Main'
 }
 
 // No plain distribution archives: the real deliverables (jlink tree, jpackage app-image,

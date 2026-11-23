@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.CheckBox?>
+<?import javafx.scene.control.Hyperlink?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.MenuButton?>
+<?import javafx.scene.control.MenuItem?>
+<?import javafx.scene.control.ProgressBar?>
+<?import javafx.scene.control.Separator?>
+<?import javafx.scene.control.SplitPane?>
+<?import javafx.scene.control.Tab?>
+<?import javafx.scene.control.TabPane?>
+<?import javafx.scene.layout.BorderPane?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.Region?>
+<?import javafx.scene.layout.VBox?>
+<?import javafx.scene.control.Tooltip?>
+
+<!-- The main window skeleton: the global toolbar, the model tabs embedding the
+     volumes/tasks panes, the manually resizable tabbed log window (the split
+     divider drags the log height) and the status bar. -->
+<BorderPane style="-fx-padding: 6;" xmlns="http://javafx.com/javafx/17" xmlns:fx="http://javafx.com/fxml/1"
+            fx:controller="org.bitferry.gui.MainController">
+  <top>
+    <HBox alignment="CENTER_LEFT" spacing="8">
+      <padding>
+        <Insets top="4" right="0" bottom="8" left="0"/>
+      </padding>
+      <Button fx:id="executeAll" text="Execute" defaultButton="true" style="-fx-base: #e8f5e9;"
+              onAction="#onExecuteAll">
+        <tooltip>
+          <Tooltip text="Execute all intact tasks"/>
+        </tooltip>
+      </Button>
+      <Button fx:id="abort" text="Abort" disable="true" onAction="#onAbort" style="-fx-base: #fff3e0;">
+        <tooltip>
+          <Tooltip text="Terminate the running backend process and stop the run"/>
+        </tooltip>
+      </Button>
+      <Button fx:id="reload" text="Reload" onAction="#onReload">
+        <tooltip>
+          <Tooltip text="Re-probe the volumes and restore the manager"/>
+        </tooltip>
+      </Button>
+      <Separator orientation="VERTICAL"/>
+      <CheckBox fx:id="verbose" text="Verbose" onAction="#onVerbose">
+        <tooltip>
+          <Tooltip text="Echo the backend command lines and request the backends' verbose output"/>
+        </tooltip>
+      </CheckBox>
+      <CheckBox fx:id="simulate" text="Simulate" onAction="#onSimulate">
+        <tooltip>
+          <Tooltip text="Make no on-disk changes (simulation mode)"/>
+        </tooltip>
+      </CheckBox>
+      <Region HBox.hgrow="ALWAYS"/>
+      <!-- The info line riding the toolbar: the product identity and the project
+           home site (the host services open the link in the system browser) -->
+      <Label fx:id="infoLabel" text="bitferry" style="-fx-text-fill: #888888; -fx-font-size: 11px;"/>
+      <Hyperlink fx:id="homeSite" text="project home" onAction="#onHomeSite" style="-fx-font-size: 11px;"/>
+      <MenuButton fx:id="moreMenu" text="&#x22EE;" style="-fx-font-weight: bold;">
+        <tooltip>
+          <Tooltip text="More options"/>
+        </tooltip>
+        <items>
+          <MenuItem fx:id="searchRootsItem" text="Volume search paths…" onAction="#onSearchRoots"/>
+        </items>
+      </MenuButton>
+      <Separator orientation="VERTICAL"/>
+      <Button fx:id="exit" text="Exit" onAction="#onExit">
+        <tooltip>
+          <Tooltip text="Quit the application"/>
+        </tooltip>
+      </Button>
+    </HBox>
+  </top>
+  <center>
+    <SplitPane fx:id="split" orientation="VERTICAL" dividerPositions="0.62">
+      <TabPane fx:id="contentTabs">
+        <Tab text="Volumes" closable="false">
+          <fx:include fx:id="volumesPane" source="volumes.fxml"/>
+        </Tab>
+        <Tab text="Tasks" closable="false">
+          <fx:include fx:id="tasksPane" source="tasks.fxml"/>
+        </Tab>
+      </TabPane>
+      <fx:include fx:id="logPane" source="log.fxml"/>
+    </SplitPane>
+  </center>
+  <bottom>
+    <HBox fx:id="statusBar" alignment="CENTER_LEFT" spacing="12">
+      <padding>
+        <Insets top="6" right="4" bottom="0" left="4"/>
+      </padding>
+      <ProgressBar fx:id="progress" prefWidth="280" visible="false"/>
+      <Label fx:id="status" text="Ready"/>
+    </HBox>
+  </bottom>
+</BorderPane>

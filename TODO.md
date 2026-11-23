@@ -5,3 +5,5 @@
 - select task id for restore on restore selection
 
 - what about disabling the restic repo sharing altogether?
+
+- sensible application icons on al platforms, including installers

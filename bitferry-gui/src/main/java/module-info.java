@@ -1,5 +1,5 @@
-module io.bitferry.gui {
-    requires io.bitferry;
+module org.bitferry.gui {
+    requires org.bitferry;
     requires javafx.controls;
     // The FXML machinery loading the UI resources and the controllers
     requires javafx.fxml;
@@ -9,5 +9,5 @@ module io.bitferry.gui {
 
     // javafx.graphics instantiates the Application subclass reflectively;
     // javafx.fxml loads the controllers and injects their @FXML members
-    opens io.bitferry.gui to javafx.graphics, javafx.fxml;
+    opens org.bitferry.gui to javafx.graphics, javafx.fxml;
 }

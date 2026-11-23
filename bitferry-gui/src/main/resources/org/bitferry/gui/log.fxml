@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.control.ScrollPane?>
+<?import javafx.scene.control.Tab?>
+<?import javafx.scene.control.TabPane?>
+<?import javafx.scene.text.TextFlow?>
+
+<!-- The tabbed log window: the general application log tab (the per-run tabs are
+     appended dynamically by the controller). -->
+<TabPane fx:id="tabs" prefHeight="200" xmlns="http://javafx.com/javafx/17" xmlns:fx="http://javafx.com/fxml/1"
+         fx:controller="org.bitferry.gui.LogController">
+  <Tab fx:id="generalTab" text="Log" closable="false">
+    <ScrollPane fx:id="generalScroll" fitToWidth="true" hbarPolicy="AS_NEEDED" vbarPolicy="ALWAYS"
+                style="-fx-background: -fx-control-inner-background; -fx-background-color: -fx-control-inner-background;">
+      <content>
+        <TextFlow fx:id="generalFlow"
+                  style="-fx-background-color: -fx-control-inner-background; -fx-padding: 4px;"/>
+      </content>
+    </ScrollPane>
+  </Tab>
+</TabPane>

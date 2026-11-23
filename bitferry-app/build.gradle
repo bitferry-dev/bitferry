@@ -100,8 +100,8 @@ jlink {
     // The primary launch root doubles as the jpackage main launcher: naming it 'bitferry'
     // — like the app image — makes the jpackage main launcher and the CLI launcher the same
     // (jpackage forbids an --add-launcher sharing the main image name).
-    moduleName = 'io.bitferry.cli'
-    mainClass = 'io.bitferry.cli.Main'
+    moduleName = 'org.bitferry.cli'
+    mainClass = 'org.bitferry.cli.Main'
 
     options = ['--compress', 'zip-6', '--strip-debug', '--no-header-files', '--no-man-pages']
 
@@ -133,8 +133,8 @@ jlink {
     }
     secondaryLauncher {
         name = 'bitferry-gui'   // only the GUI launcher is suffixed
-        moduleName = 'io.bitferry.gui'
-        mainClass = 'io.bitferry.gui.Main'
+        moduleName = 'org.bitferry.gui'
+        mainClass = 'org.bitferry.gui.Main'
         jvmArgs = ["-XX:AOTCache={{BIN_DIR}}/../lib/aot/gui.aot",
                    "--enable-native-access=" + guiNativeAccess,
                    "-Djna.boot.library.path={{BIN_DIR}}/../lib"] + bundledToolProps
@@ -483,7 +483,7 @@ tasks.register('trainCliAot', Exec) {
             // cliNativeAccess variable): the AOT system invalidates the cache when
             // the module graph configuration differs
             '--enable-native-access=' + cliNativeAccess,
-            '-m', 'io.bitferry.cli/io.bitferry.cli.Main',
+            '-m', 'org.bitferry.cli/org.bitferry.cli.Main',
             'info'
 }
 
@@ -508,7 +508,7 @@ tasks.register('trainGuiAot', Exec) {
     def cmd = [javaBin.absolutePath,
                '-XX:AOTCacheOutput=' + guiAotCache.absolutePath,
                '--enable-native-access=' + guiNativeAccess]
-    cmd += ['-m', 'io.bitferry.gui/io.bitferry.gui.Main', '--train']
+    cmd += ['-m', 'org.bitferry.gui/org.bitferry.gui.Main', '--train']
     commandLine cmd
     if (guiHeadless) {
         doLast {

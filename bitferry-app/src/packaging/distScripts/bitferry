@@ -16,4 +16,4 @@ fi
 # carries the native-access whitelist
 exec "$JAVACMD" $JAVA_OPTS --enable-native-access=org.fusesource.jansi,com.sun.jna \
         "-Djansi.tmpdir=$DIR/../lib/tmp" "-Djna.tmpdir=$DIR/../lib/tmp" \
-        --module-path "$DIR/../lib" -m io.bitferry.cli/io.bitferry.cli.Main "$@"
+        --module-path "$DIR/../lib" -m org.bitferry.cli/org.bitferry.cli.Main "$@"

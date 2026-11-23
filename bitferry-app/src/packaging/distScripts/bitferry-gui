@@ -14,4 +14,4 @@ fi
 # System::load carries the native-access whitelist
 exec "$JAVACMD" $JAVA_OPTS --enable-native-access=javafx.graphics,org.fusesource.jansi,com.sun.jna \
         "-Djansi.tmpdir=$DIR/../lib/tmp" "-Djna.tmpdir=$DIR/../lib/tmp" \
-        --module-path "$DIR/../lib" -m io.bitferry.gui/io.bitferry.gui.Main "$@"
+        --module-path "$DIR/../lib" -m org.bitferry.gui/org.bitferry.gui.Main "$@"

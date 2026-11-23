@@ -30,11 +30,11 @@ tasks.named('test') {
 }
 
 // The single source of truth for the version is the Gradle project version (root
-// build.gradle); it is baked into the module's resources and read back by io.bitferry.Bitferry.
+// build.gradle); it is baked into the module's resources and read back by org.bitferry.Bitferry.
 def projectVersion = project.version.toString()
 processResources {
     inputs.property 'version', projectVersion
-    filesMatching('io/bitferry/version.properties') {
+    filesMatching('org/bitferry/version.properties') {
         expand 'version': projectVersion
     }
 }
