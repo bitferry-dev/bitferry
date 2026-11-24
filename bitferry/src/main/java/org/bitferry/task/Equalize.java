@@ -72,17 +72,18 @@ public class Equalize extends Rclone {
     return source;
   }
 
-  // The isolated workdir of the currently executing simulated run. Null outside that
-  // run, so every other operation (including command previews and real runs) addresses
-  // the persistent baseline directly.
-  private Path simulatedWorkdir;
+  // The isolated workdir of the currently executing simulated run on the running thread.
+  // Unset outside that run (and invisible to other threads), so concurrent observers
+  // and real runs address the persistent baseline directly.
+  private final ThreadLocal<Path> simulatedWorkdir = new ThreadLocal<>();
 
   /// The root-contained hidden directory for this task's bisync listings and state:
   /// <endpoint-root>/.bitferry.<task_id>. During a simulated run this returns the
   /// temporary copy instead, keeping both Bitferry's preparation and rclone's own
   /// dry-run listing files away from the persistent baseline.
   public Path workdir() {
-    return simulatedWorkdir != null ? simulatedWorkdir : persistentWorkdir();
+    Path temporary = simulatedWorkdir.get();
+    return temporary != null ? temporary : persistentWorkdir();
   }
 
   private Path persistentWorkdir() {
@@ -94,13 +95,15 @@ public class Equalize extends Rclone {
   /// the simulated run in the initial --resync mode. The temporary state is removed by
   /// cleanupAfterRun() regardless of the backend outcome.
   private void prepareSimulatedWorkdir() {
+    cleanupSimulatedWorkdir();
     Path persistent = persistentWorkdir();
     try {
-      simulatedWorkdir = Files.createTempDirectory("bitferry-" + tag() + "-bisync-dry-run-");
+      Path temp = Files.createTempDirectory("bitferry-" + tag() + "-bisync-dry-run-");
+      simulatedWorkdir.set(temp);
       if (Files.isDirectory(persistent)) {
         try (var stream = Files.walk(persistent)) {
           for (Path source : stream.filter(p -> !p.equals(persistent)).toList()) {
-            Path target = simulatedWorkdir.resolve(persistent.relativize(source).toString());
+            Path target = temp.resolve(persistent.relativize(source).toString());
             if (Files.isDirectory(source)) {
               Files.createDirectories(target);
             } else {
@@ -116,8 +119,8 @@ public class Equalize extends Rclone {
   }
 
   private void cleanupSimulatedWorkdir() {
-    Path temporary = simulatedWorkdir;
-    simulatedWorkdir = null;
+    Path temporary = simulatedWorkdir.get();
+    simulatedWorkdir.remove();
     if (temporary == null) return;
     try (var stream = Files.walk(temporary)) {
       for (Path entry : stream.sorted(Comparator.reverseOrder()).toList()) {

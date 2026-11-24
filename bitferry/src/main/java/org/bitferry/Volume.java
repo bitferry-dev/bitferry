@@ -45,7 +45,7 @@ public final class Volume {
   private String fileStore;
 
   // The lazily computed fixed-media classification (null until probed)
-  private Boolean fixed;
+  private volatile Boolean fixed;
 
   /// A vault entry stored in the volume descriptor.
   public record VaultEntry(
@@ -455,8 +455,9 @@ public final class Volume {
               checkPresence();
             }
             try {
-              String contents = Storage.toJson(this);
               if (manager.simulate) {
+                // Validate serialization in simulation without altering durable mtime or writing to disk.
+                Storage.toJson(this);
                 // The simulation writes nothing and consumes no durable bookkeeping:
                 // the pending mtime/generation/modified state is left for a following
                 // real commit to materialize
@@ -464,6 +465,7 @@ public final class Volume {
               } else {
                 // The actual storage writing time is stored, not the in-memory modification time
                 mtime = OffsetDateTime.now().truncatedTo(java.time.temporal.ChronoUnit.MICROS);
+                String contents = Storage.toJson(this);
                 Storage.writeText(storage, contents);
                 LOG.log(Level.INFO, () -> "Bitferry volume " + tag + " written to " + storage);
               }
@@ -551,8 +553,12 @@ public final class Volume {
   // (the Jackson getter detection would otherwise serialize it)
   @JsonIgnore
   public boolean isFixed() {
-    if (fixed == null) fixed = isFixedStore(root);
-    return fixed;
+    Boolean cached = fixed;
+    if (cached == null) {
+      cached = isFixedStore(root);
+      fixed = cached;
+    }
+    return cached;
   }
 
   // Classify the directory's hosting file system per the platform conventions

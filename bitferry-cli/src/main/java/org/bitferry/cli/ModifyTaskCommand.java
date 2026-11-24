@@ -201,7 +201,12 @@ public class ModifyTaskCommand implements Callable<Integer>, HasCommonOptions {
     // clears the explicit scope (the default derived selection applies at the run
     // time); the explicit tag must name a live backup task (the create-path rule)
     if (hasBackupTask) {
-      ((Restore) task).setSnapshotTag("-".equals(backupTask) ? null : Restore.resolveSnapshotTag(m, task.source(), backupTask));
+      Restore restore = (Restore) task;
+      String pwd = null;
+      try {
+        pwd = restore.password();
+      } catch (Exception ignored) {}
+      restore.setSnapshotTag("-".equals(backupTask) ? null : Restore.resolveSnapshotTag(m, task.source(), backupTask, pwd));
     }
 
     // The clear is the tolerated no-op for the capability-less tasks (the upfront

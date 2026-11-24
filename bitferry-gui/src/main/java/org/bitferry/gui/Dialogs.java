@@ -174,7 +174,7 @@ final class Dialogs {
       alert(context, Alert.AlertType.WARNING, "Busy", "A run is in progress — wait for it to finish.");
       return;
     }
-    showTaskDialog(context, logs, "Modify Bitferry task " + task.tag(), "Modify existing data procssing task " + task.tag() + " parameters", "Save",
+    showTaskDialog(context, logs, "Modify Bitferry task " + task.tag(), "Modify existing data processing task " + task.tag() + " parameters", "Save",
       TaskFormController.load(context, task), task);
   }
 

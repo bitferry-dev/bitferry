@@ -368,6 +368,24 @@ class SystemExecutorTest {
   }
 
   @Test
+  void simulatedEqualizeTemporaryWorkdirIsThreadIsolated() throws Exception {
+    manager.simulate = true;
+    Equalize task = new Equalize(manager, source(), destination(), null, List.of(), List.of());
+    Path real = task.workdir();
+    Path[] observedInOtherThread = new Path[1];
+    SystemExecutor executor = new SystemExecutor((command, workingDirectory, environment, output) -> {
+      Thread probe = new Thread(() -> observedInOtherThread[0] = task.workdir());
+      probe.start();
+      probe.join();
+      return 0;
+    });
+
+    assertEquals(Task.Outcome.SUCCESS, executor.run(task, null));
+    assertEquals(real, observedInOtherThread[0], "Concurrent readers must see the persistent workdir during simulation");
+    assertEquals(real, task.workdir());
+  }
+
+  @Test
   void rcloneManagerFlagsAreReflectedInArguments() {
     RecordingCommandExecutor recorder = new RecordingCommandExecutor();
     SystemExecutor executor = new SystemExecutor(recorder);
@@ -432,25 +450,46 @@ class SystemExecutorTest {
     assertTrue(recorder.invocations.get(1).command().contains("ALWAYS"));
   }
 
+  public static final class EnvProbe {
+    public static void main(String[] args) throws IOException {
+      String report = "CLICOLOR_FORCE=" + Objects.toString(System.getenv("CLICOLOR_FORCE"), "unset")
+        + " TERM=" + Objects.toString(System.getenv("TERM"), "unset");
+      if (args.length > 0) {
+        Files.writeString(Path.of(args[0]), report);
+      } else {
+        System.out.println(report);
+      }
+    }
+  }
+
+  private static List<String> envProbeCommand(String... args) {
+    String java = Path.of(System.getProperty("java.home"), "bin", ExecutorSupport.isWindows() ? "java.exe" : "java").toString();
+    List<String> cmd = new ArrayList<>();
+    cmd.add(java);
+    cmd.add("-cp");
+    cmd.add(System.getProperty("java.class.path"));
+    cmd.add(EnvProbe.class.getName());
+    cmd.addAll(Arrays.asList(args));
+    return cmd;
+  }
+
   @Test
   void capturedModeForcesColorsPassthroughLeavesEnvironmentUntouched() throws Exception {
     Path envFile = Files.createTempFile("bitferry-env", ".txt");
-    // The POSIX shell present on the Windows hosts (the Git Bash sh) treats the
-    // backslashes of the native path as escape sequences: the forward-slash form
-    // keeps the redirect target resolvable on both platforms
-    String envPath = envFile.toAbsolutePath().toString().replace('\\', '/');
+    String expectedPassthrough = "CLICOLOR_FORCE=" + Objects.toString(System.getenv("CLICOLOR_FORCE"), "unset")
+      + " TERM=" + Objects.toString(System.getenv("TERM"), "unset");
     try {
       // The passthrough inherits the real environment: nothing is forced
       int code = SystemCommandExecutor.INSTANCE.execute(
-        List.of("sh", "-c", "echo CLICOLOR_FORCE=${CLICOLOR_FORCE:-unset} > " + envPath),
+        envProbeCommand(envFile.toAbsolutePath().toString()),
         null, null, null);
       assertEquals(0, code);
-      assertEquals("CLICOLOR_FORCE=unset", Files.readString(envFile).trim());
+      assertEquals(expectedPassthrough, Files.readString(envFile).trim());
 
       // The captured mode forces the emulated capable terminal for the rendering consumer
       List<String> lines = new ArrayList<>();
       code = SystemCommandExecutor.INSTANCE.execute(
-        List.of("sh", "-c", "echo CLICOLOR_FORCE=$CLICOLOR_FORCE TERM=$TERM"),
+        envProbeCommand(),
         null, null, lines::add);
       assertEquals(0, code);
       assertEquals("CLICOLOR_FORCE=1 TERM=xterm-256color", lines.getFirst());

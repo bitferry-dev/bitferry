@@ -91,7 +91,7 @@ public class CreateRestoreCommand implements Callable<Integer>, HasCommonOptions
     // snapshots the restore selects from - on a shared (co-repository) repository the
     // repo-wide fallback would restore whichever sibling task's data is the newest.
     // The '-' marker declines the explicit scoping (the default resolution applies)
-    String scope = Restore.resolveSnapshotTag(m, repo, "-".equals(backupTask) ? null : backupTask);
+    String scope = Restore.resolveSnapshotTag(m, repo, "-".equals(backupTask) ? null : backupTask, password);
     if (scope != null) {
       spec.commandLine().getOut().println("Snapshot scope: backup task " + scope);
     } else {

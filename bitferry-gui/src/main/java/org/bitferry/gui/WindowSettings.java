@@ -2,7 +2,6 @@ package org.bitferry.gui;
 
 import javafx.application.Platform;
 import javafx.beans.InvalidationListener;
-import javafx.geometry.Rectangle2D;
 import javafx.stage.Screen;
 import javafx.stage.Stage;
 
@@ -173,24 +172,6 @@ final class WindowSettings {
     } catch (BackingStoreException e) {
       LOG.log(Level.WARNING, () -> "The window status persistence failed: " + e);
     }
-  }
-
-  // The union of the visual bounds of all the screens (the conservative placement test;
-  // Rectangle2D carries no union operation, so the bounding box is composed by hand)
-  private static Rectangle2D screenUnion() {
-    double minX = Double.MAX_VALUE;
-    double minY = Double.MAX_VALUE;
-    double maxX = -Double.MAX_VALUE;
-    double maxY = -Double.MAX_VALUE;
-    for (Screen screen : Screen.getScreens()) {
-      Rectangle2D bounds = screen.getVisualBounds();
-      minX = Math.min(minX, bounds.getMinX());
-      minY = Math.min(minY, bounds.getMinY());
-      maxX = Math.max(maxX, bounds.getMaxX());
-      maxY = Math.max(maxY, bounds.getMaxY());
-    }
-    return minX > maxX ? new Rectangle2D(0, 0, Double.MAX_VALUE, Double.MAX_VALUE)
-      : new Rectangle2D(minX, minY, maxX - minX, maxY - minY);
   }
 
   private static double clamp(double value, double min, double max) {

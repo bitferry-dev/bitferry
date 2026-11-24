@@ -2352,4 +2352,55 @@ class CliTest {
     assertTrue(outWriter.toString().contains("partial"));
     assertTrue(outWriter.toString().contains("completed with warnings"));
   }
+
+  @Test
+  void createAndModifyRestoreAcceptsForeignSnapshotTag() throws Exception {
+    Assumptions.assumeTrue(available("restic"), "restic not available for integration check");
+    Path volDir = tempDir.resolve("cli_foreign_restore_vol");
+    Path repoDir = tempDir.resolve("cli_foreign_restore_repo");
+    Path dataDir = tempDir.resolve("cli_foreign_restore_data");
+    Files.createDirectories(volDir);
+    Files.createDirectories(dataDir);
+    Files.writeString(dataDir.resolve("sample.txt"), "hello cli foreign restore");
+
+    ProcessBuilder initPb = new ProcessBuilder("restic", "init", "-r", repoDir.toString());
+    initPb.environment().put("RESTIC_PASSWORD", "foreign-cli-pass");
+    assertEquals(0, initPb.start().waitFor());
+
+    ProcessBuilder backupPb = new ProcessBuilder("restic", "-r", repoDir.toString(), "backup",
+      "--tag", "bitferry,foreignCliTag", dataDir.toString());
+    backupPb.environment().put("RESTIC_PASSWORD", "foreign-cli-pass");
+    assertEquals(0, backupPb.start().waitFor());
+
+    assertEquals(0, cmd.execute("create", "volume", volDir.toString()));
+    probeRoot(volDir);
+    String vtag = volumeTag(managerFor(volDir), volDir);
+
+    cmd = Main.createCommandLine();
+    out = new StringWriter();
+    err = new StringWriter();
+    cmd.setOut(new PrintWriter(out));
+    cmd.setErr(new PrintWriter(err));
+    int code = executeWithPassword("foreign-cli-pass", "create", "task", "restore",
+      "local:" + repoDir, ":" + vtag + ":restored", "-b", "foreignCliTag");
+    assertEquals(0, code, () -> "stderr: " + err);
+
+    Manager m = managerFor(volDir);
+    Restore restore = (Restore) m.tasks().values().stream()
+      .filter(t -> t instanceof Restore)
+      .findFirst().orElseThrow();
+    assertEquals("foreignCliTag", restore.snapshotTag());
+
+    // Modify using snapshot shortId discovered from the repository
+    String shortId = restore.snapshots().getFirst().shortId();
+    cmd = Main.createCommandLine();
+    out = new StringWriter();
+    err = new StringWriter();
+    cmd.setOut(new PrintWriter(out));
+    cmd.setErr(new PrintWriter(err));
+    assertEquals(0, cmd.execute("modify", "task", restore.tag(), "-b", shortId), () -> "stderr: " + err);
+
+    Restore reloaded = (Restore) managerFor(volDir).task(restore.tag());
+    assertEquals(shortId, reloaded.snapshotTag());
+  }
 }

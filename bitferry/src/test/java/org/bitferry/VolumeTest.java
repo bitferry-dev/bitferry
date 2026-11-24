@@ -151,6 +151,9 @@ class VolumeTest {
     assertTrue(Files.isRegularFile(dir.resolve("volume").resolve(Bitferry.STORAGE)));
     assertFalse(volume.isModified());
     assertNotEquals(simulated, volume.mtime());
+    // Persisted descriptor mtime must match the commit timestamp, not the stale pre-commit mtime
+    Manager reloaded = new Manager().restore(List.of(dir.resolve("volume")));
+    assertEquals(volume.mtime().toInstant(), reloaded.volume(volume.tag()).mtime().toInstant());
   }
 
   @Test
