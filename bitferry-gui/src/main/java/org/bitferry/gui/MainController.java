@@ -34,9 +34,6 @@ public final class MainController {
   @FXML
   private Hyperlink homeSite;
 
-  /// The project home site the info line links to.
-  private static final String HOME_SITE = "https://github.com/bitferry-org/bitferry";
-
   /// The host services opening the home site in the system browser (injected by
   /// the Application; null in the headless tests - the click degrades to the log).
   private javafx.application.HostServices hostServices;
@@ -83,8 +80,9 @@ public final class MainController {
     Icons.equip(abort, Icons.Symbol.STOP);
     Icons.equip(reload, Icons.Symbol.REFRESH);
     Icons.equip(exit, Icons.Symbol.EXIT);
-    // The info line carries the build version (the link label stays static)
+    // The info line carries the build version and the user-facing project page
     infoLabel.setText("bitferry " + Bitferry.VERSION);
+    homeSite.setText(Bitferry.PROJECT_HOME);
   }
 
   /// Inject the shared context once the whole window is loaded (called by the
@@ -247,9 +245,9 @@ public final class MainController {
   @FXML
   private void onHomeSite() {
     if (hostServices != null) {
-      hostServices.showDocument(HOME_SITE);
+      hostServices.showDocument(Bitferry.PROJECT_HOME);
     } else {
-      logPaneController.log("Project home site: " + HOME_SITE);
+      logPaneController.log("Project home site: " + Bitferry.PROJECT_HOME);
     }
   }
 

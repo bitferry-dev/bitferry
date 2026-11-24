@@ -12,6 +12,9 @@ public final class Bitferry {
   /// project version); "dev" when unresolved (e.g. running off the classes alone).
   public static final String VERSION = loadVersion();
 
+  /// The user-facing project home page shared by the frontends.
+  public static final String PROJECT_HOME = "https://bitferry.org";
+
   /// Current storage schema format version.
   public static final String STORAGE_VERSION = "0";
 

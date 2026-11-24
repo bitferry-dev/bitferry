@@ -1,9 +1,11 @@
 package org.bitferry.gui;
 
+import org.bitferry.Bitferry;
 import org.bitferry.Manager;
 import javafx.application.Platform;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.control.CheckBox;
+import javafx.scene.control.Hyperlink;
 import javafx.scene.control.MenuButton;
 import javafx.scene.layout.HBox;
 import javafx.stage.Stage;
@@ -104,6 +106,7 @@ class SimulationModeTest {
     AtomicReference<MainController> controllerRef = new AtomicReference<>();
     AtomicReference<CheckBox> simulateBoxRef = new AtomicReference<>();
     AtomicReference<CheckBox> verboseBoxRef = new AtomicReference<>();
+    AtomicReference<Hyperlink> homeSiteRef = new AtomicReference<>();
     AtomicReference<AppContext> contextRef = new AtomicReference<>();
     AtomicReference<Throwable> failure = new AtomicReference<>();
 
@@ -129,6 +132,10 @@ class SimulationModeTest {
         verbField.setAccessible(true);
         CheckBox verboseBox = (CheckBox) verbField.get(controller);
         verboseBoxRef.set(verboseBox);
+
+        var homeField = MainController.class.getDeclaredField("homeSite");
+        homeField.setAccessible(true);
+        homeSiteRef.set((Hyperlink) homeField.get(controller));
       } catch (Throwable t) {
         failure.set(t);
       } finally {
@@ -142,10 +149,14 @@ class SimulationModeTest {
     MainController controller = controllerRef.get();
     CheckBox simulate = simulateBoxRef.get();
     CheckBox verbose = verboseBoxRef.get();
+    Hyperlink homeSite = homeSiteRef.get();
     AppContext context = contextRef.get();
 
     assertNotNull(simulate, "simulate checkbox must be injected by FXML");
     assertNotNull(verbose, "verbose checkbox must be injected by FXML");
+    assertNotNull(homeSite, "project home hyperlink must be injected by FXML");
+    assertEquals(Bitferry.PROJECT_HOME, homeSite.getText());
+    assertEquals("https://bitferry.org", homeSite.getText());
     assertEquals("Simulate", simulate.getText());
 
     // Verify simulate is placed right alongside verbose in the same toolbar HBox

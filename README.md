@@ -240,6 +240,7 @@ bitferry --help
 
 ```
 Usage: bitferry [-hnqvV] [--debug] [--force] [COMMAND]
+Project home: https://bitferry.org
 File synchronization/backup automation tool.
       --debug     Be extra verbose (produce the most output including exception
                     traces).

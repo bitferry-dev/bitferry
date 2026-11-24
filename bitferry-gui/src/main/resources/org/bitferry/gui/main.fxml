@@ -57,9 +57,10 @@
       </CheckBox>
       <Region HBox.hgrow="ALWAYS"/>
       <!-- The info line riding the toolbar: the product identity and the project
-           home site (the host services open the link in the system browser) -->
+           home site (the controller supplies the shared URL; the host services open
+           the link in the system browser) -->
       <Label fx:id="infoLabel" text="bitferry" style="-fx-text-fill: #888888; -fx-font-size: 11px;"/>
-      <Hyperlink fx:id="homeSite" text="project home" onAction="#onHomeSite" style="-fx-font-size: 11px;"/>
+      <Hyperlink fx:id="homeSite" onAction="#onHomeSite" style="-fx-font-size: 11px;"/>
       <MenuButton fx:id="moreMenu" text="&#x22EE;" style="-fx-font-weight: bold;">
         <tooltip>
           <Tooltip text="More options"/>

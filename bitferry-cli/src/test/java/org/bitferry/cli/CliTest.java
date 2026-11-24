@@ -93,11 +93,16 @@ class CliTest {
   void helpFlagPrintsUsage() {
     int exitCode = cmd.execute("--help");
     assertEquals(0, exitCode);
-    assertTrue(out.toString().contains("Usage: bitferry"));
-    assertTrue(out.toString().contains("info"));
-    assertTrue(out.toString().contains("create"));
-    assertTrue(out.toString().contains("delete"));
-    assertTrue(out.toString().contains("execute"));
+    String help = out.toString();
+    assertTrue(help.contains("Usage: bitferry"));
+    assertTrue(help.contains("info"));
+    assertTrue(help.contains("create"));
+    assertTrue(help.contains("delete"));
+    assertTrue(help.contains("execute"));
+    int projectHome = help.indexOf("Project home: https://bitferry.org");
+    int description = help.indexOf("File synchronization/backup automation tool.");
+    assertTrue(projectHome >= 0);
+    assertTrue(description > projectHome, "the project home must precede the description");
   }
 
   @Test

@@ -28,6 +28,11 @@ public final class Main {
   public static CommandLine createCommandLine() {
     BitferryCommand root = new BitferryCommand();
     CommandLine cmd = new CommandLine(root);
+    String[] description = cmd.getCommandSpec().usageMessage().description();
+    String[] descriptionWithProjectHome = new String[description.length + 1];
+    descriptionWithProjectHome[0] = "Project home: " + Bitferry.PROJECT_HOME;
+    System.arraycopy(description, 0, descriptionWithProjectHome, 1, description.length);
+    cmd.getCommandSpec().usageMessage().description(descriptionWithProjectHome);
     cmd.setHelpFactory(VerboseHelp.INSTANCE);
     cmd.setExecutionExceptionHandler((ex, commandLine, parseResult) -> {
       if (ex instanceof BitferryError) {
