@@ -2,7 +2,7 @@
 
 <div align="right"><i>Ein Backup ist kein Backup</i></div><br><br>
 
-[Bitferry](https://github.com/bitferry-dev/bitferry) is a task-based file synchronization and backup automation tool built on top of [Rclone](https://rclone.org) and [Restic](https://restic.net) utilities.
+[Bitferry](https://bitferry.org) is a task-based file synchronization and backup automation tool built on top of [Rclone](https://rclone.org) and [Restic](https://restic.net) utilities.
 
 What makes Bitferry different from just running the backend tools directly is the way it tracks the data locations.
 
@@ -57,7 +57,7 @@ All in all, every such data route boils down to copying or synchronizing the con
 
 While the [Rclone](https://rclone.org) and [Restic](https://restic.net) themselves are great tools for local file synchronization and backup, typing the command lines to be executed in this case becomes tedious and error prone where the possible cost of error is a backup corruption due to wrong paths or misspelled flags.
 
-This is where [Bitferry](https://github.com/bitferry-dev/bitferry) comes in.
+This is where [Bitferry](https://bitferry.org) comes in.
 It is designed to automatize the Rclone and Restic operations by memorizing the task definitions and detecting the proper source and destination locations wherever they are, regardless of where the involved storages appear the next time.
 
 
