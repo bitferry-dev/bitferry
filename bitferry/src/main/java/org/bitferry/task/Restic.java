@@ -268,8 +268,13 @@ public abstract class Restic extends Task {
 
   /// Perform repository password conformance check against the existing repository.
   @Override
-  protected void conform() {
+  public void conform() {
     manager.backendExecutor().conform(this);
+  }
+
+  /// List snapshots in the task's repository.
+  public List<Snapshot> snapshots() {
+    return manager.backendExecutor().snapshots(this);
   }
 
   /// The endpoint holding the restic repository (the destination of the backup tasks,

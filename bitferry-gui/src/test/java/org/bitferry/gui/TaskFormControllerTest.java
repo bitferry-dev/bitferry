@@ -1,7 +1,9 @@
 package org.bitferry.gui;
 
+import org.bitferry.BitferryError;
 import org.bitferry.Manager;
 import org.bitferry.Volume;
+import org.bitferry.endpoint.Endpoint;
 import org.bitferry.endpoint.Endpoints;
 import org.bitferry.task.Backup;
 import org.bitferry.task.Copy;
@@ -19,10 +21,12 @@ import javafx.scene.control.TextField;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
@@ -112,6 +116,7 @@ class TaskFormControllerTest {
         assertFalse(present.contains("Password storage:"), present.toString());
         assertFalse(present.contains("Retention:"), present.toString());
         assertFalse(present.contains("Serve:"), present.toString());
+        assertFalse(present.contains("Snapshot scope:"), present.toString());
 
         // The backup layout: the retention/check/serve rows swap in for the rclone
         // operation rows (the encryption mode radios hide — restic keeps no crypt
@@ -129,6 +134,14 @@ class TaskFormControllerTest {
         assertTrue(present.contains("Retention:"), present.toString());
         assertTrue(present.contains("Check:"), present.toString());
         assertTrue(present.contains("Serve:"), present.toString());
+        assertFalse(present.contains("Snapshot scope:"), present.toString());
+
+        // The restore layout: snapshot scope swaps in, retention/serve hide
+        runFx(() -> typeField.getSelectionModel().select("restore"));
+        present = rowLabels(form);
+        assertTrue(present.contains("Snapshot scope:"), present.toString());
+        assertFalse(present.contains("Retention:"), present.toString());
+        assertFalse(present.contains("Serve:"), present.toString());
     }
 
     @Test
@@ -320,6 +333,9 @@ class TaskFormControllerTest {
         assertTrue(restoreType.isDisable());
         assertEquals("Repository:", restoreForm.sourceLabel());
         assertEquals("Destination:", restoreForm.destinationLabel());
+        ComboBox<String> scope = field(restoreForm, "snapshotScope");
+        assertFalse(scope.isDisable(), "snapshotScope should remain editable");
+        assertTrue(rowLabels(restoreForm).contains("Snapshot scope:"));
     }
 
   @Test
@@ -412,6 +428,214 @@ class TaskFormControllerTest {
         assertFalse(TaskFormController.EXCLUDE_PROFILES.containsKey("@common-temp"));
         assertFalse(TaskFormController.EXCLUDE_PROFILES.containsKey("@vcs"));
         assertFalse(TaskFormController.EXCLUDE_PROFILES.containsKey("@build"));
+    }
+
+    @Test
+    void restoreTaskFormCandidateDerivationAndSelection() throws Exception {
+        java.nio.file.Path repoDir = Files.createTempDirectory("bitferry-form-restore-repo");
+        java.nio.file.Path dstDir = Files.createTempDirectory("bitferry-form-restore-dst");
+        Endpoint repo = Endpoints.parse(manager, "local:" + repoDir);
+        Backup backup1 = new Backup(manager,
+            Endpoints.parse(manager, ":" + volume.tag() + ":data1"),
+            repo, "secret", false, null, null, null, null, List.of(), false);
+        manager.commit(backup1);
+
+        try {
+            // 1. New task form: when type is restore and repository matches, single candidate is auto-selected
+            TaskFormController form = load(null);
+            ComboBox<String> type = field(form, "type");
+            TextField source = field(form, "source");
+            TextField destination = field(form, "destination");
+            ComboBox<String> scope = field(form, "snapshotScope");
+
+            runFx(() -> {
+                type.getSelectionModel().select("restore");
+                source.setText("local:" + repoDir);
+                destination.setText("local:" + dstDir);
+            });
+
+            assertEquals(1, scope.getItems().size());
+            assertTrue(scope.getItems().get(0).startsWith(backup1.tag()));
+            assertEquals(scope.getItems().get(0), scope.getSelectionModel().getSelectedItem());
+            assertEquals(backup1.tag(), form.snapshotScope());
+
+            // 2. Clear explicit scope with "-"
+            runFx(() -> scope.getEditor().setText("-"));
+            assertEquals("-", form.snapshotScope());
+
+            // 3. Invalid scope fails validation
+            runFx(() -> scope.getEditor().setText("00000000"));
+            assertEquals("00000000", form.snapshotScope());
+            BitferryError err = assertThrows(BitferryError.class, form::validate);
+            assertTrue(err.getMessage().contains("does not name a live backup task"), err.getMessage());
+        } finally {
+            backup1.delete();
+            manager.commit();
+        }
+    }
+
+    @Test
+    void modifyRestoreTaskFormReflectsAndUpdatesSnapshotScope() throws Exception {
+        java.nio.file.Path repoDir = Files.createTempDirectory("bitferry-form-restore-modify-repo");
+        Endpoint repo = Endpoints.parse(manager, "local:" + repoDir);
+        Backup backup1 = new Backup(manager,
+            Endpoints.parse(manager, ":" + volume.tag() + ":mod-data1"),
+            repo, "secret", false, null, null, null, null, List.of(), false);
+        Backup backup2 = new Backup(manager,
+            Endpoints.parse(manager, ":" + volume.tag() + ":mod-data2"),
+            repo, "secret", false, null, null, null, null, List.of(), false);
+        manager.commit(backup1);
+        manager.commit(backup2);
+
+        Restore restore = new Restore(manager, repo,
+            Endpoints.parse(manager, ":" + volume.tag() + ":mod-restored"),
+            "secret", null, List.of(), List.of(), false, backup1.tag());
+        manager.commit(restore);
+
+        try {
+            TaskFormController form = load(restore);
+            ComboBox<String> scope = field(form, "snapshotScope");
+            assertFalse(scope.isDisable(), "snapshotScope should be editable in modify mode");
+            assertNotNull(scope.getValue());
+            assertTrue(scope.getValue().startsWith(backup1.tag()), "should reflect initial backup1 tag");
+            assertEquals(2, scope.getItems().size());
+
+            // Switch to backup2
+            runFx(() -> scope.setValue(backup2.tag()));
+            assertEquals(backup2.tag(), form.snapshotScope());
+            Dialogs.applyTaskModification(context, new LogController(), restore, form);
+            context.operations().submit(() -> {}).get(5, TimeUnit.SECONDS);
+            assertEquals(backup2.tag(), restore.snapshotTag());
+
+            // Clear scope with "-"
+            runFx(() -> scope.setValue("-"));
+            assertEquals("-", form.snapshotScope());
+            Dialogs.applyTaskModification(context, new LogController(), restore, form);
+            context.operations().submit(() -> {}).get(5, TimeUnit.SECONDS);
+            assertNull(restore.snapshotTag());
+        } finally {
+            restore.delete();
+            backup1.delete();
+            backup2.delete();
+            manager.commit();
+        }
+    }
+
+    @Test
+    void candidateTaskCreationValidatesPasswordBeforeFinalizing() throws Exception {
+        java.nio.file.Path repoDir = Files.createTempDirectory("bitferry-pw-check-repo");
+        Endpoint repo = Endpoints.parse(manager, "local:" + repoDir);
+        Backup backup = new Backup(manager,
+            Endpoints.parse(manager, ":" + volume.tag() + ":pw-src"),
+            repo, "correct-secret", false, null, null, null, null, List.of(), false);
+        manager.commit(backup);
+
+        try {
+            TaskFormController form = load(null);
+            ComboBox<String> type = field(form, "type");
+            TextField source = field(form, "source");
+            TextField destination = field(form, "destination");
+
+            runFx(() -> {
+                type.getSelectionModel().select("restore");
+                source.setText("local:" + repoDir);
+                destination.setText(":" + volume.tag() + ":pw-dst");
+            });
+
+            var settingsField = TaskFormController.class.getDeclaredField("settings");
+            settingsField.setAccessible(true);
+
+            // 1. Wrong password fails conformance probe
+            settingsField.set(form, new EncryptionSettings(null, "", "wrong-secret", "wrong-secret", "", "", false));
+            Task candidate = Dialogs.buildCandidateTask(context, form, null);
+            BitferryError err = assertThrows(BitferryError.class, candidate::conform);
+            assertTrue(err.getMessage().contains("does not accept the provided password"), err.getMessage());
+
+            // 2. Correct password passes conformance probe without dismissing or resetting the form
+            settingsField.set(form, new EncryptionSettings(null, "", "correct-secret", "correct-secret", "", "", false));
+            Task validCandidate = Dialogs.buildCandidateTask(context, form, null);
+            assertDoesNotThrow(validCandidate::conform);
+        } finally {
+            backup.delete();
+            manager.commit();
+        }
+    }
+
+    private static boolean available(String executable) {
+        String env = System.getenv(executable.toUpperCase());
+        String command = env != null && !env.isBlank() ? env : executable;
+        try {
+            Process process = new ProcessBuilder(command, "version").start();
+            return process.waitFor() == 0;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    @Test
+    void restoreDiscoversForeignRepositorySnapshotsWhenCorrectPasswordProvided() throws Exception {
+        Assumptions.assumeTrue(available("restic"), "restic not available");
+
+        Path foreignRepoDir = Files.createTempDirectory("bitferry-foreign-repo");
+        Path foreignSrcDir = Files.createTempDirectory("bitferry-foreign-src");
+        Files.writeString(foreignSrcDir.resolve("file.txt"), "data");
+
+        ProcessBuilder initPb = new ProcessBuilder("restic", "init", "-r", foreignRepoDir.toString());
+        initPb.environment().put("RESTIC_PASSWORD", "foreign-secret");
+        assertEquals(0, initPb.start().waitFor());
+
+        ProcessBuilder backupPb = new ProcessBuilder("restic", "-r", foreignRepoDir.toString(), "backup",
+            "--tag", "bitferry,foreign-task-42", foreignSrcDir.toString());
+        backupPb.environment().put("RESTIC_PASSWORD", "foreign-secret");
+        assertEquals(0, backupPb.start().waitFor());
+
+        TaskFormController form = load(null);
+        ComboBox<String> type = field(form, "type");
+        TextField source = field(form, "source");
+        TextField destination = field(form, "destination");
+        ComboBox<String> scope = field(form, "snapshotScope");
+
+        runFx(() -> {
+            type.getSelectionModel().select("restore");
+            source.setText("local:" + foreignRepoDir);
+            destination.setText(":" + volume.tag() + ":foreign-dst");
+        });
+
+        // 1. Without password, scope candidate list is empty
+        runFx(() -> {
+            try {
+                var m = TaskFormController.class.getDeclaredMethod("updateRestoreCandidates");
+                m.setAccessible(true);
+                m.invoke(form);
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        });
+        assertTrue(scope.getItems().isEmpty(), "No local candidates exist and no password provided yet");
+
+        // 2. Once password is provided in settings (simulating Security dialog exit), candidates are discovered
+        var settingsField = TaskFormController.class.getDeclaredField("settings");
+        settingsField.setAccessible(true);
+        settingsField.set(form, new EncryptionSettings(null, "", "foreign-secret", "foreign-secret", "", "", false));
+
+        runFx(() -> {
+            try {
+                var m = TaskFormController.class.getDeclaredMethod("updateRestoreCandidates");
+                m.setAccessible(true);
+                m.invoke(form);
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        });
+
+        assertFalse(scope.getItems().isEmpty(), "Foreign repository snapshots should be discovered");
+        assertTrue(scope.getItems().getFirst().startsWith("foreign-task-42"), scope.getItems().getFirst());
+        assertEquals("foreign-task-42", form.snapshotScope());
+
+        // 3. Candidate builds and conforms cleanly
+        Task candidate = Dialogs.buildCandidateTask(context, form, null);
+        assertDoesNotThrow(candidate::conform);
+        assertDoesNotThrow(form::validate);
     }
 
     // The helpers: the FXML controller is loaded through its factory, the private

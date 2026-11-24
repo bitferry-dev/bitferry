@@ -1,5 +1,8 @@
 package org.bitferry.task;
 
+import org.bitferry.Manager;
+import org.bitferry.endpoint.Endpoint;
+
 import java.lang.System.Logger.Level;
 import java.util.List;
 import java.util.function.*;
@@ -114,6 +117,16 @@ public interface Executor {
   /// Return the command lines about to execute for the restic task.
   default List<List<String>> commands(Restic task) {
     return commands((Task) task);
+  }
+
+  /// List snapshots in the repository of a restic task.
+  default List<Snapshot> snapshots(Restic task) {
+    return List.of();
+  }
+
+  /// List snapshots in the specified repository endpoint using the provided password.
+  default List<Snapshot> snapshots(Manager manager, Endpoint repository, String password) {
+    return List.of();
   }
 
   /// Perform service (integrity verification, snapshot retention, and garbage collection)

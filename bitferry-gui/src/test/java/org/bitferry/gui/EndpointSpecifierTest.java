@@ -57,4 +57,42 @@ class EndpointSpecifierTest {
     assertEquals("local:" + Bitferry.canonicalize(outside), specifier);
     assertInstanceOf(LocalEndpoint.class, Endpoints.parse(manager, specifier));
   }
+
+  @Test
+  void volumeSpecifierInsideSelectedVolumeResolvesToTagForm() {
+    Path inside = dir.resolve("outer").resolve("data");
+    String specifier = TaskFormController.volumeSpecifier(manager, outer, inside);
+    assertEquals(":" + outer.tag() + ":data", specifier);
+    VolumeEndpoint endpoint = (VolumeEndpoint) Endpoints.parse(manager, specifier);
+    assertEquals(outer.tag(), endpoint.vtag());
+  }
+
+  @Test
+  void volumeSpecifierAtVolumeRootResolvesToEmptySubpath() {
+    Path root = dir.resolve("outer");
+    String specifier = TaskFormController.volumeSpecifier(manager, outer, root);
+    assertEquals(":" + outer.tag() + ":", specifier);
+    VolumeEndpoint endpoint = (VolumeEndpoint) Endpoints.parse(manager, specifier);
+    assertEquals(outer.tag(), endpoint.vtag());
+  }
+
+  @Test
+  void volumeSpecifierNavigatedToSiblingVolumeResolvesToSiblingTagForm() throws Exception {
+    Files.createDirectories(dir.resolve("sibling"));
+    Volume sibling = Volume.create(manager, dir.resolve("sibling"));
+    Path siblingData = dir.resolve("sibling").resolve("sub");
+    // User started browse in 'outer', but navigated to 'sibling/sub'
+    String specifier = TaskFormController.volumeSpecifier(manager, outer, siblingData);
+    assertEquals(":" + sibling.tag() + ":sub", specifier);
+    VolumeEndpoint endpoint = (VolumeEndpoint) Endpoints.parse(manager, specifier);
+    assertEquals(sibling.tag(), endpoint.vtag());
+  }
+
+  @Test
+  void volumeSpecifierOutsideAllVolumesReturnsNull() {
+    Path outside = dir.resolve("plain");
+    // Does not silently fall back to local: returns null so browseVolume can warn and reject
+    String specifier = TaskFormController.volumeSpecifier(manager, outer, outside);
+    assertNull(specifier);
+  }
 }

@@ -99,4 +99,49 @@ class RestoreScopeTest {
     assertEquals(List.of(backup.tag()), Restore.scopeCandidates(manager, repoSymlink));
     assertEquals(backup.tag(), Restore.resolveSnapshotTag(manager, repoSymlink, backup.tag()));
   }
+
+  private static boolean available(String executable) {
+    String env = System.getenv(executable.toUpperCase());
+    String command = env != null && !env.isBlank() ? env : executable;
+    try {
+      Process process = new ProcessBuilder(command, "version").start();
+      return process.waitFor() == 0;
+    } catch (Exception e) {
+      return false;
+    }
+  }
+
+  @Test
+  void foreignRepositoryTagIsDiscoveredAndAcceptedWhenPresentInSnapshots() throws Exception {
+    Assumptions.assumeTrue(available("restic"), "restic not available");
+    Path repoDir = dir.resolve("foreign-repo");
+    Path dataDir = dir.resolve("foreign-data");
+    Files.createDirectories(dataDir);
+    Files.writeString(dataDir.resolve("sample.txt"), "hello foreign restore");
+
+    ProcessBuilder initPb = new ProcessBuilder("restic", "init", "-r", repoDir.toString());
+    initPb.environment().put("RESTIC_PASSWORD", "foreign-pass");
+    assertEquals(0, initPb.start().waitFor());
+
+    ProcessBuilder backupPb = new ProcessBuilder("restic", "-r", repoDir.toString(), "backup",
+      "--tag", "bitferry,foreign123", dataDir.toString());
+    backupPb.environment().put("RESTIC_PASSWORD", "foreign-pass");
+    assertEquals(0, backupPb.start().waitFor());
+
+    Manager manager = new Manager();
+    Endpoint repo = Endpoints.parse(manager, "local:" + repoDir);
+
+    // 1. Query repository snapshots
+    List<Snapshot> snapshots = Restore.repositorySnapshots(manager, repo, "foreign-pass");
+    assertEquals(1, snapshots.size());
+    Snapshot s = snapshots.getFirst();
+    assertTrue(s.tags().contains("bitferry"));
+    assertTrue(s.tags().contains("foreign123"));
+
+    // 2. resolveSnapshotTag accepts the foreign tag present in snapshots even when not registered in manager.tasks()
+    assertEquals("foreign123", Restore.resolveSnapshotTag(manager, repo, "foreign123", "foreign-pass"));
+
+    // 3. resolveSnapshotTag still rejects unknown tags not in manager and not in snapshots
+    assertThrows(BitferryError.class, () -> Restore.resolveSnapshotTag(manager, repo, "nosuch-foreign", "foreign-pass"));
+  }
 }

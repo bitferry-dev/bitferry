@@ -1,6 +1,8 @@
 package org.bitferry.task;
 
 import org.bitferry.*;
+import org.bitferry.endpoint.Endpoint;
+import tools.jackson.databind.JsonNode;
 import java.io.*;
 import java.lang.System.Logger.Level;
 import java.nio.ByteBuffer;
@@ -159,6 +161,59 @@ final class ResticExecutor {
 
   static boolean hasRepository(String repo) {
     return Files.isRegularFile(Path.of(repo).resolve("config"));
+  }
+
+  /// List snapshots in the repository of a restic task.
+  List<Snapshot> snapshots(Restic restic) {
+    return snapshots(restic.manager(), restic.repoEndpoint(), restic.password());
+  }
+
+  /// List snapshots in the specified repository endpoint using the provided password.
+  List<Snapshot> snapshots(Manager manager, Endpoint repository, String password) {
+    String repo = repository.processOpts();
+    if (!Files.isDirectory(Path.of(repo)) || !hasRepository(repo)) {
+      return List.of();
+    }
+    List<String> cmd = new ArrayList<>();
+    cmd.add(resolveExecutable());
+    cmd.add("-r");
+    cmd.add(repo);
+    cmd.add("snapshots");
+    cmd.add("--json");
+    cmd.addAll(commonOptions(manager));
+
+    Map<String, String> env = password != null && !password.isEmpty()
+      ? Map.of("RESTIC_PASSWORD", password)
+      : Map.of();
+
+    try {
+      ExecutorSupport.echoCommandLine(manager, cmd, null);
+      List<String> output = new ArrayList<>();
+      int exitCode = commandExecutor.execute(cmd, null, env, output::add);
+      if (exitCode != 0) {
+        throw new BitferryError("Failed to list snapshots for restic repository at " + repo);
+      }
+      String json = String.join("\n", output);
+      JsonNode root = Storage.mapper().readTree(json);
+      if (!root.isArray()) return List.of();
+      List<Snapshot> result = new ArrayList<>();
+      for (JsonNode node : root) {
+        String id = node.path("id").asText("");
+        String shortId = node.path("short_id").asText("");
+        String time = node.path("time").asText("");
+        String hostname = node.path("hostname").asText("");
+        String username = node.path("username").asText("");
+        List<String> paths = new ArrayList<>();
+        node.path("paths").forEach(p -> paths.add(p.asText()));
+        List<String> tags = new ArrayList<>();
+        node.path("tags").forEach(t -> tags.add(t.asText()));
+        result.add(new Snapshot(id, shortId, time, paths, hostname, username, tags));
+      }
+      return result;
+    } catch (IOException | InterruptedException e) {
+      if (e instanceof InterruptedException) Thread.currentThread().interrupt();
+      throw new BitferryError("Failed to read snapshots from restic repository at " + repo + ": " + e.getMessage(), e);
+    }
   }
 
   /// Change or update the repository password of a restic task, propagating the new

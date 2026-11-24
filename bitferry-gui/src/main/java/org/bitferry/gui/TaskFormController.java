@@ -1,6 +1,7 @@
 package org.bitferry.gui;
 
 import org.bitferry.*;
+import org.bitferry.endpoint.*;
 import org.bitferry.task.Backup;
 import org.bitferry.task.Copy;
 import org.bitferry.task.Equalize;
@@ -9,6 +10,7 @@ import org.bitferry.task.Replicate;
 import org.bitferry.task.Rclone;
 import org.bitferry.task.Restore;
 import org.bitferry.task.Restic;
+import org.bitferry.task.Snapshot;
 import org.bitferry.task.Task;
 import org.bitferry.task.Update;
 import org.bitferry.vault.Vault;
@@ -42,9 +44,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 
@@ -142,7 +146,7 @@ public final class TaskFormController {
   private Button browseDestinationVolume;
 
   @FXML
-  private TextField snapshotScope;
+  private ComboBox<String> snapshotScope;
   @FXML
   private TextField include;
 
@@ -268,16 +272,15 @@ public final class TaskFormController {
     // Visibility predicates re-evaluated on type changes
     BooleanSupplier restic = () -> "backup".equals(type()) || "restore".equals(type());
     BooleanSupplier backup = () -> "backup".equals(type());
-    // The snapshot scope rides the creation mode only: the edit mode keeps the
-    // existing task's scope (the endpoints are immutable there anyway)
-    BooleanSupplier restoreScope = () -> existing == null && "restore".equals(type());
+    // The snapshot scope rides the restore tasks (both creation and modification)
+    BooleanSupplier restoreScope = () -> "restore".equals(type());
     BooleanSupplier formatVisible = () -> existing == null && backup.getAsBoolean();
 
     rows.add(new Row(typeLabel, typeControl, () -> true));
     rows.add(new Row(sourceLabel, source.getParent(), () -> true));
     rows.add(new Row(destinationLabel, destination.getParent(), () -> true));
     // The restore snapshot scope: the source backup task whose snapshots the restore
-    // selects from (hidden unless a restore is being created)
+    // selects from
     rows.add(new Row(snapshotScopeLabel, snapshotScope, restoreScope));
     // The include control is disabled for the backup type: restic backup filters by
     // exclusion only, so the entered patterns would be silently ignored
@@ -362,8 +365,11 @@ public final class TaskFormController {
       loadDefaultProfiles();
       updateTypeDescription();
       updateEndpointLabels();
+      if ("restore".equals(now)) updateRestoreCandidates();
       relayout();
     });
+
+    source.textProperty().addListener((obs, was, now) -> updateRestoreCandidates());
 
     // The first relayout ran before the scene existed (the pre-CSS font measurement):
     // re-run it once the dialog shows, so the column widths land with the real metrics
@@ -461,6 +467,24 @@ public final class TaskFormController {
         }
         format.setDisable(true);
       }
+
+      if (existing instanceof Restore restore) {
+        updateRestoreCandidates();
+        String curTag = restore.snapshotTag();
+        if (curTag != null) {
+          String match = snapshotScope.getItems().stream()
+            .filter(item -> item.startsWith(curTag + " ") || item.equals(curTag))
+            .findFirst()
+            .orElse(curTag);
+          snapshotScope.setValue(match);
+        } else {
+          snapshotScope.setValue("");
+        }
+      }
+    }
+
+    if (existing == null) {
+      updateRestoreCandidates();
     }
 
     // The new-task option entries start from the operation's default profiles
@@ -556,11 +580,13 @@ public final class TaskFormController {
       ? volume.root().toFile() : new File(System.getProperty("user.home"));
     File chosen = browseDirectory(field, start, "Select the directory within volume " + volume.tag());
     if (chosen == null) return;
-    Path root = volume.root();
-    Path path = chosen.toPath();
-    field.setText(path.startsWith(root)
-      ? ":" + volume.tag() + ":" + root.relativize(path).toString().replace('\\', '/')
-      : path.toString());
+    String specifier = volumeSpecifier(context.manager(), volume, chosen.toPath());
+    if (specifier != null) {
+      field.setText(specifier);
+    } else {
+      Dialogs.alert(context, javafx.scene.control.Alert.AlertType.WARNING, "Outside volumes",
+        "The selected directory is outside any registered Bitferry volume. Please select a directory inside a volume, or use the 'Local' button to select an unmanaged directory.");
+    }
   }
 
   private void editList(TextField field, String title, String header, Supplier<Map<String, List<String>>> profilesSupplier) {
@@ -605,6 +631,30 @@ public final class TaskFormController {
     } catch (BitferryError e) {
       return "local:" + canonical;
     }
+  }
+
+  /// The volume endpoint specifier for the browsed directory: the volume-relative
+  /// ':tag:path' specifier when the directory is encompassed by the selected volume,
+  /// or by any other registered volume when navigated outside it. Returns null when
+  /// the directory resides outside all registered volumes.
+  static String volumeSpecifier(Manager manager, Volume volume, Path chosen) {
+    Path canonical = Bitferry.canonicalize(chosen);
+    Path root = Bitferry.canonicalize(volume.root());
+    if (canonical.startsWith(root)) {
+      Path rel = root.relativize(canonical);
+      String relStr = rel.toString().replace('\\', '/');
+      return ":" + volume.tag() + ":" + (".".equals(relStr) ? "" : relStr);
+    }
+    try {
+      Endpoint ep = manager.endpoint(canonical);
+      if (ep instanceof VolumeEndpoint ve) {
+        String p = ve.path();
+        return ":" + ve.vtag() + ":" + (".".equals(p) ? "" : p);
+      }
+    } catch (BitferryError ignored) {
+      // Outside any registered volume
+    }
+    return null;
   }
 
   private Map<String, List<String>> executeProfiles() {
@@ -712,7 +762,12 @@ public final class TaskFormController {
       existing == null
         ? "Configure the encryption and the password storage of the new task"
         : "Manage the encryption and the password storage of task " + existing.tag(),
-      dialog).ifPresent(s -> settings = s);
+      dialog).ifPresent(s -> {
+        settings = s;
+        if ("restore".equals(type())) {
+          updateRestoreCandidates();
+        }
+      });
   }
 
   @FXML
@@ -771,9 +826,123 @@ public final class TaskFormController {
     return destination.getText().trim();
   }
 
-  /// The restore snapshot scope: the source backup task tag (blank = auto-derive).
+  /// The restore snapshot scope: the source backup task tag (blank = auto-derive, '-' = clear/repo-wide).
   String snapshotScope() {
-    return snapshotScope.getText().trim();
+    String value = snapshotScope.getEditor().getText();
+    if (value == null || value.isBlank()) {
+      value = snapshotScope.getValue();
+    }
+    if (value == null || value.isBlank()) return "";
+    value = value.trim();
+    if (value.startsWith("(") || "-".equals(value)) {
+      return "-";
+    }
+    return value.split("\\s+")[0];
+  }
+
+  private static String formatSnapshotTime(String iso) {
+    if (iso == null || iso.isEmpty()) return "";
+    try {
+      var odt = java.time.OffsetDateTime.parse(iso);
+      return odt.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"));
+    } catch (Exception e) {
+      return iso.length() >= 16 ? iso.substring(0, 16).replace('T', ' ') : iso;
+    }
+  }
+
+  /// Refresh the candidate backup tasks serving the current repository endpoint.
+  private void updateRestoreCandidates() {
+    if (context == null || !"restore".equals(type())) return;
+    Endpoint repo = null;
+    if (existing instanceof Restore restore) {
+      repo = restore.source();
+    } else {
+      String srcText = source.getText().trim();
+      if (srcText.isEmpty()) {
+        snapshotScope.getItems().clear();
+        return;
+      }
+      try {
+        repo = Endpoints.parse(context.manager(), srcText);
+      } catch (Exception e) {
+        if (srcText.startsWith("/") || srcText.matches("^[a-zA-Z]:[/\\\\].*")) {
+          try {
+            repo = new LocalEndpoint(java.nio.file.Path.of(srcText));
+          } catch (Exception ignored) {
+            return;
+          }
+        } else {
+          return;
+        }
+      }
+    }
+    List<String> candidates = Restore.scopeCandidates(context.manager(), repo);
+    List<String> items = new ArrayList<>();
+    Set<String> seenTags = new HashSet<>(candidates);
+    for (String cTag : candidates) {
+      Task t = context.manager().tasks().get(cTag);
+      String label = (t instanceof Backup b)
+        ? cTag + " (backup " + b.source().describe() + " → " + b.destination().describe() + ")"
+        : cTag;
+      items.add(label);
+    }
+
+    String pwd = password();
+    if ((pwd == null || pwd.isEmpty()) && existing instanceof Restore restore) {
+      try {
+        pwd = restore.password();
+      } catch (Exception ignored) {}
+    }
+    if (pwd != null && !pwd.isEmpty() && repo != null) {
+      try {
+        List<Snapshot> snapshots = Restore.repositorySnapshots(context.manager(), repo, pwd);
+        Map<String, Snapshot> tagToLatestSnapshot = new LinkedHashMap<>();
+        List<Snapshot> untagged = new ArrayList<>();
+        for (Snapshot s : snapshots) {
+          List<String> nonMarkerTags = s.tags().stream()
+            .filter(tag -> !Tags.MARKER.equals(tag))
+            .toList();
+          if (nonMarkerTags.isEmpty()) {
+            untagged.add(s);
+          } else {
+            for (String t : nonMarkerTags) {
+              tagToLatestSnapshot.putIfAbsent(t, s);
+            }
+          }
+        }
+        for (var entry : tagToLatestSnapshot.entrySet()) {
+          String tag = entry.getKey();
+          if (seenTags.add(tag)) {
+            Snapshot s = entry.getValue();
+            String pathDesc = s.paths().isEmpty() ? "" : String.join(", ", s.paths());
+            String hostDesc = s.hostname() != null && !s.hostname().isEmpty() ? " on " + s.hostname() : "";
+            String timeDesc = formatSnapshotTime(s.time());
+            String label = tag + " (backup " + pathDesc + hostDesc + (timeDesc.isEmpty() ? "" : ", latest: " + timeDesc) + ")";
+            items.add(label);
+          }
+        }
+        for (Snapshot s : untagged) {
+          String sId = s.shortId() != null && !s.shortId().isEmpty() ? s.shortId() : s.id();
+          if (sId != null && !sId.isEmpty() && seenTags.add(sId)) {
+            String pathDesc = s.paths().isEmpty() ? "" : String.join(", ", s.paths());
+            String hostDesc = s.hostname() != null && !s.hostname().isEmpty() ? " on " + s.hostname() : "";
+            String timeDesc = formatSnapshotTime(s.time());
+            String label = sId + " (snapshot " + pathDesc + hostDesc + (timeDesc.isEmpty() ? "" : ", " + timeDesc) + ")";
+            items.add(label);
+          }
+        }
+      } catch (Exception ignored) {
+        // Failed probe or incorrect password silently skips repository snapshot discovery
+      }
+    }
+
+    String current = snapshotScope();
+    snapshotScope.getItems().setAll(items);
+    if (existing == null) {
+      if (items.size() == 1 && (current.isEmpty() || !seenTags.contains(current))) {
+        snapshotScope.getSelectionModel().select(0);
+      }
+    }
   }
 
   String include() {
@@ -872,14 +1041,21 @@ public final class TaskFormController {
   void validate() {
     if (source().isEmpty()) throw new BitferryError("Source endpoint must be specified");
     if (destination().isEmpty()) throw new BitferryError("Destination endpoint must be specified");
-    if (existing == null) {
-      // The snapshot scope must name a live backup task when specified (the blank
-      // scope auto-derives; the ambiguity surfaces on the apply)
-      if (resticMode() && "restore".equals(type()) && !snapshotScope().isEmpty()) {
-        if (!(context.manager().tasks().get(snapshotScope()) instanceof Backup backup) || backup.isDeleted()) {
-          throw new BitferryError("Snapshot scope " + snapshotScope() + " does not name a live backup task");
-        }
+    // The snapshot scope must name a live backup task or discovered repository snapshot
+    if (resticMode() && "restore".equals(type()) && !snapshotScope().isEmpty() && !"-".equals(snapshotScope())) {
+      Endpoint repo = null;
+      try {
+        repo = Endpoints.parse(context.manager(), source());
+      } catch (Exception ignored) {}
+      String pwd = password();
+      if ((pwd == null || pwd.isEmpty()) && existing instanceof Restore restore) {
+        try {
+          pwd = restore.password();
+        } catch (Exception ignored) {}
       }
+      Restore.resolveSnapshotTag(context.manager(), repo, snapshotScope(), pwd);
+    }
+    if (existing == null) {
       // The repository password rides the security dialog: the form only guards the
       // skipped-dialog path (the dialog itself enforces the pair and the match)
       if (resticMode() && settings.password().isEmpty()) {

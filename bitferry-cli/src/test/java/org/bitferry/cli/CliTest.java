@@ -1551,6 +1551,8 @@ class CliTest {
     assertTrue(rBreakdown.contains("Repository:"));
     assertTrue(rBreakdown.contains("Destination:"));
     assertTrue(rBreakdown.contains("Vault Volume:  " + vtag));
+    assertTrue(rBreakdown.contains("Snapshot Scope:"));
+    assertTrue(rBreakdown.contains(backupTag));
     assertTrue(rBreakdown.contains("# Commands"));
     assertTrue(rBreakdown.contains("Execute:"));
     assertTrue(rBreakdown.contains("restic restore"));

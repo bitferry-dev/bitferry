@@ -516,7 +516,7 @@ public abstract class Task {
   protected void format() {}
 
   /// Perform the encryption and backend target conformance validation against existing data.
-  protected void conform() {}
+  public void conform() {}
 
   /// Publish credentials staged by a newly created task. The credential-bearing
   /// operations override this; the other tasks have no external credential state.

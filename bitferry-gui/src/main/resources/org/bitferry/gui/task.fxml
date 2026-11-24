@@ -97,11 +97,11 @@
         </HBox>
 
         <Label fx:id="snapshotScopeLabel" text="Snapshot scope:" style="-fx-text-fill: #222222;"/>
-        <TextField fx:id="snapshotScope" promptText="source backup task tag (optional)" HBox.hgrow="ALWAYS">
+        <ComboBox fx:id="snapshotScope" editable="true" promptText="source backup task tag (optional)" maxWidth="Infinity" HBox.hgrow="ALWAYS">
           <tooltip>
             <Tooltip text="The source backup task whose snapshots the restore selects from (the newest of that task's snapshots). Left empty, derived automatically when the repository is served by exactly one backup task; otherwise the newest bitferry-tagged snapshot repo-wide is selected"/>
           </tooltip>
-        </TextField>
+        </ComboBox>
 
         <Label fx:id="includeLabel" text="Include:" style="-fx-text-fill: #222222;"/>
         <HBox fx:id="includeControl" spacing="6">

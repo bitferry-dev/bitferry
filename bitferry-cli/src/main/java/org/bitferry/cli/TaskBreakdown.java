@@ -49,6 +49,19 @@ public final class TaskBreakdown {
       appendProperty(sb, "Vault Volume:", vault);
     }
 
+    if (task instanceof Restore restore) {
+      String scope = restore.snapshotTag();
+      if (scope != null) {
+        Task backup = task.manager().tasks().get(scope);
+        String desc = backup != null
+          ? Ansi.AUTO.string(String.format("@|cyan %s|@ (%s)", scope, backup.describe()))
+          : Ansi.AUTO.string(String.format("@|cyan %s|@", scope));
+        appendProperty(sb, "Snapshot Scope:", desc);
+      } else {
+        appendProperty(sb, "Snapshot Scope:", "(default: repo-wide newest)");
+      }
+    }
+
     if (task.mtime() != null) {
       String modified = String.format("%s (generation %d)",
         task.mtime().atZoneSameInstant(ZoneOffset.UTC).format(ISO_FMT),

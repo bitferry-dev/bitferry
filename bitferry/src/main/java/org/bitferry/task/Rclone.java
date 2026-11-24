@@ -228,7 +228,7 @@ public abstract class Rclone extends Task implements IncludeFilters {
 
   /// Perform candidate encryption options conformance test against existing backend data.
   @Override
-  protected void conform() {
+  public void conform() {
     manager.backendExecutor().conform(this);
   }
 

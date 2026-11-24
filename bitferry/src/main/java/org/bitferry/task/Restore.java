@@ -102,21 +102,48 @@ public class Restore extends Restic implements IncludeFilters {
       .toList();
   }
 
+  /// Query the repository directly using the provided password to discover snapshot scopes
+  /// (tags and untagged snapshot IDs present in the repository).
+  public static List<Snapshot> repositorySnapshots(Manager manager, Endpoint repository, String password) {
+    if (manager == null || repository == null || password == null || password.isEmpty()) {
+      return List.of();
+    }
+    return manager.backendExecutor().snapshots(manager, repository, password);
+  }
+
   /// Resolve the snapshot scope of a new restore task: the explicit request must name
-  /// a live backup task; the blank request auto-derives the backup task bound to the
-  /// specified repository. Returns null when nothing scopes the restore (the repo-wide
-  /// newest marker-tagged snapshot is selected at the run time). Raises [BitferryError]
-  /// when the requested tag does not name a live backup task or the derivation is
-  /// ambiguous (multiple co-repository backup tasks).
+  /// a live backup task or a snapshot present in the repository; the blank request auto-derives
+  /// the backup task bound to the specified repository. Returns null when nothing scopes the restore
+  /// (the repo-wide newest marker-tagged snapshot is selected at the run time). Raises [BitferryError]
+  /// when the requested tag names an invalid local task or is missing from both local tasks and the repository,
+  /// or when derivation is ambiguous.
   public static String resolveSnapshotTag(Manager manager, Endpoint repository, String requested) {
+    return resolveSnapshotTag(manager, repository, requested, null);
+  }
+
+  /// Resolve the snapshot scope of a new restore task, validating against both local tasks
+  /// and the repository snapshots using the provided repository password.
+  public static String resolveSnapshotTag(Manager manager, Endpoint repository, String requested, String password) {
     if (requested != null && !requested.isBlank()) {
       String tag = requested.trim();
-      if (!(manager.tasks().get(tag) instanceof Backup backup) || backup.isDeleted()) {
-        throw new BitferryError("Snapshot scope " + tag + " does not name a live backup task");
+      Task t = manager.tasks().get(tag);
+      if (t != null) {
+        if (!(t instanceof Backup backup) || backup.isDeleted()) {
+          throw new BitferryError("Snapshot scope " + tag + " does not name a live backup task");
+        }
+        if (repository != null && !Restic.sameRepository(backup.destination().processOpts(), repository.processOpts())) {
+          throw new BitferryError("Backup task " + tag + " targets repository " + backup.destination().describe()
+            + " and does not match restore repository " + repository.describe());
+        }
+        return tag;
       }
-      if (!Restic.sameRepository(backup.destination().processOpts(), repository.processOpts())) {
-        throw new BitferryError("Backup task " + tag + " targets repository " + backup.destination().describe()
-          + " and does not match restore repository " + repository.describe());
+      boolean inRepo = false;
+      try {
+        inRepo = repositorySnapshots(manager, repository, password).stream()
+          .anyMatch(s -> s.tags().contains(tag) || tag.equals(s.shortId()) || tag.equals(s.id()));
+      } catch (Exception ignored) {}
+      if (!inRepo) {
+        throw new BitferryError("Snapshot scope " + tag + " does not name a live backup task");
       }
       return tag;
     }
@@ -155,7 +182,7 @@ public class Restore extends Restic implements IncludeFilters {
   /// The conformance dispatch: the override makes the call land on the executor's
   /// restore slot (the static type of `this` decides the overload).
   @Override
-  protected void conform() {
+  public void conform() {
     manager.backendExecutor().conform(this);
   }
 

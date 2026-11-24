@@ -1,5 +1,8 @@
 package org.bitferry.task;
 
+import org.bitferry.Manager;
+import org.bitferry.endpoint.Endpoint;
+
 import java.lang.System.Logger.Level;
 import java.nio.file.Path;
 import java.util.List;
@@ -99,6 +102,16 @@ public class SystemExecutor implements Executor {
   @Override
   public List<String> passwd(Restic restic, String newPassword) {
     return resticExecutor.passwd(restic, newPassword);
+  }
+
+  @Override
+  public List<Snapshot> snapshots(Restic restic) {
+    return resticExecutor.snapshots(restic);
+  }
+
+  @Override
+  public List<Snapshot> snapshots(Manager manager, Endpoint repository, String password) {
+    return resticExecutor.snapshots(manager, repository, password);
   }
 
   @Override

@@ -6,6 +6,8 @@ import org.bitferry.task.*;
 import org.bitferry.vault.KeyringVault;
 import javafx.application.Platform;
 import javafx.geometry.*;
+import javafx.scene.Cursor;
+import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.stage.DirectoryChooser;
 import javafx.stage.Screen;
@@ -203,20 +205,77 @@ final class Dialogs {
     });
     // The validation rides on the OK button's action filter: a failing form keeps
     // the dialog open with the typed input intact (the post-close validation would
-    // discard everything the user typed)
+    // discard everything the user typed). The pre-flight check validates the candidate
+    // task and runs backend conformance (probes password / salt against existing repositories
+    // or encrypted remotes) before the dialog can dismiss.
     Button ok = (Button) dialog.getDialogPane().lookupButton(ButtonType.OK);
     ok.addEventFilter(javafx.event.ActionEvent.ACTION, event -> {
+      Scene scene = dialog.getDialogPane().getScene();
+      Cursor prevCursor = scene != null ? scene.getCursor() : null;
+      if (scene != null) scene.setCursor(Cursor.WAIT);
       try {
         form.validate();
+        if (task == null) {
+          Task candidate = buildCandidateTask(context, form, null);
+          candidate.conform();
+        }
       } catch (BitferryError e) {
-        alert(context, Alert.AlertType.ERROR, "Invalid form", e.getMessage());
+        alert(context, Alert.AlertType.ERROR, "Validation failed", e.getMessage());
         event.consume();
+      } finally {
+        if (scene != null) scene.setCursor(prevCursor);
       }
     });
     dialog.showAndWait().filter(ButtonType.OK::equals).ifPresent(x -> {
       if (task == null) createTask(context, logs, form);
       else applyTaskModification(context, logs, task, form);
     });
+  }
+
+  // Build a candidate task instance from the form entries (pre-commit validation and creation)
+  static Task buildCandidateTask(AppContext context, TaskFormController form, LogController logs) {
+    Manager manager = context.manager();
+    Endpoint source = Endpoints.parse(manager, form.source());
+    Endpoint destination = Endpoints.parse(manager, form.destination());
+    Task existing = manager.findTask(source, destination);
+    if (existing != null) throw new BitferryError("Task " + existing.tag() + " already covers " + existing.describe());
+    List<String> include = patterns(form.include());
+    List<String> exclude = patterns(form.exclude());
+    String execute = form.execute();
+    boolean keyring = form.keyring();
+    Task task = switch (form.type()) {
+      case "copy" -> new Copy(manager, source, destination, execute, include, exclude);
+      case "update" -> new Update(manager, source, destination, execute, include, exclude);
+      case "replicate" -> new Replicate(manager, source, destination, execute, include, exclude);
+      case "equalize" -> new Equalize(manager, source, destination, execute, include, exclude);
+      // The backup carries no include filters (the capability is structurally
+      // absent - restic backup filters by exclusion only)
+      case "backup" -> new Backup(manager, source, destination, form.password(), form.format(),
+        execute, form.forget(), form.check(), form.serve(), exclude, keyring);
+      // The restore resolves its snapshot scope first: the explicit (or uniquely
+      // derived) source backup task whose snapshots it selects from - on a shared
+      // (co-repository) repository the repo-wide fallback would restore whichever
+      // sibling task's data is the newest
+      case "restore" -> {
+        String requested = form.snapshotScope();
+        String scope = Restore.resolveSnapshotTag(manager, source, "-".equals(requested) ? null : requested, form.password());
+        if (logs != null) {
+          logs.log(scope == null
+            ? "No backup task bound to the repository found; the restore will select the newest bitferry-tagged snapshot repo-wide"
+            : "Restore snapshot scope: backup task " + scope);
+        }
+        yield new Restore(manager, source, destination, form.password(), execute, include, exclude, keyring, scope);
+      }
+      default -> throw new BitferryError("Unknown task type " + form.type());
+    };
+    if (form.encryption() != null && task.supportsEncryption()) {
+      task.setEncryption(form.encryption(), form.password(), form.salt(), Rclone.Encryption.options(form.profile()), keyring);
+    }
+    task.setManual(form.manual());
+    if (manager.volumes().values().stream().noneMatch(v -> task.refersVolume(v.tag()))) {
+      throw new BitferryError("Task does not belong to any registered volume; it cannot be persisted");
+    }
+    return task;
   }
 
   // Run the task creation on the operations thread; the task registers itself
@@ -227,44 +286,8 @@ final class Dialogs {
       Task task = null;
       Manager manager = context.manager();
       try {
-        Endpoint source = Endpoints.parse(manager, form.source());
-        Endpoint destination = Endpoints.parse(manager, form.destination());
-        Task existing = manager.findTask(source, destination);
-        if (existing != null) throw new BitferryError("Task " + existing.tag() + " already covers " + existing.describe());
-        List<String> include = patterns(form.include());
-        List<String> exclude = patterns(form.exclude());
-        String execute = form.execute();
-        boolean keyring = form.keyring();
-        task = switch (form.type()) {
-          case "copy" -> new Copy(manager, source, destination, execute, include, exclude);
-          case "update" -> new Update(manager, source, destination, execute, include, exclude);
-          case "replicate" -> new Replicate(manager, source, destination, execute, include, exclude);
-          case "equalize" -> new Equalize(manager, source, destination, execute, include, exclude);
-          // The backup carries no include filters (the capability is structurally
-          // absent - restic backup filters by exclusion only)
-          case "backup" -> new Backup(manager, source, destination, form.password(), form.format(),
-            execute, form.forget(), form.check(), form.serve(), exclude, keyring);
-          // The restore resolves its snapshot scope first: the explicit (or uniquely
-          // derived) source backup task whose snapshots it selects from - on a shared
-          // (co-repository) repository the repo-wide fallback would restore whichever
-          // sibling task's data is the newest
-          case "restore" -> {
-            String scope = Restore.resolveSnapshotTag(manager, source, form.snapshotScope());
-            logs.log(scope == null
-              ? "No backup task bound to the repository found; the restore will select the newest bitferry-tagged snapshot repo-wide"
-              : "Restore snapshot scope: backup task " + scope);
-            yield new Restore(manager, source, destination, form.password(), execute, include, exclude, keyring, scope);
-          }
-          default -> throw new BitferryError("Unknown task type " + form.type());
-        };
-        if (form.encryption() != null && task.supportsEncryption()) {
-          task.setEncryption(form.encryption(), form.password(), form.salt(), Rclone.Encryption.options(form.profile()), keyring);
-        }
-        task.setManual(form.manual());
+        task = buildCandidateTask(context, form, logs);
         Task candidate = task;
-        if (manager.volumes().values().stream().noneMatch(v -> candidate.refersVolume(v.tag()))) {
-          throw new BitferryError("Task does not belong to any registered volume; it cannot be persisted");
-        }
         manager.commit(task);
         // The simulated creation writes nothing (the storages hold no such task) and
         // skips the backend initialization (the restic repository init): say so instead
@@ -273,7 +296,7 @@ final class Dialogs {
         logs.log(manager.simulate
           ? "Task " + AnsiFormat.tag(candidate.tag()) + " creation simulated (nothing was written, repository not initialized; run with the simulation mode off to create the task for real): " + AnsiFormat.task(candidate)
           : "Task " + AnsiFormat.tag(candidate.tag()) + " created: " + AnsiFormat.task(candidate));
-        if (keyring && candidate.usesVault()) {
+        if (form.keyring() && candidate.usesVault()) {
           if (!KeyringVault.INSTANCE.available()) {
             logs.log("Password kept in the volume vault (no usable OS keyring on the host)");
           } else {
@@ -295,7 +318,7 @@ final class Dialogs {
   }
 
   // Apply modifications to an existing task on the operations thread
-  private static void applyTaskModification(AppContext context, LogController logs, Task task, TaskFormController form) {
+  static void applyTaskModification(AppContext context, LogController logs, Task task, TaskFormController form) {
     context.operations().execute(() -> {
       Manager manager = context.manager();
       try {
@@ -340,6 +363,22 @@ final class Dialogs {
 
         // Backup retention, check, and cadence options
         current.applyPolicyOptions(form.forget(), form.check(), form.serve());
+
+        // Restore snapshot scope re-selection: '-' clears the explicit scope (the
+        // default derived selection applies at run time); the explicit tag must name
+        // a live backup task matching the repository
+        if (current instanceof Restore restore) {
+          String requested = form.snapshotScope();
+          String pwd = form.password();
+          if (pwd == null || pwd.isEmpty()) {
+            try {
+              pwd = restore.password();
+            } catch (Exception ignored) {}
+          }
+          restore.setSnapshotTag("-".equals(requested)
+            ? null
+            : Restore.resolveSnapshotTag(manager, restore.source(), requested.isEmpty() ? null : requested, pwd));
+        }
 
         // The manual flag (the mass-run participation): the dialog checkbox is the
         // editor (the grid checkbox mirrors it)

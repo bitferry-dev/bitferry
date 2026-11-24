@@ -175,7 +175,7 @@ public class Backup extends Restic {
   /// The conformance dispatch: the override makes the call land on the executor's
   /// backup slot (the static type of `this` decides the overload).
   @Override
-  protected void conform() {
+  public void conform() {
     manager.backendExecutor().conform(this);
   }
 
