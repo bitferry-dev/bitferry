@@ -266,6 +266,7 @@ public final class TasksController {
       rows.stream().filter(r -> r.task.tag().equals(selectedTag)).findFirst()
         .ifPresent(r -> table.getSelectionModel().select(r));
     }
+    updateButtons();
   }
 
   /// Lock/unlock the management actions (a run is in progress).
@@ -279,15 +280,17 @@ public final class TasksController {
   }
 
   private void updateButtons() {
-    boolean none = selected() == null;
+    Row row = selected();
+    boolean none = row == null;
+    boolean stale = none || !row.task.isIntact();
     create.setDisable(locked);
     massAll.setDisable(locked);
     massNone.setDisable(locked);
     massInvert.setDisable(locked);
     modify.setDisable(locked || none);
-    execute.setDisable(locked || none);
-    serve.setDisable(locked || none);
-    repair.setDisable(locked || none);
+    execute.setDisable(locked || stale);
+    serve.setDisable(locked || stale);
+    repair.setDisable(locked || stale);
     delete.setDisable(locked || none);
   }
 
@@ -348,14 +351,14 @@ public final class TasksController {
   @FXML
   private void onExecute() {
     Row row = selected();
-    if (row == null || locked) return;
+    if (row == null || locked || !row.task.isIntact()) return;
     runStarter.start(List.of(row.task.tag()), false);
   }
 
   @FXML
   private void onServe() {
     Row row = selected();
-    if (row == null || locked) return;
+    if (row == null || locked || !row.task.isIntact()) return;
     runStarter.start(List.of(row.task.tag()), true);
   }
 
@@ -365,7 +368,7 @@ public final class TasksController {
   @FXML
   private void onRepair() {
     Row row = selected();
-    if (row == null || locked) return;
+    if (row == null || locked || !row.task.isIntact()) return;
     Dialogs.repairTask(context, logs, row.task);
   }
 

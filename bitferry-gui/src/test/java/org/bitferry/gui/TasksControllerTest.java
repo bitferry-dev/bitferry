@@ -224,4 +224,95 @@ class TasksControllerTest {
         });
         assertTrue(done.await(5, TimeUnit.SECONDS));
     }
+
+    @Test
+    void perTaskButtonsDisableForStaleTasksExceptDelete() throws Exception {
+        Task intactTask = new Copy(manager,
+            Endpoints.parse(manager, "local:" + localDir),
+            Endpoints.parse(manager, ":" + volume.tag() + ":buttons-intact"),
+            null, List.of(), List.of());
+        Task staleTask = new Replicate(manager,
+            new VolumeEndpoint(manager, "missing_vol_for_buttons", "sub"),
+            Endpoints.parse(manager, ":" + volume.tag() + ":buttons-stale"),
+            null, List.of(), List.of());
+        manager.registerTask(intactTask);
+        manager.registerTask(staleTask);
+
+        CountDownLatch done = new CountDownLatch(1);
+        java.util.concurrent.atomic.AtomicInteger runs = new java.util.concurrent.atomic.AtomicInteger();
+        Platform.runLater(() -> {
+            try {
+                FXMLLoader loader = new FXMLLoader(getClass().getResource("/org/bitferry/gui/tasks.fxml"));
+                loader.load();
+                TasksController controller = loader.getController();
+                controller.init(context, new LogController(), (tags, serve) -> runs.incrementAndGet());
+                controller.refresh(manager);
+
+                @SuppressWarnings("unchecked")
+                var table = (javafx.scene.control.TableView<TasksController.Row>) field(controller, "table");
+                var modify = (javafx.scene.control.Button) field(controller, "modify");
+                var execute = (javafx.scene.control.Button) field(controller, "execute");
+                var serve = (javafx.scene.control.Button) field(controller, "serve");
+                var repair = (javafx.scene.control.Button) field(controller, "repair");
+                var delete = (javafx.scene.control.Button) field(controller, "delete");
+
+                // No selection: all per-task buttons disabled
+                table.getSelectionModel().clearSelection();
+                assertTrue(modify.isDisable());
+                assertTrue(execute.isDisable());
+                assertTrue(serve.isDisable());
+                assertTrue(repair.isDisable());
+                assertTrue(delete.isDisable());
+
+                // Intact selection: all per-task buttons enabled
+                TasksController.Row intactRow = table.getItems().stream()
+                    .filter(r -> r.task == intactTask).findFirst().orElseThrow();
+                table.getSelectionModel().select(intactRow);
+                assertFalse(modify.isDisable());
+                assertFalse(execute.isDisable());
+                assertFalse(serve.isDisable());
+                assertFalse(repair.isDisable());
+                assertFalse(delete.isDisable());
+
+                // Stale selection: execute/serve/repair disabled; modify and delete stay enabled
+                TasksController.Row staleRow = table.getItems().stream()
+                    .filter(r -> r.task == staleTask).findFirst().orElseThrow();
+                table.getSelectionModel().select(staleRow);
+                assertFalse(modify.isDisable());
+                assertTrue(execute.isDisable());
+                assertTrue(serve.isDisable());
+                assertTrue(repair.isDisable());
+                assertFalse(delete.isDisable());
+
+                // Handlers ignore stale selection if invoked directly
+                var onExec = TasksController.class.getDeclaredMethod("onExecute");
+                onExec.setAccessible(true);
+                onExec.invoke(controller);
+                var onServe = TasksController.class.getDeclaredMethod("onServe");
+                onServe.setAccessible(true);
+                onServe.invoke(controller);
+                assertEquals(0, runs.get());
+
+                // Locking actions disables modify and delete too; unlocking restores stale gating
+                controller.setActionsDisabled(true);
+                assertTrue(modify.isDisable());
+                assertTrue(delete.isDisable());
+                controller.setActionsDisabled(false);
+                assertFalse(modify.isDisable());
+                assertFalse(delete.isDisable());
+                assertTrue(execute.isDisable());
+            } catch (Exception e) {
+                fail(e);
+            } finally {
+                done.countDown();
+            }
+        });
+        assertTrue(done.await(5, TimeUnit.SECONDS));
+    }
+
+    private static Object field(Object target, String name) throws Exception {
+        var f = target.getClass().getDeclaredField(name);
+        f.setAccessible(true);
+        return f.get(target);
+    }
 }
