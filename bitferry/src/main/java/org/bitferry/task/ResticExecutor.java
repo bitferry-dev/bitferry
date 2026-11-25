@@ -198,15 +198,15 @@ final class ResticExecutor {
       if (!root.isArray()) return List.of();
       List<Snapshot> result = new ArrayList<>();
       for (JsonNode node : root) {
-        String id = node.path("id").asText("");
-        String shortId = node.path("short_id").asText("");
-        String time = node.path("time").asText("");
-        String hostname = node.path("hostname").asText("");
-        String username = node.path("username").asText("");
+        String id = node.path("id").asString("");
+        String shortId = node.path("short_id").asString("");
+        String time = node.path("time").asString("");
+        String hostname = node.path("hostname").asString("");
+        String username = node.path("username").asString("");
         List<String> paths = new ArrayList<>();
-        node.path("paths").forEach(p -> paths.add(p.asText()));
+        node.path("paths").forEach(p -> paths.add(p.asString()));
         List<String> tags = new ArrayList<>();
-        node.path("tags").forEach(t -> tags.add(t.asText()));
+        node.path("tags").forEach(t -> tags.add(t.asString()));
         result.add(new Snapshot(id, shortId, time, paths, hostname, username, tags));
       }
       return result;

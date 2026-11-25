@@ -340,7 +340,7 @@ public final class Volume {
   // cannot be determined (the descriptor is too damaged)
   private static String failedTag(JsonNode node) {
     JsonNode tag = node.get("task");
-    return tag != null && tag.isTextual() ? tag.asText() : null;
+    return tag != null && tag.isString() ? tag.asString() : null;
   }
 
   /// Return the per-task restore failure messages recorded at the load time (not
