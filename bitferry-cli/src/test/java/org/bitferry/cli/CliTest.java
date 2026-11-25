@@ -2491,4 +2491,89 @@ class CliTest {
     assertEquals("latest", reset.snapshotId());
     assertFalse(managerFor(volDir).selectTasks(restore.tag()).get(restore.tag()).serialize().has("snapshotId"));
   }
+
+  @Test
+  void modifyTaskEndpointsAcrossOperationsAndGuards() throws Exception {
+    Path vol1 = tempDir.resolve("ep_vol1");
+    Path vol2 = tempDir.resolve("ep_vol2");
+    Path dst1 = tempDir.resolve("ep_dst1");
+    Path dst2 = tempDir.resolve("ep_dst2");
+    Path repo1 = tempDir.resolve("ep_repo1");
+    Path repo2 = tempDir.resolve("ep_repo2");
+    Files.createDirectories(vol1);
+    Files.createDirectories(vol2);
+    Files.createDirectories(dst1);
+    Files.createDirectories(dst2);
+    Files.createDirectories(repo1);
+    Files.createDirectories(repo2);
+
+    assertEquals(0, cmd.execute("create", "volume", vol1.toString()));
+    assertEquals(0, cmd.execute("create", "volume", vol2.toString()));
+    probeRoot(vol1);
+    probeRoot(vol2);
+    String vtag1 = volumeTag(managerFor(vol1), vol1);
+    String vtag2 = volumeTag(managerFor(vol2), vol2);
+
+    // 1. Copy relocates both source (V1 -> V2) and destination
+    assertEquals(0, cmd.execute("create", "task", "copy", ":" + vtag1 + ":s1", "local:" + dst1));
+    String copyTag = managerFor(vol1).tasks().keySet().iterator().next();
+
+    cmd = Main.createCommandLine();
+    out = new StringWriter();
+    err = new StringWriter();
+    cmd.setOut(new PrintWriter(out));
+    cmd.setErr(new PrintWriter(err));
+    assertEquals(0, cmd.execute("m", "--path", vol1 + "," + vol2, "t", copyTag,
+      "--source", ":" + vtag2 + ":s2", "--destination", "local:" + dst2), () -> "stderr: " + err);
+    assertFalse(managerFor(vol1).tasks().containsKey(copyTag));
+    Task relocatedCopy = managerFor(vol2).task(copyTag);
+    assertEquals(":" + vtag2 + ":s2", relocatedCopy.source().describe());
+    assertEquals(dst2.toAbsolutePath().normalize().toString(), relocatedCopy.destination().describe());
+
+    // 2. Backup relocates source across volumes (migrating vault) and rejects repository change
+    assertEquals(0, executeWithPassword("bpass", "create", "task", "backup", ":" + vtag1 + ":b1", "local:" + repo1));
+    String backupTag = managerFor(vol1).tasks().keySet().iterator().next();
+
+    cmd = Main.createCommandLine();
+    out = new StringWriter();
+    err = new StringWriter();
+    cmd.setOut(new PrintWriter(out));
+    cmd.setErr(new PrintWriter(err));
+    assertNotEquals(0, cmd.execute("m", "--path", vol1 + "," + vol2, "t", backupTag, "--destination", "local:" + repo2));
+    assertTrue(err.toString().contains("repository endpoint of backup task"));
+
+    cmd = Main.createCommandLine();
+    out = new StringWriter();
+    err = new StringWriter();
+    cmd.setOut(new PrintWriter(out));
+    cmd.setErr(new PrintWriter(err));
+    assertEquals(0, cmd.execute("m", "--path", vol1 + "," + vol2, "t", backupTag, "--source", ":" + vtag2 + ":b2"),
+      () -> "stderr: " + err);
+    Backup relocatedBackup = (Backup) managerFor(vol2).task(backupTag);
+    assertEquals(":" + vtag2 + ":b2", relocatedBackup.source().describe());
+    assertEquals("bpass", relocatedBackup.password());
+
+    // 3. Restore relocates destination and rejects repository change
+    assertEquals(0, executeWithPassword("bpass", "create", "task", "restore", "local:" + repo1, ":" + vtag1 + ":r1"));
+    String restoreTag = managerFor(vol1).tasks().keySet().iterator().next();
+
+    cmd = Main.createCommandLine();
+    out = new StringWriter();
+    err = new StringWriter();
+    cmd.setOut(new PrintWriter(out));
+    cmd.setErr(new PrintWriter(err));
+    assertNotEquals(0, cmd.execute("m", "--path", vol1 + "," + vol2, "t", restoreTag, "--source", "local:" + repo2));
+    assertTrue(err.toString().contains("repository endpoint of restore task"));
+
+    cmd = Main.createCommandLine();
+    out = new StringWriter();
+    err = new StringWriter();
+    cmd.setOut(new PrintWriter(out));
+    cmd.setErr(new PrintWriter(err));
+    assertEquals(0, cmd.execute("m", "--path", vol1 + "," + vol2, "t", restoreTag, "--destination", ":" + vtag2 + ":r2"),
+      () -> "stderr: " + err);
+    Restore relocatedRestore = (Restore) managerFor(vol2).task(restoreTag);
+    assertEquals(":" + vtag2 + ":r2", relocatedRestore.destination().describe());
+    assertEquals("bpass", relocatedRestore.password());
+  }
 }

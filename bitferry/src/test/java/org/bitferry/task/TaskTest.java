@@ -734,6 +734,107 @@ class TaskTest {
     assertFalse(Files.exists(workdir));
   }
 
+  @Test
+  void endpointRelocationEnforcesGuardsMigratesVaultsAndFlushesOldVolumes() throws Exception {
+    Path vol2Root = dir.resolve("vol2");
+    Files.createDirectories(vol2Root);
+    Volume volume2 = Volume.create(manager, vol2Root);
+    manager.commit();
+
+    // 1. Copy task moves from volume -> volume2: drops from old volume storage and persists on new
+    Copy copy = new Copy(manager,
+      Endpoints.parse(manager, ":" + volume.tag() + ":srcA"),
+      source(), null, List.of(), List.of());
+    manager.commit(copy);
+
+    copy.setEndpoints(Endpoints.parse(manager, ":" + volume2.tag() + ":srcB"), copy.destination());
+    manager.commit();
+
+    Manager v1Reload = new Manager().restore(volume.root());
+    assertFalse(v1Reload.tasks().containsKey(copy.tag()), "relocated task must be flushed from old volume");
+    Manager v2Reload = new Manager().restore(volume2.root());
+    assertTrue(v2Reload.tasks().containsKey(copy.tag()), "relocated task must persist on new volume");
+
+    // Reject moving off all volumes
+    assertThrows(BitferryError.class, () ->
+      copy.setEndpoints(source(), Endpoints.parse(manager, "local:" + dir.resolve("otherLocal"))));
+
+    // Reject colliding with another live task's endpoints
+    Copy twin = new Copy(manager,
+      Endpoints.parse(manager, ":" + volume.tag() + ":twinSrc"),
+      source(), null, List.of(), List.of());
+    manager.commit(twin);
+    assertThrows(BitferryError.class, () -> copy.setEndpoints(twin.source(), twin.destination()));
+
+    // 2. Backup: source moves across volumes migrating VolumeVault token; destination (repository) is immutable
+    Backup backup = new Backup(manager,
+      Endpoints.parse(manager, ":" + volume.tag() + ":bsrc"),
+      Endpoints.parse(manager, "local:" + dir.resolve("brepo")),
+      "bpass", null, null, null, null, null, List.of(), false);
+    manager.commit(backup);
+    assertNotNull(volume.readVault(backup.tag()));
+
+    assertThrows(BitferryError.class, () ->
+      backup.setEndpoints(backup.source(), Endpoints.parse(manager, "local:" + dir.resolve("otherRepo"))));
+
+    backup.setEndpoints(Endpoints.parse(manager, ":" + volume2.tag() + ":bsrc2"), backup.destination());
+    manager.commit();
+    assertNull(volume.readVault(backup.tag()), "vault token must be removed from old volume");
+    assertNotNull(volume2.readVault(backup.tag()), "vault token must migrate to new volume");
+    assertEquals("bpass", ((Backup) new Manager().restore(volume2.root()).tasks().get(backup.tag())).password());
+
+    // 3. Restore: destination moves across volumes migrating VolumeVault token; source (repository) is immutable
+    Restore restore = new Restore(manager,
+      Endpoints.parse(manager, "local:" + dir.resolve("rrepo")),
+      Endpoints.parse(manager, ":" + volume.tag() + ":rdst"),
+      "rpass", null, List.of(), List.of());
+    manager.commit(restore);
+    assertThrows(BitferryError.class, () ->
+      restore.setEndpoints(Endpoints.parse(manager, "local:" + dir.resolve("otherRepo")), restore.destination()));
+    restore.setEndpoints(restore.source(), Endpoints.parse(manager, ":" + volume2.tag() + ":rdst2"));
+    manager.commit();
+    assertNull(volume.readVault(restore.tag()));
+    assertEquals("rpass", ((Restore) new Manager().restore(volume2.root()).tasks().get(restore.tag())).password());
+
+    // 4. Equalize relocation clears stale bisync baseline only outside simulate mode
+    Equalize eq = new Equalize(manager,
+      Endpoints.parse(manager, ":" + volume.tag() + ":eq1"),
+      destination(), null, List.of(), List.of());
+    Path eqWorkdir = eq.workdir();
+    Files.createDirectories(eqWorkdir);
+    Files.writeString(eqWorkdir.resolve("session.path1.lst"), "listing");
+
+    manager.simulate = true;
+    eq.setEndpoints(Endpoints.parse(manager, ":" + volume.tag() + ":eq2"), destination());
+    assertTrue(Files.exists(eqWorkdir.resolve("session.path1.lst")), "simulation must not delete bisync baseline");
+
+    manager.simulate = false;
+    Equalize eqReal = new Equalize(manager,
+      Endpoints.parse(manager, ":" + volume.tag() + ":eqReal1"),
+      Endpoints.parse(manager, "local:" + dir.resolve("eqRealDst")),
+      null, List.of(), List.of());
+    Path eqRealWorkdir = eqReal.workdir();
+    Files.createDirectories(eqRealWorkdir);
+    Files.writeString(eqRealWorkdir.resolve("session.path1.lst"), "listing");
+    eqReal.setEndpoints(Endpoints.parse(manager, ":" + volume.tag() + ":eqReal2"), eqReal.destination());
+    assertFalse(Files.exists(eqRealWorkdir), "real relocation must remove old bisync baseline");
+
+    // 5. Stale task cannot modify endpoints
+    Path v3Root = dir.resolve("vol3");
+    Files.createDirectories(v3Root);
+    Volume v3 = Volume.create(manager, v3Root);
+    Copy willGoStale = new Copy(manager,
+      Endpoints.parse(manager, ":" + v3.tag() + ":staleSrc"),
+      Endpoints.parse(manager, ":" + volume.tag() + ":staleDst"),
+      null, List.of(), List.of());
+    manager.commit(willGoStale);
+    Manager partial = new Manager().restore(volume.root());
+    Task staleTask = partial.tasks().get(willGoStale.tag());
+    assertFalse(staleTask.isIntact());
+    assertThrows(BitferryError.class, () ->
+      staleTask.setEndpoints(staleTask.source(), Endpoints.parse(partial, ":" + volume.tag() + ":otherDst")));
+  }
+
   private static List<String> toStringList(JsonNode node) {
     return Task.strings(node, false);
   }

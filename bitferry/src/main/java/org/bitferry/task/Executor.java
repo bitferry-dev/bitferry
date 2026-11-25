@@ -63,6 +63,11 @@ public interface Executor {
     conform((Task) task);
   }
 
+  /// Perform encryption conformance validation against a specific encrypted-side path.
+  default void conform(Rclone task, String encryptedSide) {
+    conform(task);
+  }
+
   /// Perform the backup-specific conformance validation (the forced re-initialization
   /// skips it, the fresh repositories defer to the formatting, the existing ones probe).
   default void conform(Backup task) {

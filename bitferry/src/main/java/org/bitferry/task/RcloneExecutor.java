@@ -25,9 +25,12 @@ final class RcloneExecutor {
   /// directory names too, so the top level suffices for the password and the filename
   /// encoding validation) keeping the large existing trees cheap to inspect.
   void conform(Rclone rclone) {
-    // The encrypted side rides the encryption mode itself (null for the no encryption
-    // mode: the probing is not applicable)
-    String encryptedSide = rclone.encryption().encryptedSide(rclone);
+    conform(rclone, rclone.encryption().encryptedSide(rclone));
+  }
+
+  /// Conformance test against a specified encrypted-side path (used both at creation
+  /// and when relocating an encrypted rclone endpoint).
+  void conform(Rclone rclone, String encryptedSide) {
     if (encryptedSide == null) {
       return;
     }

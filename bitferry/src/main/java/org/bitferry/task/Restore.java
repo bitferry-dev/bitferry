@@ -253,8 +253,15 @@ public class Restore extends Restic implements IncludeFilters {
   /// directory (the unencrypted end of the restore task).
   /// Raises [BitferryError] if the destination endpoint resides outside Bitferry volumes.
   @Override
-  public Volume vaultVolume() {
-    return destination.requireVolume(manager, "restore destination endpoint must reside within a Bitferry volume");
+  protected Volume resolveVaultVolume(Endpoint src, Endpoint dst) {
+    return dst.requireVolume(manager, "Restore destination endpoint must reside within a Bitferry volume");
+  }
+
+  @Override
+  protected void validateEndpointChange(boolean sourceChanged, boolean destinationChanged) {
+    if (sourceChanged) {
+      throw new BitferryError("Cannot modify the repository endpoint of restore task " + tag);
+    }
   }
 
   @Override

@@ -1,6 +1,7 @@
 package org.bitferry.cli;
 
 import org.bitferry.*;
+import org.bitferry.endpoint.*;
 import org.bitferry.task.*;
 import java.io.*;
 import java.util.*;
@@ -40,6 +41,12 @@ public class ModifyTaskCommand implements Callable<Integer>, HasCommonOptions {
 
   @Option(names = "-k", description = "Shorthand for --vault keyring.")
   boolean keyring;
+
+  @Option(names = "--source", description = "Update the source endpoint (intact tasks; immutable for restore repositories).", paramLabel = "ENDPOINT")
+  String source;
+
+  @Option(names = "--destination", description = "Update the destination endpoint (intact tasks; immutable for backup repositories).", paramLabel = "ENDPOINT")
+  String destination;
 
   @Option(names = {"-t", "--type"}, description = "Operation type for rclone tasks (copy, update, replicate, equalize).", paramLabel = "TYPE")
   String type;
@@ -123,12 +130,14 @@ public class ModifyTaskCommand implements Callable<Integer>, HasCommonOptions {
     boolean hasExclude = excludeCleared || excludeSet;
     boolean hasExecute = execute != null;
     boolean hasType = type != null;
+    boolean hasSource = source != null;
+    boolean hasDestination = destination != null;
     boolean hasManual = hasExecution;
 
     Boolean targetKeyring = CliUtils.resolveVaultMigration(vault, bitferryVault, keyring);
     boolean hasVault = targetKeyring != null;
 
-    if (!password && !hasVault && !hasForget && !hasCheck && !hasPrune && !hasServe && !hasBackupTask && !hasSnapshot && !hasInclude && !hasExclude && !hasExecute && !hasType && !hasManual) {
+    if (!password && !hasVault && !hasForget && !hasCheck && !hasPrune && !hasServe && !hasBackupTask && !hasSnapshot && !hasInclude && !hasExclude && !hasExecute && !hasType && !hasSource && !hasDestination && !hasManual) {
       throw new BitferryError("No modifications specified for task " + tag);
     }
 
@@ -187,8 +196,19 @@ public class ModifyTaskCommand implements Callable<Integer>, HasCommonOptions {
       Task.checkProcessOptions(execute, Task.processRouteFor(hasType ? type : task.operation()));
     }
 
+    // Resolve and validate endpoint changes up front before any destructive morph
+    Endpoint nextSource = hasSource ? Endpoints.parse(m, source) : task.source();
+    Endpoint nextDestination = hasDestination ? Endpoints.parse(m, destination) : task.destination();
+    if (hasSource || hasDestination) {
+      task.validateEndpoints(nextSource, nextDestination);
+    }
+
     if (hasType) {
       task = task.morph(type);
+    }
+
+    if (hasSource || hasDestination) {
+      task.setEndpoints(nextSource, nextDestination);
     }
 
     if (password) {

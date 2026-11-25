@@ -339,6 +339,10 @@ final class Dialogs {
         Task current = manager.task(task.tag());
         if (current == null) throw new BitferryError("Task " + task.tag() + " is no longer registered");
 
+        Endpoint nextSource = form.isSourceEditable() ? Endpoints.parse(manager, form.source()) : current.source();
+        Endpoint nextDestination = form.isDestinationEditable() ? Endpoints.parse(manager, form.destination()) : current.destination();
+        current.validateEndpoints(nextSource, nextDestination);
+
         // Rotate repository password if entered (restic only); the invisible
         // co-repository tasks (their volumes are absent) keep the stale token:
         // their runs fail the authentication until re-synced (by the auto-heal
@@ -371,6 +375,10 @@ final class Dialogs {
         if (!current.operation().equals(form.type())) {
           current = current.morph(form.type());
         }
+
+        // Apply endpoint relocation after morph and pre-flight validation (handles
+        // equalize baseline cleanup, VolumeVault relocation, and detached-volume commit flags).
+        current.setEndpoints(nextSource, nextDestination);
 
         // Backend execution options (the resolution rides the task's profile route)
         current.setProcessOptions(form.execute());

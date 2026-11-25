@@ -394,10 +394,11 @@ public final class TaskFormController {
         type.setDisable(true);
       }
 
-      source.setText(existing.source().describe());
-      source.setDisable(true);
-      destination.setText(existing.destination().describe());
-      destination.setDisable(true);
+      boolean endpointsEditable = existing.isIntact();
+      source.setText(endpointInput(existing.source()));
+      source.setDisable(!endpointsEditable || existing instanceof Restore);
+      destination.setText(endpointInput(existing.destination()));
+      destination.setDisable(!endpointsEditable || existing instanceof Backup);
 
       // The include field exists on the capable tasks only (the capability is
       // structural): the form mirrors the task's actual state
@@ -798,6 +799,21 @@ public final class TaskFormController {
     return destinationLabel != null ? destinationLabel.getText() : "";
   }
 
+  private static String endpointInput(Endpoint endpoint) {
+    if (endpoint instanceof LocalEndpoint local) {
+      return "local:" + local.root();
+    }
+    return endpoint.describe();
+  }
+
+  boolean isSourceEditable() {
+    return !source.isDisable();
+  }
+
+  boolean isDestinationEditable() {
+    return !destination.isDisable();
+  }
+
   String source() {
     return source.getText().trim();
   }
@@ -1009,6 +1025,10 @@ public final class TaskFormController {
       }
       // The rclone encryption pair is validated inside the security dialog: the
       // returned settings carry a matching non-empty pair whenever the mode is set
+    } else if (context != null && (isSourceEditable() || isDestinationEditable())) {
+      Endpoint parsedSource = isSourceEditable() ? Endpoints.parse(context.manager(), source()) : existing.source();
+      Endpoint parsedDestination = isDestinationEditable() ? Endpoints.parse(context.manager(), destination()) : existing.destination();
+      existing.validateEndpoints(parsedSource, parsedDestination);
     }
   }
 

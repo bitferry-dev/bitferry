@@ -98,6 +98,11 @@ public class SystemExecutor implements Executor {
   }
 
   @Override
+  public void conform(Rclone rclone, String encryptedSide) {
+    rcloneExecutor.conform(rclone, encryptedSide);
+  }
+
+  @Override
   public List<String> passwd(Restic restic, String newPassword) {
     return resticExecutor.passwd(restic, newPassword);
   }

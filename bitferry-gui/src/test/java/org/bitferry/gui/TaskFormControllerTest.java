@@ -182,20 +182,20 @@ class TaskFormControllerTest {
         TextField exclude = field(form, "exclude");
         assertFalse(type.isDisable());
         assertEquals(List.of("copy", "update", "replicate", "equalize"), type.getItems());
-        assertTrue(source.isDisable());
-        assertTrue(destination.isDisable());
+        assertFalse(source.isDisable(), "intact rclone source endpoint should be editable");
+        assertFalse(destination.isDisable(), "intact rclone destination endpoint should be editable");
         Button browseSourceSmart = field(form, "browseSourceSmart");
         Button browseSourceLocal = field(form, "browseSourceLocal");
         Button browseSourceVolume = field(form, "browseSourceVolume");
         Button browseDestinationSmart = field(form, "browseDestinationSmart");
         Button browseDestinationLocal = field(form, "browseDestinationLocal");
         Button browseDestinationVolume = field(form, "browseDestinationVolume");
-        assertTrue(browseSourceSmart.isDisable());
-        assertTrue(browseSourceLocal.isDisable());
-        assertTrue(browseSourceVolume.isDisable());
-        assertTrue(browseDestinationSmart.isDisable());
-        assertTrue(browseDestinationLocal.isDisable());
-        assertTrue(browseDestinationVolume.isDisable());
+        assertFalse(browseSourceSmart.isDisable());
+        assertFalse(browseSourceLocal.isDisable());
+        assertFalse(browseSourceVolume.isDisable());
+        assertFalse(browseDestinationSmart.isDisable());
+        assertFalse(browseDestinationLocal.isDisable());
+        assertFalse(browseDestinationVolume.isDisable());
         // The crypt mode is the creation-time choice: the radio row rides disabled
         // (the stored mode of this plain task is (none), so the inline security
         // editor sleeps; the restic row's editor stays for its own family)
@@ -203,7 +203,7 @@ class TaskFormControllerTest {
         assertTrue(encryptionControl.isDisable());
         Button editSecurity = field(form, "editSecurity");
         assertTrue(editSecurity.isDisable());
-        assertEquals(task.source().describe(), source.getText());
+        assertEquals("local:" + task.source().describe(), source.getText());
         assertEquals("keep/**", include.getText());
         assertEquals("skip/**", exclude.getText());
         // The task's resolved execution options populate the entry
@@ -294,6 +294,55 @@ class TaskFormControllerTest {
     }
 
     @Test
+    void modifyingEndpointsThroughDialogPersistsAndRejectsConflicts() throws Exception {
+        Path v2Root = Files.createTempDirectory("bitferry-reloc-vol2");
+        Volume v2 = Volume.create(manager, v2Root);
+        Copy task = new Copy(manager,
+            Endpoints.parse(manager, ":" + volume.tag() + ":gui-src1"),
+            Endpoints.parse(manager, "local:" + Files.createTempDirectory("bitferry-gui-dst1")),
+            null, List.of(), List.of());
+        manager.commit(task);
+
+        Copy blocker = new Copy(manager,
+            Endpoints.parse(manager, ":" + v2.tag() + ":gui-blocker"),
+            Endpoints.parse(manager, "local:" + Files.createTempDirectory("bitferry-gui-blk")),
+            null, List.of(), List.of());
+        manager.commit(blocker);
+
+        try {
+            TaskFormController form = load(task);
+            TextField source = field(form, "source");
+            TextField destination = field(form, "destination");
+
+            runFx(() -> {
+                source.setText(blocker.source().describe());
+                destination.setText(blocker.destination().describe());
+            });
+            assertThrows(BitferryError.class, form::validate);
+
+            Path newDst = Files.createTempDirectory("bitferry-gui-dst2");
+            runFx(() -> {
+                source.setText(":" + v2.tag() + ":gui-src2");
+                destination.setText("local:" + newDst);
+            });
+            assertDoesNotThrow(form::validate);
+
+            Dialogs.applyTaskModification(context, new LogController(), task, form);
+            context.operations().submit(() -> {}).get(5, TimeUnit.SECONDS);
+
+            assertFalse(new Manager().restore(volume.root()).tasks().containsKey(task.tag()));
+            Task reloaded = new Manager().restore(v2Root).tasks().get(task.tag());
+            assertNotNull(reloaded);
+            assertEquals(":" + v2.tag() + ":gui-src2", reloaded.source().describe());
+        } finally {
+            task.delete();
+            blocker.delete();
+            v2.delete();
+            manager.commit();
+        }
+    }
+
+    @Test
     void modifyFormDisablesTypeForNonRcloneTasks() throws Exception {
         Task task = new Backup(manager,
             Endpoints.parse(manager, ":" + volume.tag() + ":backup-src"),
@@ -305,6 +354,8 @@ class TaskFormControllerTest {
         assertTrue(type.isDisable());
         assertEquals("Source:", form.sourceLabel());
         assertEquals("Repository:", form.destinationLabel());
+        assertFalse(((TextField) field(form, "source")).isDisable(), "backup source should be editable");
+        assertTrue(((TextField) field(form, "destination")).isDisable(), "backup repository endpoint stays immutable");
 
         Restore restore = new Restore(manager,
             Endpoints.parse(manager, "local:" + Files.createTempDirectory("bitferry-restore-repo")),
@@ -316,6 +367,8 @@ class TaskFormControllerTest {
         assertTrue(restoreType.isDisable());
         assertEquals("Repository:", restoreForm.sourceLabel());
         assertEquals("Destination:", restoreForm.destinationLabel());
+        assertTrue(((TextField) field(restoreForm, "source")).isDisable(), "restore repository endpoint stays immutable");
+        assertFalse(((TextField) field(restoreForm, "destination")).isDisable(), "restore destination should be editable");
         TextField snapId = field(restoreForm, "snapshotId");
         assertFalse(snapId.isDisable(), "snapshotId should remain editable");
         assertEquals("latest", snapId.getText());
@@ -323,6 +376,24 @@ class TaskFormControllerTest {
         assertFalse(scope.isDisable(), "snapshotScope should remain editable");
         assertTrue(rowLabels(restoreForm).contains("Snapshot ID:"));
         assertTrue(rowLabels(restoreForm).contains("Snapshot scope:"));
+
+        // Stale tasks keep both endpoints disabled during modify
+        Path v2Root = Files.createTempDirectory("bitferry-stale-form-vol");
+        Volume v2 = Volume.create(manager, v2Root);
+        Copy crossVol = new Copy(manager,
+            Endpoints.parse(manager, ":" + v2.tag() + ":src"),
+            Endpoints.parse(manager, ":" + volume.tag() + ":dst"),
+            null, List.of(), List.of());
+        manager.commit(crossVol);
+        Manager partialMgr = new Manager().restore(volume.root());
+        Task staleTask = partialMgr.tasks().get(crossVol.tag());
+        assertFalse(staleTask.isIntact());
+        TaskFormController staleForm = load(staleTask);
+        assertTrue(((TextField) field(staleForm, "source")).isDisable(), "stale task source must stay disabled");
+        assertTrue(((TextField) field(staleForm, "destination")).isDisable(), "stale task destination must stay disabled");
+        crossVol.delete();
+        v2.delete();
+        manager.commit();
     }
 
   @Test

@@ -136,6 +136,13 @@ public class Equalize extends Rclone {
     cleanupSimulatedWorkdir();
   }
 
+  @Override
+  protected void prepareRelocation() {
+    if (!manager.simulate) {
+      deleteWorkdirs();
+    }
+  }
+
   /// Return true if the bisync baseline is established (the initial --resync has completed
   /// and listing files exist in the workdir).
   public boolean resynced() {

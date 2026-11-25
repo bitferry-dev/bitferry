@@ -104,8 +104,15 @@ public class Backup extends Restic {
   /// directory (the unencrypted end of the backup task).
   /// Raises [BitferryError] if the source endpoint resides outside Bitferry volumes.
   @Override
-  public Volume vaultVolume() {
-    return source.requireVolume(manager, "backup directory endpoint must reside within a Bitferry volume");
+  protected Volume resolveVaultVolume(Endpoint src, Endpoint dst) {
+    return src.requireVolume(manager, "Backup directory endpoint must reside within a Bitferry volume");
+  }
+
+  @Override
+  protected void validateEndpointChange(boolean sourceChanged, boolean destinationChanged) {
+    if (destinationChanged) {
+      throw new BitferryError("Cannot modify the repository endpoint of backup task " + tag);
+    }
   }
 
   /// The backup direction: the source is the data directory, the destination is the

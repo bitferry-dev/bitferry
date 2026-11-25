@@ -87,7 +87,7 @@ class VaultTest {
     Endpoint local = Endpoints.parse(manager, "local:" + dir.resolve("plain"));
     BitferryError error = assertThrows(BitferryError.class,
       () -> new Backup(manager, local, volumeRepo(), "secret", null, null, null, null, List.of()));
-    assertTrue(error.getMessage().contains("backup directory endpoint must reside within a Bitferry volume"));
+    assertTrue(error.getMessage().contains("Backup directory endpoint must reside within a Bitferry volume"));
   }
 
   @Test
@@ -95,7 +95,7 @@ class VaultTest {
     Endpoint local = Endpoints.parse(manager, "local:" + dir.resolve("plain"));
     BitferryError error = assertThrows(BitferryError.class,
       () -> new Restore(manager, volumeRepo(), local, "secret", null, List.of(), List.of()));
-    assertTrue(error.getMessage().contains("restore destination endpoint must reside within a Bitferry volume"));
+    assertTrue(error.getMessage().contains("Restore destination endpoint must reside within a Bitferry volume"));
   }
 
   @Test

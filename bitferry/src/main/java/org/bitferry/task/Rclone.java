@@ -194,8 +194,20 @@ public abstract class Rclone extends Task implements IncludeFilters {
   /// Return the volume hosting the task's password vault: the volume of the
   /// unencrypted end of the task as resolved by its encryption mode.
   @Override
-  public Volume vaultVolume() {
-    return encryption.vaultVolume(this);
+  protected Volume resolveVaultVolume(Endpoint source, Endpoint destination) {
+    return encryption.vaultVolume(this, source, destination);
+  }
+
+  @Override
+  protected void validateRelocation(Endpoint newSource, Endpoint newDestination, boolean sourceChanged, boolean destinationChanged) {
+    if (!usesVault()) return;
+    boolean encryptedChanged = encryption instanceof Encrypt ? destinationChanged : sourceChanged;
+    if (encryptedChanged) {
+      String nextSide = encryption.encryptedSide(newSource, newDestination);
+      if (nextSide != null) {
+        manager.backendExecutor().conform(this, nextSide);
+      }
+    }
   }
 
   /// Serialize the backend descriptor section; omitted when empty mirroring
@@ -392,15 +404,20 @@ public abstract class Rclone extends Task implements IncludeFilters {
     /// The command line tail placing the ':crypt:' remote against the endpoints.
     public abstract List<String> processOpts(Rclone task);
 
-    /// The backend-side path carrying the encrypted content (the destination of the
-    /// encrypt mode, the source of the decrypt one); null for the no encryption mode
-    /// (the conformance probing is then not applicable).
-    public abstract String encryptedSide(Rclone task);
+    /// The backend-side path carrying the encrypted content for the specified endpoints;
+    /// null for the no-encryption mode.
+    public abstract String encryptedSide(Endpoint source, Endpoint destination);
 
-    /// Return the volume hosting the task's password vault: the volume of the
-    /// unencrypted end of the task.
-    /// Raises [BitferryError] for the endpoints residing outside Bitferry volumes.
-    public abstract Volume vaultVolume(Rclone task);
+    public String encryptedSide(Rclone task) {
+      return encryptedSide(task.source(), task.destination());
+    }
+
+    /// Return the volume hosting the task's password vault for the specified endpoints.
+    public abstract Volume vaultVolume(Rclone task, Endpoint source, Endpoint destination);
+
+    public Volume vaultVolume(Rclone task) {
+      return vaultVolume(task, task.source(), task.destination());
+    }
 
     /// Cache a newly configured password pair without writing either credential provider.
     void stagePasswords(String password, String password2) {
@@ -583,13 +600,14 @@ public abstract class Rclone extends Task implements IncludeFilters {
       return opts;
     }
 
-    public String encryptedSide(Rclone task) {
-      return task.destination().processOpts();
+    @Override
+    public String encryptedSide(Endpoint source, Endpoint destination) {
+      return destination.processOpts();
     }
 
     @Override
-    public Volume vaultVolume(Rclone task) {
-      return task.source().requireVolume(task.manager(), E);
+    public Volume vaultVolume(Rclone task, Endpoint source, Endpoint destination) {
+      return source.requireVolume(task.manager(), E);
     }
   }
 
@@ -616,13 +634,14 @@ public abstract class Rclone extends Task implements IncludeFilters {
       return opts;
     }
 
-    public String encryptedSide(Rclone task) {
-      return task.source().processOpts();
+    @Override
+    public String encryptedSide(Endpoint source, Endpoint destination) {
+      return source.processOpts();
     }
 
     @Override
-    public Volume vaultVolume(Rclone task) {
-      return task.destination().requireVolume(task.manager(), E);
+    public Volume vaultVolume(Rclone task, Endpoint source, Endpoint destination) {
+      return destination.requireVolume(task.manager(), E);
     }
   }
 
@@ -645,12 +664,13 @@ public abstract class Rclone extends Task implements IncludeFilters {
       return List.of(task.source().processOpts(), task.destination().processOpts());
     }
 
-    public String encryptedSide(Rclone task) {
+    @Override
+    public String encryptedSide(Endpoint source, Endpoint destination) {
       return null;
     }
 
     @Override
-    public Volume vaultVolume(Rclone task) {
+    public Volume vaultVolume(Rclone task, Endpoint source, Endpoint destination) {
       throw new BitferryError("Directory endpoint must reside within a Bitferry volume");
     }
 

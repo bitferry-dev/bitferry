@@ -2,7 +2,7 @@ package org.bitferry.task;
 
 import org.bitferry.*;
 import org.bitferry.endpoint.*;
-import org.bitferry.vault.Vault;
+import org.bitferry.vault.*;
 import com.fasterxml.jackson.annotation.*;
 import java.lang.System.Logger.Level;
 import java.time.*;
@@ -40,10 +40,10 @@ public abstract class Task {
   protected final String tag;
 
   @JsonProperty
-  protected final Endpoint source;
+  protected Endpoint source;
 
   @JsonProperty
-  protected final Endpoint destination;
+  protected Endpoint destination;
 
   protected final List<String> exclude;
 
@@ -401,11 +401,114 @@ public abstract class Task {
   /// The per-type endpoint entry: the label and the endpoint pair.
   public record EndpointEntry(String label, Endpoint endpoint) {}
 
+  /// Resolve the volume hosting the task's password vault for the given endpoint pair.
+  protected Volume resolveVaultVolume(Endpoint source, Endpoint destination) {
+    throw new BitferryError("Directory endpoint must reside within a Bitferry volume");
+  }
+
   /// Return the volume hosting the task's password vault: the volume of the unencrypted
   /// end of the task, so the password travels along with the plaintext data.
   /// Raises [BitferryError] for the endpoints residing outside Bitferry volumes.
   public Volume vaultVolume() {
-    throw new BitferryError("Directory endpoint must reside within a Bitferry volume");
+    return resolveVaultVolume(source, destination);
+  }
+
+  /// Validate which endpoint changes are permitted for this task operation.
+  protected void validateEndpointChange(boolean sourceChanged, boolean destinationChanged) {}
+
+  /// Pre-flight backend validation for proposed endpoint relocation (must have no side effects).
+  protected void validateRelocation(Endpoint newSource, Endpoint newDestination, boolean sourceChanged, boolean destinationChanged) {}
+
+  /// Pre-mutation cleanup on old endpoints before endpoints swap (skipped in simulation mode).
+  protected void prepareRelocation() {}
+
+  private record RelocationPlan(
+    boolean sourceChanged,
+    boolean destinationChanged,
+    List<Volume> previousVolumes,
+    Volume oldVaultVolume,
+    Volume newVaultVolume,
+    VaultCredentials volumeVaultCredentials
+  ) {}
+
+  private RelocationPlan planRelocation(Endpoint newSource, Endpoint newDestination) {
+    if (newSource == null || newDestination == null) {
+      throw new BitferryError("Source and destination endpoints must be specified");
+    }
+    boolean sourceChanged = !newSource.serialize().equals(source.serialize());
+    boolean destinationChanged = !newDestination.serialize().equals(destination.serialize());
+    if (!sourceChanged && !destinationChanged) {
+      return null;
+    }
+    if (!isIntact()) {
+      throw new BitferryError("Cannot modify endpoints of stale task " + tag + ": all referred volumes must be online");
+    }
+    validateEndpointChange(sourceChanged, destinationChanged);
+
+    Task conflict = manager.findTask(newSource, newDestination);
+    if (conflict != null && conflict != this) {
+      throw new BitferryError("Task " + conflict.tag() + " already covers " + conflict.describe());
+    }
+    boolean persistsOnVolume = manager.volumes().values().stream()
+      .anyMatch(v -> v.isLive() && (newSource.refersVolume(v.tag()) || newDestination.refersVolume(v.tag())));
+    if (!persistsOnVolume) {
+      throw new BitferryError("Task " + tag + " does not belong to any registered volume; it cannot be persisted");
+    }
+
+    Volume oldVaultVol = null;
+    Volume newVaultVol = null;
+    VaultCredentials creds = null;
+    if (usesVault()) {
+      newVaultVol = resolveVaultVolume(newSource, newDestination);
+      if (vaultProvider().orElse(Vault.volume()) == Vault.volume()) {
+        oldVaultVol = resolveVaultVolume(source, destination);
+        if (!oldVaultVol.tag().equals(newVaultVol.tag())) {
+          creds = Vault.volume().retrieve(this);
+          if (creds == null) {
+            throw new BitferryError("no stored password token for task " + tag);
+          }
+        }
+      }
+    }
+
+    validateRelocation(newSource, newDestination, sourceChanged, destinationChanged);
+
+    List<Volume> prevVols = new ArrayList<>();
+    for (String vtag : referredVolumes()) {
+      Volume v = manager.volume(vtag);
+      if (v != null && v.isLive()) prevVols.add(v);
+    }
+    return new RelocationPlan(sourceChanged, destinationChanged, prevVols, oldVaultVol, newVaultVol, creds);
+  }
+
+  /// Validate proposed endpoint changes without mutating task state or disk metadata.
+  public void validateEndpoints(Endpoint newSource, Endpoint newDestination) {
+    planRelocation(newSource, newDestination);
+  }
+
+  /// Atomically relocate this task's source and/or destination endpoints, validating
+  /// persistence, uniqueness, vault, and backend invariants up front.
+  public void setEndpoints(Endpoint newSource, Endpoint newDestination) {
+    RelocationPlan plan = planRelocation(newSource, newDestination);
+    if (plan == null) return;
+
+    prepareRelocation();
+    this.source = newSource;
+    this.destination = newDestination;
+    touch();
+
+    if (!manager.simulate && plan.volumeVaultCredentials() != null) {
+      Vault.volume().store(this, plan.volumeVaultCredentials().password(), plan.volumeVaultCredentials().salt());
+      plan.oldVaultVolume().removeVault(tag);
+      plan.oldVaultVolume().touch();
+    }
+
+    Set<String> currentVtags = new HashSet<>(referredVolumes());
+    for (Volume prev : plan.previousVolumes()) {
+      if (!currentVtags.contains(prev.tag())) {
+        prev.touch();
+      }
+    }
   }
 
   /// Mark the task out-of-date: the generation is set to exceed the generations of
