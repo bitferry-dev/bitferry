@@ -1,6 +1,7 @@
 package org.bitferry.gui;
 
 import org.bitferry.*;
+import org.bitferry.Paths;
 import javafx.application.*;
 import javafx.scene.control.*;
 import org.junit.jupiter.api.*;

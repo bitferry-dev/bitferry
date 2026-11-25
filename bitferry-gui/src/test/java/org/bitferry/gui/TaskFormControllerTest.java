@@ -97,6 +97,7 @@ class TaskFormControllerTest {
         assertFalse(present.contains("Password storage:"), present.toString());
         assertFalse(present.contains("Retention:"), present.toString());
         assertFalse(present.contains("Serve:"), present.toString());
+        assertFalse(present.contains("Snapshot ID:"), present.toString());
         assertFalse(present.contains("Snapshot scope:"), present.toString());
 
         // The backup layout: the retention/check/serve rows swap in for the rclone
@@ -115,13 +116,15 @@ class TaskFormControllerTest {
         assertFalse(present.contains("Retention:"), present.toString());
         assertFalse(present.contains("Check:"), present.toString());
         assertTrue(present.contains("Serve:"), present.toString());
+        assertFalse(present.contains("Snapshot ID:"), present.toString());
         assertFalse(present.contains("Snapshot scope:"), present.toString());
 
-        // The restore layout: snapshot scope swaps in, serve hides
+        // The restore layout: snapshot ID, scope, and check service swap in
         runFx(() -> typeField.getSelectionModel().select("restore"));
         present = rowLabels(form);
+        assertTrue(present.contains("Snapshot ID:"), present.toString());
         assertTrue(present.contains("Snapshot scope:"), present.toString());
-        assertFalse(present.contains("Serve:"), present.toString());
+        assertTrue(present.contains("Serve:"), present.toString());
     }
 
     @Test
@@ -313,8 +316,12 @@ class TaskFormControllerTest {
         assertTrue(restoreType.isDisable());
         assertEquals("Repository:", restoreForm.sourceLabel());
         assertEquals("Destination:", restoreForm.destinationLabel());
-        ComboBox<String> scope = field(restoreForm, "snapshotScope");
+        TextField snapId = field(restoreForm, "snapshotId");
+        assertFalse(snapId.isDisable(), "snapshotId should remain editable");
+        assertEquals("latest", snapId.getText());
+        TextField scope = field(restoreForm, "snapshotScope");
         assertFalse(scope.isDisable(), "snapshotScope should remain editable");
+        assertTrue(rowLabels(restoreForm).contains("Snapshot ID:"));
         assertTrue(rowLabels(restoreForm).contains("Snapshot scope:"));
     }
 
@@ -421,12 +428,15 @@ class TaskFormControllerTest {
         manager.commit(backup1);
 
         try {
-            // 1. New task form: when type is restore and repository matches, single candidate is auto-selected
+            // 1. New task form: when type is restore and repository matches, single local candidate is auto-filled
+            // and snapshot ID defaults to "latest"
             TaskFormController form = load(null);
             ComboBox<String> type = field(form, "type");
             TextField source = field(form, "source");
             TextField destination = field(form, "destination");
-            ComboBox<String> scope = field(form, "snapshotScope");
+            TextField snapId = field(form, "snapshotId");
+            TextField scope = field(form, "snapshotScope");
+            HBox scopeControl = field(form, "snapshotScopeControl");
 
             runFx(() -> {
                 type.getSelectionModel().select("restore");
@@ -434,17 +444,28 @@ class TaskFormControllerTest {
                 destination.setText("local:" + dstDir);
             });
 
-            assertEquals(1, scope.getItems().size());
-            assertTrue(scope.getItems().get(0).startsWith(backup1.tag()));
-            assertEquals(scope.getItems().get(0), scope.getSelectionModel().getSelectedItem());
+            assertEquals("latest", snapId.getText());
+            assertEquals("latest", form.snapshotId());
+            assertEquals(backup1.tag(), scope.getText());
             assertEquals(backup1.tag(), form.snapshotScope());
+            assertFalse(scopeControl.isDisable());
 
-            // 2. Clear explicit scope with "-"
-            runFx(() -> scope.getEditor().setText("-"));
+            // 2. Explicit snapshot ID disables tag scoping while active; "latest:subpath" keeps it active
+            runFx(() -> snapId.setText("8345a490"));
+            assertTrue(scopeControl.isDisable(), "tag scope is ignored when a specific snapshot ID is set");
+            assertEquals("8345a490", form.snapshotId());
+            runFx(() -> snapId.setText("latest:/sub"));
+            assertFalse(scopeControl.isDisable());
+            runFx(() -> snapId.setText(""));
+            assertEquals("latest", form.snapshotId());
+            assertFalse(scopeControl.isDisable());
+
+            // 3. Clear explicit scope with "-"
+            runFx(() -> scope.setText("-"));
             assertEquals("-", form.snapshotScope());
 
-            // 3. Invalid scope fails validation
-            runFx(() -> scope.getEditor().setText("00000000"));
+            // 4. Invalid scope fails validation
+            runFx(() -> scope.setText("00000000"));
             assertEquals("00000000", form.snapshotScope());
             BitferryError err = assertThrows(BitferryError.class, form::validate);
             assertTrue(err.getMessage().contains("does not name a live backup task"), err.getMessage());
@@ -474,25 +495,65 @@ class TaskFormControllerTest {
 
         try {
             TaskFormController form = load(restore);
-            ComboBox<String> scope = field(form, "snapshotScope");
+            TextField snapId = field(form, "snapshotId");
+            TextField scope = field(form, "snapshotScope");
+            assertFalse(snapId.isDisable(), "snapshotId should be editable in modify mode");
             assertFalse(scope.isDisable(), "snapshotScope should be editable in modify mode");
-            assertNotNull(scope.getValue());
-            assertTrue(scope.getValue().startsWith(backup1.tag()), "should reflect initial backup1 tag");
-            assertEquals(2, scope.getItems().size());
+            assertEquals("latest", snapId.getText());
+            assertEquals(backup1.tag(), scope.getText());
 
             // Switch to backup2
-            runFx(() -> scope.setValue(backup2.tag()));
+            runFx(() -> scope.setText(backup2.tag()));
             assertEquals(backup2.tag(), form.snapshotScope());
             Dialogs.applyTaskModification(context, new LogController(), restore, form);
             context.operations().submit(() -> {}).get(5, TimeUnit.SECONDS);
             assertEquals(backup2.tag(), restore.snapshotTag());
 
-            // Clear scope with "-"
-            runFx(() -> scope.setValue("-"));
+            // Set explicit snapshot ID, then reset back to latest via empty entry
+            runFx(() -> snapId.setText("8345a490"));
+            Dialogs.applyTaskModification(context, new LogController(), restore, form);
+            context.operations().submit(() -> {}).get(5, TimeUnit.SECONDS);
+            assertEquals("8345a490", restore.snapshotId());
+
+            runFx(() -> {
+                snapId.setText("latest");
+                scope.setText("-");
+            });
             assertEquals("-", form.snapshotScope());
             Dialogs.applyTaskModification(context, new LogController(), restore, form);
             context.operations().submit(() -> {}).get(5, TimeUnit.SECONDS);
+            assertEquals("latest", restore.snapshotId());
             assertNull(restore.snapshotTag());
+
+            // Configure check service on restore via ServiceDialog in check-only mode
+            var origServicePrompter = ServiceDialog.dialogPrompter;
+            try {
+                ServiceDialog.dialogPrompter = dialog -> {
+                    var root = dialog.getDialogPane().getContent();
+                    assertNull(root.lookup("#forgetFlags"), "forget row must be absent in restore check-only mode");
+                    assertNull(root.lookup("#pruneFlags"), "prune row must be absent in restore check-only mode");
+                    assertNull(root.lookup("#durationAmount"), "cadence rows must be absent in restore check-only mode");
+                    var checkField = (TextField) root.lookup("#checkFlags");
+                    assertNotNull(checkField);
+                    checkField.setText("@full");
+                    return Optional.of(ButtonType.OK);
+                };
+                runFx(() -> {
+                    try {
+                        var m = TaskFormController.class.getDeclaredMethod("onEditServe");
+                        m.setAccessible(true);
+                        m.invoke(form);
+                    } catch (Exception e) {
+                        throw new RuntimeException(e);
+                    }
+                });
+                assertEquals(Restore.CHECK.get("full"), form.serviceSettings().check());
+                Dialogs.applyTaskModification(context, new LogController(), restore, form);
+                context.operations().submit(() -> {}).get(5, TimeUnit.SECONDS);
+                assertEquals(List.of("--read-data"), restore.check());
+            } finally {
+                ServiceDialog.dialogPrompter = origServicePrompter;
+            }
         } finally {
             restore.delete();
             backup1.delete();
@@ -553,7 +614,7 @@ class TaskFormControllerTest {
     }
 
     @Test
-    void restoreDiscoversForeignRepositorySnapshotsWhenCorrectPasswordProvided() throws Exception {
+    void restoreDiscoversForeignRepositoryTagsAsynchronouslyViaSeparateDialog() throws Exception {
         Assumptions.assumeTrue(available("restic"), "restic not available");
 
         Path foreignRepoDir = Files.createTempDirectory("bitferry-foreign-repo");
@@ -573,7 +634,7 @@ class TaskFormControllerTest {
         ComboBox<String> type = field(form, "type");
         TextField source = field(form, "source");
         TextField destination = field(form, "destination");
-        ComboBox<String> scope = field(form, "snapshotScope");
+        Button selectScope = field(form, "selectSnapshotScope");
 
         runFx(() -> {
             type.getSelectionModel().select("restore");
@@ -581,41 +642,55 @@ class TaskFormControllerTest {
             destination.setText(":" + volume.tag() + ":foreign-dst");
         });
 
-        // 1. Without password, scope candidate list is empty
-        runFx(() -> {
-            try {
-                var m = TaskFormController.class.getDeclaredMethod("updateRestoreCandidates");
-                m.setAccessible(true);
-                m.invoke(form);
-            } catch (Exception e) {
-                throw new RuntimeException(e);
-            }
-        });
-        assertTrue(scope.getItems().isEmpty(), "No local candidates exist and no password provided yet");
-
-        // 2. Once password is provided in settings (simulating Security dialog exit), candidates are discovered
+        // 1. Typing repository path does not extract tags eagerly even once password is set
         var settingsField = TaskFormController.class.getDeclaredField("settings");
         settingsField.setAccessible(true);
         settingsField.set(form, new EncryptionSettings(null, "", "foreign-secret", "foreign-secret", "", "", false));
+        assertEquals("", form.snapshotScope());
 
-        runFx(() -> {
-            try {
-                var m = TaskFormController.class.getDeclaredMethod("updateRestoreCandidates");
-                m.setAccessible(true);
-                m.invoke(form);
-            } catch (Exception e) {
-                throw new RuntimeException(e);
-            }
-        });
+        // 2. Separate tag dialog extracts repository tags asynchronously off the FX thread
+        var prevPrompter = SnapshotTagDialog.dialogPrompter;
+        try {
+            Endpoint foreignRepo = Endpoints.parse(manager, "local:" + foreignRepoDir);
+            AtomicReference<SnapshotTagController> ctrlRef = new AtomicReference<>();
+            runFx(() -> ctrlRef.set(SnapshotTagController.load(context, foreignRepo, "foreign-secret", "")));
+            SnapshotTagController controller = ctrlRef.get();
+            controller.activeScan().get(10, TimeUnit.SECONDS);
+            runFx(() -> {}); // drain Platform.runLater callbacks
 
-        assertFalse(scope.getItems().isEmpty(), "Foreign repository snapshots should be discovered");
-        assertTrue(scope.getItems().getFirst().startsWith("foreign-task-42"), scope.getItems().getFirst());
-        assertEquals("foreign-task-42", form.snapshotScope());
+            var listField = SnapshotTagController.class.getDeclaredField("tagList");
+            listField.setAccessible(true);
+            @SuppressWarnings("unchecked")
+            ListView<SnapshotTagController.TagEntry> tagList = (ListView<SnapshotTagController.TagEntry>) listField.get(controller);
+            SnapshotTagController.TagEntry match = tagList.getItems().stream()
+                .filter(e -> "foreign-task-42".equals(e.tag()))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("Expected foreign-task-42 in " + tagList.getItems()));
+            assertTrue(controller.discoveredTags().contains("foreign-task-42"));
 
-        // 3. Candidate builds and conforms cleanly
-        Task candidate = Dialogs.buildCandidateTask(context, form, null);
-        assertDoesNotThrow(candidate::conform);
-        assertDoesNotThrow(form::validate);
+            // 3. Selecting via SnapshotTagDialog sets the tag in TaskFormController and clears redundant probe in validate
+            SnapshotTagDialog.dialogPrompter = dialog -> {
+                // Select via pre-seeded selection or look up list view directly from dialog content
+                ListView<?> lv = dialog.getDialogPane().getContent().lookupAll(".list-view").stream()
+                    .filter(ListView.class::isInstance)
+                    .map(ListView.class::cast)
+                    .findFirst()
+                    .orElseThrow();
+                @SuppressWarnings("unchecked")
+                ListView<SnapshotTagController.TagEntry> entries = (ListView<SnapshotTagController.TagEntry>) lv;
+                entries.getItems().add(match);
+                entries.getSelectionModel().select(match);
+                return Optional.of(ButtonType.OK);
+            };
+            runFx(selectScope::fire);
+            assertEquals("foreign-task-42", form.snapshotScope());
+
+            Task candidate = Dialogs.buildCandidateTask(context, form, null);
+            assertDoesNotThrow(candidate::conform);
+            assertDoesNotThrow(form::validate);
+        } finally {
+            SnapshotTagDialog.dialogPrompter = prevPrompter;
+        }
     }
 
     @Test

@@ -96,12 +96,28 @@
           </Button>
         </HBox>
 
+        <Label fx:id="snapshotIdLabel" text="Snapshot ID:" style="-fx-text-fill: #222222;"/>
+        <HBox fx:id="snapshotIdControl" spacing="6">
+          <TextField fx:id="snapshotId" text="latest" promptText="latest (or snapshot ID)" HBox.hgrow="ALWAYS">
+            <tooltip>
+              <Tooltip text="Restic snapshot ID to restore ('latest' by default; optionally snapshotID:subfolder). Explicit snapshot IDs ignore snapshot tag scoping"/>
+            </tooltip>
+          </TextField>
+        </HBox>
+
         <Label fx:id="snapshotScopeLabel" text="Snapshot scope:" style="-fx-text-fill: #222222;"/>
-        <ComboBox fx:id="snapshotScope" editable="true" promptText="source backup task tag (optional)" maxWidth="Infinity" HBox.hgrow="ALWAYS">
-          <tooltip>
-            <Tooltip text="The source backup task whose snapshots the restore selects from (the newest of that task's snapshots). Left empty, derived automatically when the repository is served by exactly one backup task; otherwise the newest bitferry-tagged snapshot repo-wide is selected"/>
-          </tooltip>
-        </ComboBox>
+        <HBox fx:id="snapshotScopeControl" spacing="6">
+          <TextField fx:id="snapshotScope" promptText="source backup task tag (optional)" HBox.hgrow="ALWAYS">
+            <tooltip>
+              <Tooltip text="The source backup task (or repository tag) whose newest snapshot is selected when Snapshot ID is 'latest'. Left empty, derived automatically when the repository is served by exactly one backup task; otherwise the newest bitferry-tagged snapshot repo-wide is selected"/>
+            </tooltip>
+          </TextField>
+          <Button fx:id="selectSnapshotScope" text="Select" onAction="#onSelectSnapshotScope">
+            <tooltip>
+              <Tooltip text="Open repository snapshot tag selector (extracts tags from repository asynchronously)"/>
+            </tooltip>
+          </Button>
+        </HBox>
 
         <Label fx:id="includeLabel" text="Include:" style="-fx-text-fill: #222222;"/>
         <HBox fx:id="includeControl" spacing="6">

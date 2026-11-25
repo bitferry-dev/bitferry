@@ -563,17 +563,17 @@ final class ResticExecutor {
     return List.of(ExecutorSupport.displayCommand(backupCommand(backup)));
   }
 
-  List<String> serveCheckCommand(Backup backup) {
-    Manager manager = backup.manager();
+  List<String> serveCheckCommand(Restic restic) {
+    Manager manager = restic.manager();
     List<String> checkCmd = new ArrayList<>();
     checkCmd.add(resolveExecutable());
     checkCmd.add("check");
-    if (backup.check() != null) {
-      checkCmd.addAll(backup.check());
+    if (restic.check() != null) {
+      checkCmd.addAll(restic.check());
     }
     checkCmd.addAll(commonOptions(manager));
     checkCmd.add("-r");
-    checkCmd.add(backup.destination().processOpts());
+    checkCmd.add(restic.repoEndpoint().processOpts());
     return checkCmd;
   }
 
@@ -621,17 +621,6 @@ final class ResticExecutor {
     return cmds;
   }
 
-  List<String> serveCheckCommand(Restore restore) {
-    Manager manager = restore.manager();
-    List<String> checkCmd = new ArrayList<>();
-    checkCmd.add(resolveExecutable());
-    checkCmd.add("check");
-    checkCmd.addAll(commonOptions(manager));
-    checkCmd.add("-r");
-    checkCmd.add(restore.source().processOpts());
-    return checkCmd;
-  }
-
   List<List<String>> serveCommands(Restore restore) {
     return List.of(ExecutorSupport.displayCommand(serveCheckCommand(restore)));
   }
@@ -641,17 +630,15 @@ final class ResticExecutor {
     List<String> cmd = new ArrayList<>();
     cmd.add(resolveExecutable());
     cmd.add("restore");
-    cmd.add("latest");
-    // The snapshot scope: the newest snapshot of the source backup task. The restic
-    // tag filters OR-match their alternatives, so the unique per-task tag alone scopes
-    // precisely (the snapshots also carry the marker tag). Without the scope the newest
-    // marker-tagged snapshot of the whole repository is selected - on a shared
-    // (co-repository) repository that would restore whichever sibling task's data
-    // happens to be the newest, so the fallback is a deliberate advisory, and the
-    // foreign (untagged) snapshots stay excluded either way
-    cmd.add("--tag");
-    String scope = restore.snapshotTag();
-    cmd.add(scope != null && !scope.isBlank() ? scope : Tags.MARKER);
+    String snapshot = restore.snapshotId();
+    cmd.add(snapshot);
+    // Restic applies --tag only when snapshot ID "latest" (or "latest:subfolder") is given.
+    // When restoring a specific snapshot ID directly, --tag is inapplicable and omitted.
+    if (Restore.isLatestSnapshot(snapshot)) {
+      cmd.add("--tag");
+      String scope = restore.snapshotTag();
+      cmd.add(scope != null && !scope.isBlank() ? scope : Tags.MARKER);
+    }
     cmd.add("--target");
     cmd.add(restore.destination().processOpts());
 
@@ -857,6 +844,10 @@ final class ResticExecutor {
 
     ExecutorSupport.info(manager, output, () -> "Restoring the Restic repository " + repo + " into " + target);
     ExecutorSupport.info(manager, output, () -> {
+      String snapshot = restore.snapshotId();
+      if (!Restore.isLatestSnapshot(snapshot)) {
+        return "Snapshot ID: " + snapshot;
+      }
       String scope = restore.snapshotTag();
       // The scope advisory: the repo-wide fallback may select a sibling task's data
       // on a shared repository - say so instead of restoring silently

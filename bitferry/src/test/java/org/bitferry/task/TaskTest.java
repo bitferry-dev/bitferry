@@ -155,6 +155,17 @@ class TaskTest {
     Restore restore = new Restore(manager, destination(), volumeRestored(), "secret", "@default", List.of(), List.of());
     assertEquals("restic", restore.serialize().get("backend").asString());
     assertEquals(List.of("--sparse"), toStringList(restore.serialize().get("restic").get("execute")));
+    assertNull(restore.serialize().get("restic").get("check"));
+
+    restore.setCheck("@full");
+    JsonNode fullCheckRestore = restore.serialize();
+    assertEquals(Restic.CHECK.get("full"), toStringList(fullCheckRestore.get("restic").get("check")));
+    Restore reloadedCheckRestore = (Restore) Task.restore(manager, fullCheckRestore);
+    assertEquals(List.of("--read-data"), reloadedCheckRestore.check());
+
+    reloadedCheckRestore.setCheck("-");
+    assertNull(reloadedCheckRestore.check());
+    assertNull(reloadedCheckRestore.serialize().get("restic").get("check"));
   }
 
   @Test

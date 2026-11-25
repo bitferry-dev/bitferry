@@ -192,6 +192,29 @@ class ServiceDialogControllerTest {
         }
     }
 
+    @Test
+    void checkOnlyModeHidesCadenceForgetPruneAndReturnsCheckSettings() throws Exception {
+        ServiceSettings initial = new ServiceSettings(null, List.of("--read-data"), null, null);
+        ServiceDialogController dialog = runFxResult(() -> ServiceDialogController.load(initial, Backup.CADENCE, true));
+
+        VBox profileBar = field(dialog, "profileBar");
+        GridPane grid = field(dialog, "grid");
+        TextField checkFlags = field(dialog, "checkFlags");
+
+        assertFalse(profileBar.isVisible());
+        assertEquals(2, grid.getChildren().size(), "only Check label and Check row should inhabit the grid");
+        assertEquals("--read-data", checkFlags.getText());
+        assertDoesNotThrow(dialog::validate);
+        assertEquals(new ServiceSettings(null, List.of("--read-data"), null, null), dialog.settings());
+
+        runFx(() -> checkFlags.setText("--no-cache, --read-data"));
+        assertDoesNotThrow(dialog::validate);
+        assertEquals(List.of("--no-cache", "--read-data"), dialog.settings().check());
+        assertNull(dialog.settings().cadence());
+        assertNull(dialog.settings().forget());
+        assertNull(dialog.settings().prune());
+    }
+
     private static ServiceDialogController load(ServiceSettings settings) throws Exception {
         return runFxResult(() -> ServiceDialogController.load(settings, Map.of("default", new Cadence(Duration.ofDays(7), 5))));
     }

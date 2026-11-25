@@ -59,6 +59,9 @@ public class ModifyTaskCommand implements Callable<Integer>, HasCommonOptions {
   @Option(names = {"-b", "--backup-task"}, description = "Backup task tag scoping the restore snapshot selection, or @|bold,cyan -|@ for the default scope (derived from the repository when unambiguous, otherwise the newest bitferry-tagged snapshot repo-wide; restore tasks only).", paramLabel = "TAG")
   String backupTask;
 
+  @Option(names = "--snapshot", description = "Snapshot ID to restore, or @|bold,cyan latest|@ / @|bold,cyan -|@ for the default latest (restore tasks only).", paramLabel = "ID")
+  String snapshot;
+
   @Option(names = {"-x", "--execute"}, description = "Backend execution options, profile @|bold,cyan (@default)|@, or @|bold,cyan -|@ to clear.", paramLabel = "PROFILE|OPTS")
   String execute;
 
@@ -115,6 +118,7 @@ public class ModifyTaskCommand implements Callable<Integer>, HasCommonOptions {
     boolean hasPrune = prune != null;
     boolean hasServe = serve != null;
     boolean hasBackupTask = backupTask != null;
+    boolean hasSnapshot = snapshot != null;
     boolean hasInclude = includeCleared || includeSet;
     boolean hasExclude = excludeCleared || excludeSet;
     boolean hasExecute = execute != null;
@@ -124,7 +128,7 @@ public class ModifyTaskCommand implements Callable<Integer>, HasCommonOptions {
     Boolean targetKeyring = CliUtils.resolveVaultMigration(vault, bitferryVault, keyring);
     boolean hasVault = targetKeyring != null;
 
-    if (!password && !hasVault && !hasForget && !hasCheck && !hasPrune && !hasServe && !hasBackupTask && !hasInclude && !hasExclude && !hasExecute && !hasType && !hasManual) {
+    if (!password && !hasVault && !hasForget && !hasCheck && !hasPrune && !hasServe && !hasBackupTask && !hasSnapshot && !hasInclude && !hasExclude && !hasExecute && !hasType && !hasManual) {
       throw new BitferryError("No modifications specified for task " + tag);
     }
 
@@ -137,14 +141,22 @@ public class ModifyTaskCommand implements Callable<Integer>, HasCommonOptions {
     // so a rejected option after it would leave the half-applied morph behind - the
     // guards' outcomes are identical pre- and post-morph (the morph never leaves the
     // rclone family, and the backup tasks reject the morph itself)
-    if (hasForget || hasCheck || hasPrune || hasServe) {
+    if (hasForget || hasPrune || hasServe) {
       if (!task.supportsRetentionPolicy()) {
-        throw new BitferryError("Forget, check, prune, and serve options are only applicable to backup tasks");
+        throw new BitferryError("Forget, prune, and serve options are only applicable to backup tasks");
       }
+    }
+
+    if (hasCheck && !task.supportsCheckService()) {
+      throw new BitferryError("Check options are only applicable to restic tasks");
     }
 
     if (hasBackupTask && !(task instanceof Restore)) {
       throw new BitferryError("Backup task scope is only applicable to restore tasks");
+    }
+
+    if (hasSnapshot && !(task instanceof Restore)) {
+      throw new BitferryError("Snapshot ID is only applicable to restore tasks");
     }
 
     // The include filters are rejected upfront (before any mutation): the capability
@@ -211,6 +223,10 @@ public class ModifyTaskCommand implements Callable<Integer>, HasCommonOptions {
         pwd = restore.password();
       } catch (Exception ignored) {}
       restore.setSnapshotTag("-".equals(backupTask) ? null : Restore.resolveSnapshotTag(m, task.source(), backupTask, pwd));
+    }
+
+    if (hasSnapshot) {
+      ((Restore) task).setSnapshotId(snapshot);
     }
 
     // The clear is the tolerated no-op for the capability-less tasks (the upfront

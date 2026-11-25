@@ -32,6 +32,10 @@ public class CreateRestoreCommand implements Callable<Integer>, HasCommonOptions
   @Parameters(index = "1", description = "Destination endpoint.", paramLabel = "DESTINATION")
   String destination;
 
+  @Profiles(value = Restore.class, field = "CHECK")
+  @Option(names = "--check", description = "Repository checking with profile @|bold,cyan (@default, @full)|@, options, or @|bold,cyan -|@ to clear extra options (default: @|bold,cyan @default|@).", paramLabel = "PROFILE|OPTS")
+  String check = "@default";
+
   @Profiles(Restore.class)
   @Option(names = {"-x", "--execute"}, description = "Extra backend execution options (comma-separated), profile @|bold,cyan (@default)|@ or @|bold,cyan -|@ for none.", paramLabel = "PROFILE|OPTS")
   String execute;
@@ -59,6 +63,9 @@ public class CreateRestoreCommand implements Callable<Integer>, HasCommonOptions
 
   @Option(names = {"-b", "--backup-task"}, description = "Backup task tag scoping the restore (the newest snapshot of that task is selected), or @|bold,cyan -|@ for the default scope (derived from the repository when unambiguous, otherwise the newest bitferry-tagged snapshot repo-wide).", paramLabel = "TAG")
   String backupTask;
+
+  @Option(names = "--snapshot", description = "Snapshot ID to restore, or @|bold,cyan latest|@ / @|bold,cyan -|@ (default: @|bold,cyan latest|@). Accepts @|bold,cyan snapshotID:subfolder|@.", paramLabel = "ID")
+  String snapshot;
 
   @Option(names = "-m", description = "Shorthand for --execution manual (exclude the task from the mass runs; run it by its tag only).")
   boolean manualExecution;
@@ -90,15 +97,22 @@ public class CreateRestoreCommand implements Callable<Integer>, HasCommonOptions
     // The snapshot scope: the explicit (or uniquely derived) source backup task whose
     // snapshots the restore selects from - on a shared (co-repository) repository the
     // repo-wide fallback would restore whichever sibling task's data is the newest.
-    // The '-' marker declines the explicit scoping (the default resolution applies)
-    String scope = Restore.resolveSnapshotTag(m, repo, "-".equals(backupTask) ? null : backupTask, password);
-    if (scope != null) {
+    // The '-' marker declines the explicit scoping (the default resolution applies).
+    // When an explicit concrete snapshot ID is specified without --backup-task, skip
+    // ambiguous derivation since --tag is unused for explicit snapshot IDs.
+    boolean isLatest = Restore.isLatestSnapshot(snapshot);
+    String scope = (isLatest || backupTask != null)
+      ? Restore.resolveSnapshotTag(m, repo, "-".equals(backupTask) ? null : backupTask, password)
+      : null;
+    if (!isLatest) {
+      spec.commandLine().getOut().println("Snapshot ID: " + Restore.normalizeSnapshotId(snapshot));
+    } else if (scope != null) {
       spec.commandLine().getOut().println("Snapshot scope: backup task " + scope);
     } else {
       spec.commandLine().getErr().println(Ansi.AUTO.string("@|faint no backup task bound to the repository found; the restore will select the newest bitferry-tagged snapshot repo-wide (--backup-task pins it)|@"));
     }
     boolean toKeyring = CliUtils.resolveKeyring(vault, bitferryVault, keyring, false);
-    Restore task = new Restore(m, repo, dst, password, execute, inc, exc, toKeyring, scope);
+    Restore task = new Restore(m, repo, dst, password, execute, check, inc, exc, toKeyring, scope, snapshot);
     if (Boolean.TRUE.equals(manual)) {
       task.setManual(true);
     }

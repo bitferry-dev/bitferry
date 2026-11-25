@@ -19,6 +19,14 @@ public abstract class Restic extends Task {
   public static final Map<String, List<String>> PROCESS =
     route(Map.of("default", List.of()), List.of());
 
+  /// Repository checking profiles; the null key denotes the default (no extra flags) profile.
+  public static final Map<String, List<String>> CHECK = route(Map.of(
+    "default", List.of(),
+    "full", List.of("--read-data")
+  ), null);
+
+  protected List<String> check;
+
   // The process options and the route ride the TaskBase (the hoisted plumbing)
 
   private static final System.Logger LOG = System.getLogger(Restic.class.getName());
@@ -83,7 +91,32 @@ public abstract class Restic extends Task {
     this.vault = Vault.volume();
     this.processRoute = processRoute;
     this.processOptions = optional(backend == null ? null : backend.execute(), processRoute);
+    this.check = backend == null ? null : backend.check();
     this.cached = false;
+  }
+
+  @Override
+  public boolean supportsCheckService() {
+    return true;
+  }
+
+  public List<String> check() {
+    return check == null ? null : Collections.unmodifiableList(check);
+  }
+
+  public void setCheck(String check) {
+    this.check = optional(check, CHECK);
+    touch();
+  }
+
+  public void setCheck(List<String> check) {
+    this.check = check == null || check.isEmpty() ? null : List.copyOf(check);
+    touch();
+  }
+
+  @Override
+  public void applyPolicyOptions(String forget, String check, String prune, String serve) {
+    if (check != null) setCheck(check);
   }
 
   /// The restic tasks keep the repository password within the vault.
@@ -254,7 +287,9 @@ public abstract class Restic extends Task {
   // storage without falling back to @default profiles (which apply at task creation time only).
   @JsonProperty("restic")
   Backend storeBackend() {
-    return new Backend(processOptions == null || processOptions.isEmpty() ? List.of() : processOptions, null, null);
+    List<String> exec = processOptions == null || processOptions.isEmpty() ? List.of() : processOptions;
+    List<String> chk = orNull(check);
+    return new Backend(exec, null, chk, null, null);
   }
 
   @Override

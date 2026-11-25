@@ -144,4 +144,41 @@ class RestoreScopeTest {
     // 3. resolveSnapshotTag still rejects unknown tags not in manager and not in snapshots
     assertThrows(BitferryError.class, () -> Restore.resolveSnapshotTag(manager, repo, "nosuch-foreign", "foreign-pass"));
   }
+
+  @Test
+  void snapshotIdDefaultsToLatestAndControlsTagFlagInCommand() {
+    Restore r = restore("cafebabe");
+    assertEquals(Restore.DEFAULT_SNAPSHOT, r.snapshotId());
+    assertFalse(r.serialize().has("snapshotId"));
+    List<String> defCmd = new ResticExecutor(null).restoreCommand(r);
+    assertEquals("latest", defCmd.get(defCmd.indexOf("restore") + 1));
+    assertTrue(defCmd.contains("--tag"));
+
+    r.setSnapshotId("  8345a490  ");
+    assertEquals("8345a490", r.snapshotId());
+    assertEquals("8345a490", r.serialize().get("snapshotId").asString());
+    List<String> pinnedCmd = new ResticExecutor(null).restoreCommand(r);
+    assertEquals("8345a490", pinnedCmd.get(pinnedCmd.indexOf("restore") + 1));
+    assertFalse(pinnedCmd.contains("--tag"), "--tag is only applicable when snapshot ID is 'latest'");
+
+    r.setSnapshotId("latest:/docs");
+    assertEquals("latest:/docs", r.snapshotId());
+    assertTrue(Restore.isLatestSnapshot(r.snapshotId()));
+    List<String> subCmd = new ResticExecutor(null).restoreCommand(r);
+    assertEquals("latest:/docs", subCmd.get(subCmd.indexOf("restore") + 1));
+    assertEquals("cafebabe", subCmd.get(subCmd.indexOf("--tag") + 1));
+
+    // Resetting to latest / empty / "-" omits snapshotId from JSON again
+    r.setSnapshotId("latest");
+    assertEquals("latest", r.snapshotId());
+    assertFalse(r.serialize().has("snapshotId"));
+
+    // Restore serveCheckCommand mirrors Backup check flag support
+    assertFalse(new ResticExecutor(null).serveCheckCommand(r).contains("--read-data"));
+    r.setCheck("@full");
+    List<String> checkCmd = new ResticExecutor(null).serveCheckCommand(r);
+    assertEquals("check", checkCmd.get(1));
+    assertTrue(checkCmd.contains("--read-data"));
+    assertEquals(List.of(ExecutorSupport.displayCommand(checkCmd)), r.serveCommandsWith(new SystemExecutor()));
+  }
 }

@@ -1,7 +1,7 @@
 package org.bitferry.gui;
 
 import org.bitferry.*;
-import org.bitferry.*;
+import org.bitferry.Paths;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.io.*;
 

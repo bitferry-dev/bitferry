@@ -40,11 +40,11 @@
         <ColumnConstraints hgrow="ALWAYS"/>
       </columnConstraints>
       <children>
-        <Label text="Service:" GridPane.rowIndex="0" GridPane.columnIndex="0" style="-fx-text-fill: #222222;"/>
+        <Label fx:id="cadenceLabel" text="Service:" GridPane.rowIndex="0" GridPane.columnIndex="0" style="-fx-text-fill: #222222;"/>
         <CheckBox fx:id="enabled" text="enable automatic repository service" selected="true"
                   GridPane.rowIndex="0" GridPane.columnIndex="1" style="-fx-text-fill: #222222;"/>
 
-        <Label text="Elapsed time:" GridPane.rowIndex="1" GridPane.columnIndex="0" style="-fx-text-fill: #222222;"/>
+        <Label fx:id="durationLabel" text="Elapsed time:" GridPane.rowIndex="1" GridPane.columnIndex="0" style="-fx-text-fill: #222222;"/>
         <HBox fx:id="durationRow" spacing="6" alignment="CENTER_LEFT" GridPane.rowIndex="1" GridPane.columnIndex="1">
           <CheckBox fx:id="durationEnabled" selected="true"/>
           <TextField fx:id="durationAmount" prefColumnCount="6" promptText="e.g. 7">
@@ -55,7 +55,7 @@
           <ComboBox fx:id="durationUnit" prefWidth="110"/>
         </HBox>
 
-        <Label text="Backup count:" GridPane.rowIndex="2" GridPane.columnIndex="0" style="-fx-text-fill: #222222;"/>
+        <Label fx:id="countLabel" text="Backup count:" GridPane.rowIndex="2" GridPane.columnIndex="0" style="-fx-text-fill: #222222;"/>
         <HBox fx:id="countRow" spacing="6" alignment="CENTER_LEFT" GridPane.rowIndex="2" GridPane.columnIndex="1">
           <CheckBox fx:id="countEnabled" selected="true"/>
           <TextField fx:id="countAmount" prefColumnCount="6" promptText="e.g. 5">
@@ -66,9 +66,9 @@
           <Label text="backups" style="-fx-text-fill: #222222;"/>
         </HBox>
 
-        <Separator GridPane.rowIndex="3" GridPane.columnIndex="0" GridPane.columnSpan="2"/>
+        <Separator fx:id="cadenceSeparator" GridPane.rowIndex="3" GridPane.columnIndex="0" GridPane.columnSpan="2"/>
 
-        <Label text="Check:" GridPane.rowIndex="4" GridPane.columnIndex="0" style="-fx-text-fill: #222222;"/>
+        <Label fx:id="checkLabel" text="Check:" GridPane.rowIndex="4" GridPane.columnIndex="0" style="-fx-text-fill: #222222;"/>
         <HBox fx:id="checkRow" spacing="6" alignment="CENTER_LEFT" GridPane.rowIndex="4" GridPane.columnIndex="1">
           <TextField fx:id="checkFlags" promptText="extra check options, e.g. --read-data (optional)" prefColumnCount="30" HBox.hgrow="ALWAYS">
             <tooltip>
@@ -82,7 +82,7 @@
           </Button>
         </HBox>
 
-        <Label text="Forget:" GridPane.rowIndex="5" GridPane.columnIndex="0" style="-fx-text-fill: #222222;"/>
+        <Label fx:id="forgetLabel" text="Forget:" GridPane.rowIndex="5" GridPane.columnIndex="0" style="-fx-text-fill: #222222;"/>
         <HBox fx:id="forgetRow" spacing="6" alignment="CENTER_LEFT" GridPane.rowIndex="5" GridPane.columnIndex="1">
           <TextField fx:id="forgetFlags" promptText="retention policy flags (empty = skip forget)" prefColumnCount="30" HBox.hgrow="ALWAYS">
             <tooltip>
@@ -96,7 +96,7 @@
           </Button>
         </HBox>
 
-        <Label text="Prune:" GridPane.rowIndex="6" GridPane.columnIndex="0" style="-fx-text-fill: #222222;"/>
+        <Label fx:id="pruneLabel" text="Prune:" GridPane.rowIndex="6" GridPane.columnIndex="0" style="-fx-text-fill: #222222;"/>
         <HBox fx:id="pruneRow" spacing="6" alignment="CENTER_LEFT" GridPane.rowIndex="6" GridPane.columnIndex="1">
           <TextField fx:id="pruneFlags" promptText="extra prune options (optional)" prefColumnCount="30" HBox.hgrow="ALWAYS">
             <tooltip>

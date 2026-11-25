@@ -3,7 +3,7 @@ package org.bitferry.gui;
 import org.bitferry.*;
 import org.bitferry.endpoint.*;
 import org.bitferry.task.*;
-import org.bitferry.task.*;
+import org.bitferry.task.Executor;
 import javafx.application.*;
 import javafx.fxml.*;
 import javafx.scene.*;

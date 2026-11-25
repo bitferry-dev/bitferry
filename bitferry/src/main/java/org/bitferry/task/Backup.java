@@ -23,10 +23,7 @@ public class Backup extends Restic {
   ), null);
 
   /// Repository checking profiles; the null key denotes the default (no extra flags) profile.
-  public static final Map<String, List<String>> CHECK = route(Map.of(
-    "default", List.of(),
-    "full", List.of("--read-data")
-  ), null);
+  public static final Map<String, List<String>> CHECK = Restic.CHECK;
 
   /// Repository pruning profiles; the null key denotes the default (no extra flags) profile.
   public static final Map<String, List<String>> PRUNE = route(Map.of(
@@ -41,7 +38,6 @@ public class Backup extends Restic {
   protected Boolean format;
 
   protected List<String> forget;
-  protected List<String> check;
   protected List<String> prune;
   protected Cadence cadence;
 
@@ -91,7 +87,6 @@ public class Backup extends Restic {
     }
     this.format = null;
     this.forget = backendOpts == null ? null : backendOpts.forget();
-    this.check = backendOpts == null ? null : backendOpts.check();
     this.prune = backendOpts == null ? null : backendOpts.prune();
     this.cadence = backendOpts == null ? null : backendOpts.cadence();
   }
@@ -130,10 +125,6 @@ public class Backup extends Restic {
     return forget == null ? null : java.util.Collections.unmodifiableList(forget);
   }
 
-  public List<String> check() {
-    return check == null ? null : java.util.Collections.unmodifiableList(check);
-  }
-
   public List<String> prune() {
     return prune == null ? null : java.util.Collections.unmodifiableList(prune);
   }
@@ -149,16 +140,6 @@ public class Backup extends Restic {
 
   public void setForget(List<String> forget) {
     this.forget = forget == null || forget.isEmpty() ? null : List.copyOf(forget);
-    touch();
-  }
-
-  public void setCheck(String check) {
-    this.check = optional(check, CHECK);
-    touch();
-  }
-
-  public void setCheck(List<String> check) {
-    this.check = check == null || check.isEmpty() ? null : List.copyOf(check);
     touch();
   }
 
@@ -190,8 +171,8 @@ public class Backup extends Restic {
   /// Apply the resolved retention, checking, pruning, and cadence specifications (null entries skipped).
   @Override
   public void applyPolicyOptions(String forget, String check, String prune, String serve) {
+    super.applyPolicyOptions(forget, check, prune, serve);
     if (forget != null) setForget(forget);
-    if (check != null) setCheck(check);
     if (prune != null) setPrune(prune);
     if (serve != null) setCadence(serve);
   }

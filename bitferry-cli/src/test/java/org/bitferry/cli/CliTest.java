@@ -1559,6 +1559,8 @@ class CliTest {
     assertTrue(rBreakdown.contains("Snapshot Scope:"));
     assertTrue(rBreakdown.contains(backupTag));
     assertTrue(rBreakdown.contains("# Commands"));
+    assertTrue(rBreakdown.contains("# Service"));
+    assertTrue(rBreakdown.contains("Check:"));
     assertTrue(rBreakdown.contains("Execute:"));
     assertTrue(rBreakdown.contains("restic restore"));
     assertTrue(rBreakdown.contains("Serve:"));
@@ -1757,7 +1759,7 @@ class CliTest {
     Restore updated = (Restore) m.selectTasks().get(task.tag());
     assertEquals(List.of("--verify"), updated.processOptions());
 
-    // 2. Modifying backup-only options on restore fails
+    // 2. Modifying backup-only options on restore fails; --check applies cleanly on restore
     cmd = Main.createCommandLine();
     out = new StringWriter();
     err = new StringWriter();
@@ -1765,7 +1767,27 @@ class CliTest {
     cmd.setErr(new PrintWriter(err));
     code = cmd.execute("m", "--path", volDir.toString(), "t", task.tag(), "--forget", "@default");
     assertNotEquals(0, code);
-    assertTrue(err.toString().toLowerCase().contains("forget, check, prune, and serve options are only applicable to backup tasks"));
+    assertTrue(err.toString().toLowerCase().contains("forget, prune, and serve options are only applicable to backup tasks"));
+
+    cmd = Main.createCommandLine();
+    out = new StringWriter();
+    err = new StringWriter();
+    cmd.setOut(new PrintWriter(out));
+    cmd.setErr(new PrintWriter(err));
+    code = cmd.execute("m", "--path", volDir.toString(), "t", task.tag(), "--check", "@full");
+    assertEquals(0, code, () -> "stderr: " + err);
+    Restore fullChecked = (Restore) managerFor(volDir).selectTasks().get(task.tag());
+    assertEquals(Restore.CHECK.get("full"), fullChecked.check());
+    assertTrue(TaskBreakdown.format(fullChecked).contains("--read-data"));
+
+    cmd = Main.createCommandLine();
+    out = new StringWriter();
+    err = new StringWriter();
+    cmd.setOut(new PrintWriter(out));
+    cmd.setErr(new PrintWriter(err));
+    code = cmd.execute("m", "--path", volDir.toString(), "t", task.tag(), "--check", "-");
+    assertEquals(0, code, () -> "stderr: " + err);
+    assertNull(((Restore) managerFor(volDir).selectTasks().get(task.tag())).check());
   }
 
   @Test
@@ -1817,7 +1839,16 @@ class CliTest {
     cmd.setErr(new PrintWriter(err));
     code = cmd.execute("m", "--path", volDir.toString(), "t", task.tag(), "--serve", "@default");
     assertNotEquals(0, code);
-    assertTrue(err.toString().contains("Forget, check, prune, and serve options are only applicable to backup tasks"));
+    assertTrue(err.toString().contains("Forget, prune, and serve options are only applicable to backup tasks"));
+
+    cmd = Main.createCommandLine();
+    out = new StringWriter();
+    err = new StringWriter();
+    cmd.setOut(new PrintWriter(out));
+    cmd.setErr(new PrintWriter(err));
+    code = cmd.execute("m", "--path", volDir.toString(), "t", task.tag(), "--check", "@full");
+    assertNotEquals(0, code);
+    assertTrue(err.toString().contains("Check options are only applicable to restic tasks"));
 
     // 4. Modifying operation type on rclone succeeds
     cmd = Main.createCommandLine();
@@ -2411,5 +2442,53 @@ class CliTest {
 
     Restore reloaded = (Restore) managerFor(volDir).task(restore.tag());
     assertEquals(shortId, reloaded.snapshotTag());
+  }
+
+  @Test
+  void createAndModifyRestoreSnapshotIdOption() throws Exception {
+    Path volDir = tempDir.resolve("cli_snapid_vol");
+    Path repoDir = tempDir.resolve("cli_snapid_repo");
+    Files.createDirectories(volDir);
+    assertEquals(0, cmd.execute("create", "volume", volDir.toString()));
+    probeRoot(volDir);
+    String vtag = volumeTag(managerFor(volDir), volDir);
+
+    cmd = Main.createCommandLine();
+    out = new StringWriter();
+    err = new StringWriter();
+    cmd.setOut(new PrintWriter(out));
+    cmd.setErr(new PrintWriter(err));
+    int code = executeWithPassword("snap-pass", "create", "task", "restore",
+      "local:" + repoDir, ":" + vtag + ":restored", "--snapshot", "8345a490", "--check", "@full");
+    assertEquals(0, code, () -> "stderr: " + err);
+
+    Manager m = managerFor(volDir);
+    Restore restore = (Restore) m.tasks().values().stream()
+      .filter(t -> t instanceof Restore)
+      .findFirst().orElseThrow();
+    assertEquals("8345a490", restore.snapshotId());
+    assertEquals(Restore.CHECK.get("full"), restore.check());
+    assertEquals("8345a490", m.selectTasks(restore.tag()).get(restore.tag()).serialize().get("snapshotId").asString());
+    assertTrue(TaskBreakdown.format(restore).contains("Snapshot ID:"));
+    assertTrue(TaskBreakdown.format(restore).contains("8345a490"));
+
+    // Modify to another explicit snapshot:subfolder, then reset to default latest via "-"
+    cmd = Main.createCommandLine();
+    out = new StringWriter();
+    err = new StringWriter();
+    cmd.setOut(new PrintWriter(out));
+    cmd.setErr(new PrintWriter(err));
+    assertEquals(0, cmd.execute("modify", "task", restore.tag(), "--snapshot", "deadbeef:/sub"), () -> "stderr: " + err);
+    assertEquals("deadbeef:/sub", ((Restore) managerFor(volDir).task(restore.tag())).snapshotId());
+
+    cmd = Main.createCommandLine();
+    out = new StringWriter();
+    err = new StringWriter();
+    cmd.setOut(new PrintWriter(out));
+    cmd.setErr(new PrintWriter(err));
+    assertEquals(0, cmd.execute("modify", "task", restore.tag(), "--snapshot", "-"), () -> "stderr: " + err);
+    Restore reset = (Restore) managerFor(volDir).task(restore.tag());
+    assertEquals("latest", reset.snapshotId());
+    assertFalse(managerFor(volDir).selectTasks(restore.tag()).get(restore.tag()).serialize().has("snapshotId"));
   }
 }

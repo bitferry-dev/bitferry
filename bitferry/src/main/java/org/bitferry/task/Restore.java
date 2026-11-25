@@ -14,6 +14,12 @@ public class Restore extends Restic implements IncludeFilters {
 
   public static final String OPERATION = "restore";
 
+  /// Default positional snapshot identifier passed to restic restore.
+  public static final String DEFAULT_SNAPSHOT = "latest";
+
+  /// Repository checking profiles; the null key denotes the default (no extra flags) profile.
+  public static final Map<String, List<String>> CHECK = Restic.CHECK;
+
   /// Processing options profiles; the null key denotes the default profile.
   public static final Map<String, List<String>> PROCESS =
     route(Map.of("default", List.of("--sparse")), List.of("--sparse"));
@@ -28,6 +34,10 @@ public class Restore extends Restic implements IncludeFilters {
   // snapshot carrying the marker tag (shared repositories would otherwise restore the
   // newest snapshot across all the co-repository tasks - possibly a sibling task's data)
   private String snapshotTag;
+
+  // Specific snapshot ID (or snapshotID:subfolder) to restore; null represents DEFAULT_SNAPSHOT ("latest")
+  @JsonProperty("snapshotId")
+  private String snapshotId;
 
   /// Constructor for a new task instance.
   public Restore(Manager manager, Endpoint source, Endpoint destination, String password, String process, Collection<String> include, Collection<String> exclude) {
@@ -46,9 +56,23 @@ public class Restore extends Restic implements IncludeFilters {
   /// restore selects from (null falling back to the repo-wide newest marker-tagged
   /// snapshot).
   public Restore(Manager manager, Endpoint source, Endpoint destination, String password, String process, Collection<String> include, Collection<String> exclude, boolean keyring, String snapshotTag) {
+    this(manager, source, destination, password, process, include, exclude, keyring, snapshotTag, null);
+  }
+
+  /// Constructor for a new task instance with the explicit keyring storage request,
+  /// snapshot scope, and target snapshot ID (null/blank/"latest" defaults to "latest").
+  public Restore(Manager manager, Endpoint source, Endpoint destination, String password, String process, Collection<String> include, Collection<String> exclude, boolean keyring, String snapshotTag, String snapshotId) {
+    this(manager, source, destination, password, process, null, include, exclude, keyring, snapshotTag, snapshotId);
+  }
+
+  /// Constructor for a new task instance with explicit repository checking options,
+  /// keyring storage request, snapshot scope, and target snapshot ID.
+  public Restore(Manager manager, Endpoint source, Endpoint destination, String password, String process, String check, Collection<String> include, Collection<String> exclude, boolean keyring, String snapshotTag, String snapshotId) {
     super(manager, source, destination, password, process, PROCESS, exclude, keyring);
+    this.check = optional(check, CHECK);
     this.include.addAll(include);
     this.snapshotTag = snapshotTag;
+    this.snapshotId = normalizeSnapshotId(snapshotId);
   }
 
   /// Jackson creator restoring an existing task from the storage descriptor;
@@ -64,11 +88,13 @@ public class Restore extends Restic implements IncludeFilters {
     @JsonProperty("include") List<String> include,
     @JsonProperty("exclude") List<String> exclude,
     @JsonProperty("snapshotTag") String snapshotTag,
+    @JsonProperty("snapshotId") String snapshotId,
     @JsonProperty("restic") Backend backendOpts
   ) {
     super(manager, source, destination, tag, modified, exclude, backendOpts, PROCESS);
     this.include.addAll(include == null ? List.of() : include);
     this.snapshotTag = snapshotTag;
+    this.snapshotId = normalizeSnapshotId(snapshotId);
     if (backend != null && !BACKEND.equals(backend)) {
       throw new BitferryError("Invalid task backend: expected " + BACKEND + " but got " + backend);
     }
@@ -86,6 +112,37 @@ public class Restore extends Restic implements IncludeFilters {
   /// applying at the run time).
   public void setSnapshotTag(String snapshotTag) {
     this.snapshotTag = snapshotTag;
+    touch();
+  }
+
+  /// Normalize snapshot ID input: null, blank, "-", or "latest" normalize to null
+  /// (meaning [DEFAULT_SNAPSHOT]); any other trimmed identifier (including "latest:subpath")
+  /// is preserved.
+  public static String normalizeSnapshotId(String snapshotId) {
+    if (snapshotId == null) return null;
+    String trimmed = snapshotId.trim();
+    if (trimmed.isEmpty() || "-".equals(trimmed) || DEFAULT_SNAPSHOT.equals(trimmed)) {
+      return null;
+    }
+    return trimmed;
+  }
+
+  /// Whether the given snapshot ID selects the rolling "latest" snapshot (either "latest"
+  /// itself or "latest:subpath"), where `--tag` filtering applies.
+  public static boolean isLatestSnapshot(String snapshotId) {
+    String normalized = normalizeSnapshotId(snapshotId);
+    return normalized == null || normalized.startsWith(DEFAULT_SNAPSHOT + ":");
+  }
+
+  /// Target snapshot ID for restic restore (defaults to [DEFAULT_SNAPSHOT]).
+  @JsonIgnore
+  public String snapshotId() {
+    return snapshotId != null ? snapshotId : DEFAULT_SNAPSHOT;
+  }
+
+  /// Set the target snapshot ID (null, blank, "-", or "latest" resets to default [DEFAULT_SNAPSHOT]).
+  public void setSnapshotId(String snapshotId) {
+    this.snapshotId = normalizeSnapshotId(snapshotId);
     touch();
   }
 

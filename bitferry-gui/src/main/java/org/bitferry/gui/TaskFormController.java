@@ -5,6 +5,7 @@ import org.bitferry.endpoint.*;
 import org.bitferry.task.*;
 import org.bitferry.vault.Vault;
 import javafx.application.Platform;
+import javafx.beans.binding.*;
 import javafx.fxml.*;
 import javafx.scene.Node;
 import javafx.scene.control.*;
@@ -110,7 +111,19 @@ public final class TaskFormController {
   private Button browseDestinationVolume;
 
   @FXML
-  private ComboBox<String> snapshotScope;
+  private HBox snapshotIdControl;
+
+  @FXML
+  private TextField snapshotId;
+
+  @FXML
+  private HBox snapshotScopeControl;
+
+  @FXML
+  private TextField snapshotScope;
+
+  @FXML
+  private Button selectSnapshotScope;
   @FXML
   private TextField include;
 
@@ -176,6 +189,8 @@ public final class TaskFormController {
   @FXML
   private Label destinationLabel;
   @FXML
+  private Label snapshotIdLabel;
+  @FXML
   private Label snapshotScopeLabel;
   @FXML
   private Label includeLabel;
@@ -214,6 +229,12 @@ public final class TaskFormController {
   // the user-edited content stays intact
   private final Map<TextField, String> autoLoaded = new HashMap<>();
 
+  // Repository snapshot tags already discovered for the active endpoint/password via
+  // the tag selection dialog (cleared whenever source or password changes).
+  private final Set<String> discoveredRepoTags = new HashSet<>();
+  private String autoFilledScope;
+  private boolean updatingScope;
+
   public TaskFormController() {}
 
   // The static display wiring (the context and the existing task ride init())
@@ -234,9 +255,10 @@ public final class TaskFormController {
     rows.add(new Row(typeLabel, typeControl, () -> true));
     rows.add(new Row(sourceLabel, source.getParent(), () -> true));
     rows.add(new Row(destinationLabel, destination.getParent(), () -> true));
-    // The restore snapshot scope: the source backup task whose snapshots the restore
-    // selects from
-    rows.add(new Row(snapshotScopeLabel, snapshotScope, restoreScope));
+    // The restore snapshot ID and scope: snapshot ID defaults to "latest", with
+    // tag scoping active while a "latest" target is selected.
+    rows.add(new Row(snapshotIdLabel, snapshotIdControl, restoreScope));
+    rows.add(new Row(snapshotScopeLabel, snapshotScopeControl, restoreScope));
     // The include control is disabled for the backup type: restic backup filters by
     // exclusion only, so the entered patterns would be silently ignored
     rows.add(new Row(includeLabel, includeControl, () -> true));
@@ -250,7 +272,7 @@ public final class TaskFormController {
     // live in the security dialog (the crypt rows stay hidden there)
     rows.add(new Row(securityLabel, securityControl, restic));
     rows.add(new Row(formatLabel, format, formatVisible));
-    rows.add(new Row(serveLabel, serveControl, backup));
+    rows.add(new Row(serveLabel, serveControl, restic));
     rows.add(new Row(manualLabel, manual, () -> true));
 
     // The row buttons are pinned to their pref width: under the viewport squeeze
@@ -266,6 +288,8 @@ public final class TaskFormController {
     }
 
     includeControl.disableProperty().bind(type.valueProperty().isEqualTo("backup"));
+    snapshotScopeControl.disableProperty().bind(
+      Bindings.createBooleanBinding(() -> !Restore.isLatestSnapshot(snapshotId.getText()), snapshotId.textProperty()));
 
     // The endpoint browsing buttons mirror the disabled state of the corresponding entries
     browseSourceSmart.disableProperty().bind(source.disableProperty());
@@ -281,6 +305,7 @@ public final class TaskFormController {
     Icons.equip(browseDestinationSmart, Icons.Symbol.BROWSE);
     Icons.equip(browseDestinationLocal, Icons.Symbol.BROWSE);
     Icons.equip(browseDestinationVolume, Icons.Symbol.DRIVE);
+    Icons.equip(selectSnapshotScope, Icons.Symbol.BROWSE);
 
     Icons.equip(editInclude, Icons.Symbol.EDIT);
     Icons.equip(editExclude, Icons.Symbol.EDIT);
@@ -324,7 +349,14 @@ public final class TaskFormController {
       relayout();
     });
 
-    source.textProperty().addListener((obs, was, now) -> updateRestoreCandidates());
+    source.textProperty().addListener((obs, was, now) -> {
+      discoveredRepoTags.clear();
+      updateRestoreCandidates();
+    });
+
+    snapshotScope.textProperty().addListener((obs, was, now) -> {
+      if (!updatingScope) autoFilledScope = null;
+    });
 
     // The first relayout ran before the scene existed (the pre-CSS font measurement):
     // re-run it once the dialog shows, so the column widths land with the real metrics
@@ -416,21 +448,20 @@ public final class TaskFormController {
       }
 
       if (existing instanceof Restore restore) {
-        updateRestoreCandidates();
-        String curTag = restore.snapshotTag();
-        if (curTag != null) {
-          String match = snapshotScope.getItems().stream()
-            .filter(item -> item.startsWith(curTag + " ") || item.equals(curTag))
-            .findFirst()
-            .orElse(curTag);
-          snapshotScope.setValue(match);
-        } else {
-          snapshotScope.setValue("");
+        serviceSettings = new ServiceSettings(null, restore.check(), null, null);
+        snapshotId.setText(restore.snapshotId());
+        updatingScope = true;
+        try {
+          String curTag = restore.snapshotTag();
+          snapshotScope.setText(curTag != null ? curTag : "");
+        } finally {
+          updatingScope = false;
         }
       }
     }
 
     if (existing == null) {
+      snapshotId.setText(Restore.DEFAULT_SNAPSHOT);
       updateRestoreCandidates();
     }
 
@@ -708,21 +739,25 @@ public final class TaskFormController {
         ? "Configure the encryption and the password storage of the new task"
         : "Manage the encryption and the password storage of task " + existing.tag(),
       dialog).ifPresent(s -> {
-        settings = s;
-        if ("restore".equals(type())) {
-          updateRestoreCandidates();
+        if (!Objects.equals(settings.password(), s.password())) {
+          discoveredRepoTags.clear();
         }
+        settings = s;
       });
   }
 
   @FXML
   private void onEditServe() {
-    ServiceDialogController dialog = ServiceDialogController.load(serviceSettings, Backup.CADENCE);
-    ServiceDialog.show(context, "Repository Service",
-      existing == null
+    boolean checkOnly = Restore.OPERATION.equals(type());
+    ServiceDialogController dialog = ServiceDialogController.load(serviceSettings, Backup.CADENCE, checkOnly);
+    String header = checkOnly
+      ? (existing == null
+        ? "Configure repository integrity check options"
+        : "Manage repository integrity check options for task " + existing.tag())
+      : (existing == null
         ? "Configure repository service cadence and maintenance phases"
-        : "Manage repository service cadence and maintenance phases for task " + existing.tag(),
-      dialog).ifPresent(s -> serviceSettings = s);
+        : "Manage repository service cadence and maintenance phases for task " + existing.tag());
+    ServiceDialog.show(context, "Repository Service", header, dialog).ifPresent(s -> serviceSettings = s);
   }
 
   String type() {
@@ -771,123 +806,104 @@ public final class TaskFormController {
     return destination.getText().trim();
   }
 
-  /// The restore snapshot scope: the source backup task tag (blank = auto-derive, '-' = clear/repo-wide).
+  /// The restore target snapshot ID (defaults to [Restore#DEFAULT_SNAPSHOT]).
+  String snapshotId() {
+    String normalized = Restore.normalizeSnapshotId(snapshotId != null ? snapshotId.getText() : null);
+    return normalized != null ? normalized : Restore.DEFAULT_SNAPSHOT;
+  }
+
+  /// The restore snapshot scope: the source backup task or repository tag (blank = auto-derive, '-' = clear/repo-wide).
   String snapshotScope() {
-    String value = snapshotScope.getEditor().getText();
-    if (value == null || value.isBlank()) {
-      value = snapshotScope.getValue();
-    }
+    String value = snapshotScope != null ? snapshotScope.getText() : null;
     if (value == null || value.isBlank()) return "";
     value = value.trim();
-    if (value.startsWith("(") || "-".equals(value)) {
+    if ("-".equals(value)) {
       return "-";
     }
     return value.split("\\s+")[0];
   }
 
-  private static String formatSnapshotTime(String iso) {
-    if (iso == null || iso.isEmpty()) return "";
+  private Endpoint resolveRepositoryEndpoint() {
+    if (context == null) return null;
+    if (existing instanceof Restore restore) {
+      return restore.source();
+    }
+    String srcText = source.getText().trim();
+    if (srcText.isEmpty()) return null;
     try {
-      var odt = java.time.OffsetDateTime.parse(iso);
-      return odt.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"));
+      return Endpoints.parse(context.manager(), srcText);
     } catch (Exception e) {
-      return iso.length() >= 16 ? iso.substring(0, 16).replace('T', ' ') : iso;
+      if (srcText.startsWith("/") || srcText.matches("^[a-zA-Z]:[/\\\\].*")) {
+        try {
+          return new LocalEndpoint(java.nio.file.Path.of(srcText));
+        } catch (Exception ignored) {
+          return null;
+        }
+      }
+      return null;
     }
   }
 
-  /// Refresh the candidate backup tasks serving the current repository endpoint.
-  private void updateRestoreCandidates() {
-    if (context == null || !"restore".equals(type())) return;
-    Endpoint repo = null;
-    if (existing instanceof Restore restore) {
-      repo = restore.source();
-    } else {
-      String srcText = source.getText().trim();
-      if (srcText.isEmpty()) {
-        snapshotScope.getItems().clear();
-        return;
-      }
-      try {
-        repo = Endpoints.parse(context.manager(), srcText);
-      } catch (Exception e) {
-        if (srcText.startsWith("/") || srcText.matches("^[a-zA-Z]:[/\\\\].*")) {
-          try {
-            repo = new LocalEndpoint(java.nio.file.Path.of(srcText));
-          } catch (Exception ignored) {
-            return;
-          }
-        } else {
-          return;
-        }
-      }
-    }
-    List<String> candidates = Restore.scopeCandidates(context.manager(), repo);
-    List<String> items = new ArrayList<>();
-    Set<String> seenTags = new HashSet<>(candidates);
-    for (String cTag : candidates) {
-      Task t = context.manager().tasks().get(cTag);
-      String label = (t instanceof Backup b)
-        ? cTag + " (backup " + b.source().describe() + " → " + b.destination().describe() + ")"
-        : cTag;
-      items.add(label);
-    }
-
+  private String resolveRepositoryPassword() {
     String pwd = password();
     if ((pwd == null || pwd.isEmpty()) && existing instanceof Restore restore) {
       try {
         pwd = restore.password();
       } catch (Exception ignored) {}
     }
-    if (pwd != null && !pwd.isEmpty() && repo != null) {
-      try {
-        List<Snapshot> snapshots = Restore.repositorySnapshots(context.manager(), repo, pwd);
-        Map<String, Snapshot> tagToLatestSnapshot = new LinkedHashMap<>();
-        List<Snapshot> untagged = new ArrayList<>();
-        for (Snapshot s : snapshots) {
-          List<String> nonMarkerTags = s.tags().stream()
-            .filter(tag -> !Tags.MARKER.equals(tag))
-            .toList();
-          if (nonMarkerTags.isEmpty()) {
-            untagged.add(s);
-          } else {
-            for (String t : nonMarkerTags) {
-              tagToLatestSnapshot.putIfAbsent(t, s);
-            }
-          }
-        }
-        for (var entry : tagToLatestSnapshot.entrySet()) {
-          String tag = entry.getKey();
-          if (seenTags.add(tag)) {
-            Snapshot s = entry.getValue();
-            String pathDesc = s.paths().isEmpty() ? "" : String.join(", ", s.paths());
-            String hostDesc = s.hostname() != null && !s.hostname().isEmpty() ? " on " + s.hostname() : "";
-            String timeDesc = formatSnapshotTime(s.time());
-            String label = tag + " (backup " + pathDesc + hostDesc + (timeDesc.isEmpty() ? "" : ", latest: " + timeDesc) + ")";
-            items.add(label);
-          }
-        }
-        for (Snapshot s : untagged) {
-          String sId = s.shortId() != null && !s.shortId().isEmpty() ? s.shortId() : s.id();
-          if (sId != null && !sId.isEmpty() && seenTags.add(sId)) {
-            String pathDesc = s.paths().isEmpty() ? "" : String.join(", ", s.paths());
-            String hostDesc = s.hostname() != null && !s.hostname().isEmpty() ? " on " + s.hostname() : "";
-            String timeDesc = formatSnapshotTime(s.time());
-            String label = sId + " (snapshot " + pathDesc + hostDesc + (timeDesc.isEmpty() ? "" : ", " + timeDesc) + ")";
-            items.add(label);
-          }
-        }
-      } catch (Exception ignored) {
-        // Failed probe or incorrect password silently skips repository snapshot discovery
-      }
-    }
+    return pwd;
+  }
 
+  /// Refresh local candidate backup tasks serving the current repository endpoint
+  /// (pure in-memory lookup; repository tag extraction runs on demand in [SnapshotTagDialog]).
+  private void updateRestoreCandidates() {
+    if (existing != null || context == null || !"restore".equals(type())) return;
+    Endpoint repo = resolveRepositoryEndpoint();
+    List<String> candidates = repo != null ? Restore.scopeCandidates(context.manager(), repo) : List.of();
     String current = snapshotScope();
-    snapshotScope.getItems().setAll(items);
-    if (existing == null) {
-      if (items.size() == 1 && (current.isEmpty() || !seenTags.contains(current))) {
-        snapshotScope.getSelectionModel().select(0);
+    if (candidates.size() == 1 && (current.isEmpty() || Objects.equals(current, autoFilledScope))) {
+      String candidate = candidates.getFirst();
+      updatingScope = true;
+      try {
+        snapshotScope.setText(candidate);
+        autoFilledScope = candidate;
+      } finally {
+        updatingScope = false;
+      }
+    } else if (autoFilledScope != null && Objects.equals(current, autoFilledScope) && candidates.size() != 1) {
+      updatingScope = true;
+      try {
+        snapshotScope.setText("");
+        autoFilledScope = null;
+      } finally {
+        updatingScope = false;
       }
     }
+  }
+
+  @FXML
+  private void onSelectSnapshotScope() {
+    if (snapshotScopeControl.isDisable()) return;
+    Endpoint repo = resolveRepositoryEndpoint();
+    if (repo == null) {
+      Dialogs.alert(context, javafx.scene.control.Alert.AlertType.WARNING,
+        "Repository missing", "Specify a valid repository endpoint before selecting snapshot tags.");
+      return;
+    }
+    String pwd = resolveRepositoryPassword();
+    SnapshotTagController controller = SnapshotTagController.load(context, repo, pwd, snapshotScope());
+    Window window = snapshotScope.getScene() != null ? snapshotScope.getScene().getWindow() : null;
+    SnapshotTagDialog.show(window, controller).ifPresent(selected -> {
+      discoveredRepoTags.addAll(controller.discoveredTags());
+      updatingScope = true;
+      try {
+        snapshotScope.setText(selected);
+        autoFilledScope = null;
+      } finally {
+        updatingScope = false;
+      }
+    });
+    discoveredRepoTags.addAll(controller.discoveredTags());
   }
 
   String include() {
@@ -973,18 +989,17 @@ public final class TaskFormController {
     if (source().isEmpty()) throw new BitferryError("Source endpoint must be specified");
     if (destination().isEmpty()) throw new BitferryError("Destination endpoint must be specified");
     // The snapshot scope must name a live backup task or discovered repository snapshot
-    if (resticMode() && "restore".equals(type()) && !snapshotScope().isEmpty() && !"-".equals(snapshotScope())) {
-      Endpoint repo = null;
-      try {
-        repo = Endpoints.parse(context.manager(), source());
-      } catch (Exception ignored) {}
-      String pwd = password();
-      if ((pwd == null || pwd.isEmpty()) && existing instanceof Restore restore) {
-        try {
-          pwd = restore.password();
-        } catch (Exception ignored) {}
+    // (only validated when restoring "latest", unless skipped because unchanged or already
+    // discovered in SnapshotTagDialog).
+    String scope = snapshotScope();
+    if (resticMode() && "restore".equals(type()) && Restore.isLatestSnapshot(snapshotId())
+        && !scope.isEmpty() && !"-".equals(scope)) {
+      boolean unchanged = existing instanceof Restore r && Objects.equals(scope, r.snapshotTag());
+      if (!unchanged && !discoveredRepoTags.contains(scope)) {
+        Endpoint repo = resolveRepositoryEndpoint();
+        String pwd = resolveRepositoryPassword();
+        Restore.resolveSnapshotTag(context.manager(), repo, scope, pwd);
       }
-      Restore.resolveSnapshotTag(context.manager(), repo, snapshotScope(), pwd);
     }
     if (existing == null) {
       // The repository password rides the security dialog: the form only guards the

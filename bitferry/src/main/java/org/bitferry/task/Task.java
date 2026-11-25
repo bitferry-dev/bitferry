@@ -365,8 +365,13 @@ public abstract class Task {
     throw new BitferryError("Altering operation type is not supported for " + operation() + " tasks");
   }
 
-  /// Whether the task carries the retention/check/cadence policy options.
+  /// Whether the task carries the retention/pruning/cadence policy options.
   public boolean supportsRetentionPolicy() {
+    return false;
+  }
+
+  /// Whether the task carries configurable repository integrity check options.
+  public boolean supportsCheckService() {
     return false;
   }
 
@@ -376,8 +381,7 @@ public abstract class Task {
   }
 
   /// Apply the resolved policy options (the retention, checking, pruning and cadence
-  /// specifications; null entries are skipped). The no-op default: only the tasks
-  /// carrying the policy options (the backup tasks) consume them.
+  /// specifications; null entries are skipped).
   public void applyPolicyOptions(String forget, String check, String prune, String serve) {
   }
 

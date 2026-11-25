@@ -50,6 +50,7 @@ public final class TaskBreakdown {
     }
 
     if (task instanceof Restore restore) {
+      appendProperty(sb, "Snapshot ID:", restore.snapshotId());
       String scope = restore.snapshotTag();
       if (scope != null) {
         Task backup = task.manager().tasks().get(scope);
@@ -69,9 +70,11 @@ public final class TaskBreakdown {
       appendProperty(sb, "Modified:", modified);
     }
 
-    // 2. Specific sections: Service & Retention for Backup
+    // 2. Specific sections: Service & Retention for Backup, Check Service for Restore
     if (task instanceof Backup backup) {
       appendServiceSection(sb, backup);
+    } else if (task instanceof Restore restore) {
+      appendRestoreServiceSection(sb, restore);
     }
 
     // 3. Filters (the include row rides the capability: the backup tasks carry no
@@ -241,18 +244,28 @@ public final class TaskBreakdown {
       appendProperty(sb, "Retention:", String.join(" ", backup.forget()));
     }
 
-    if (backup.check() == null || backup.check().isEmpty()) {
-      appendProperty(sb, "Check:", Ansi.AUTO.string("@|bold,cyan @default|@ (structural)"));
-    } else if (backup.check().contains("--read-data")) {
-      appendProperty(sb, "Check:", Ansi.AUTO.string("@|bold,cyan @full|@ (--read-data)"));
-    } else {
-      appendProperty(sb, "Check:", String.join(" ", backup.check()));
-    }
+    appendCheckProperty(sb, backup);
 
     if (backup.prune() == null || backup.prune().isEmpty()) {
       appendProperty(sb, "Prune:", Ansi.AUTO.string("@|bold,cyan @default|@"));
     } else {
       appendProperty(sb, "Prune:", String.join(" ", backup.prune()));
+    }
+  }
+
+  private static void appendRestoreServiceSection(StringBuilder sb, Restore restore) {
+    sb.append(System.lineSeparator());
+    sb.append(Ansi.AUTO.string("@|bold # Service|@")).append(System.lineSeparator());
+    appendCheckProperty(sb, restore);
+  }
+
+  private static void appendCheckProperty(StringBuilder sb, Restic restic) {
+    if (restic.check() == null || restic.check().isEmpty()) {
+      appendProperty(sb, "Check:", Ansi.AUTO.string("@|bold,cyan @default|@ (structural)"));
+    } else if (restic.check().contains("--read-data")) {
+      appendProperty(sb, "Check:", Ansi.AUTO.string("@|bold,cyan @full|@ (--read-data)"));
+    } else {
+      appendProperty(sb, "Check:", String.join(" ", restic.check()));
     }
   }
 

@@ -43,7 +43,13 @@ public final class ServiceDialogController {
   private ColumnConstraints labelColumn;
 
   @FXML
+  private Label cadenceLabel;
+
+  @FXML
   private CheckBox enabled;
+
+  @FXML
+  private Label durationLabel;
 
   @FXML
   private HBox durationRow;
@@ -58,6 +64,9 @@ public final class ServiceDialogController {
   private ComboBox<String> durationUnit;
 
   @FXML
+  private Label countLabel;
+
+  @FXML
   private HBox countRow;
 
   @FXML
@@ -67,16 +76,37 @@ public final class ServiceDialogController {
   private TextField countAmount;
 
   @FXML
+  private Separator cadenceSeparator;
+
+  @FXML
+  private Label checkLabel;
+
+  @FXML
+  private HBox checkRow;
+
+  @FXML
   private TextField checkFlags;
 
   @FXML
   private Button editCheck;
 
   @FXML
+  private Label forgetLabel;
+
+  @FXML
+  private HBox forgetRow;
+
+  @FXML
   private TextField forgetFlags;
 
   @FXML
   private Button editForget;
+
+  @FXML
+  private Label pruneLabel;
+
+  @FXML
+  private HBox pruneRow;
 
   @FXML
   private TextField pruneFlags;
@@ -86,6 +116,7 @@ public final class ServiceDialogController {
 
   private Map<String, Cadence> cadenceProfiles;
   private boolean hadCadence;
+  private boolean checkOnly;
 
   public ServiceDialogController() {}
 
@@ -123,9 +154,17 @@ public final class ServiceDialogController {
 
   /// Populate controls from existing [ServiceSettings] and cadence profile presets.
   public void init(ServiceSettings current, Map<String, Cadence> cadenceProfiles) {
+    init(current, cadenceProfiles, false);
+  }
+
+  /// Populate controls from existing [ServiceSettings], optionally hiding backup-only
+  /// cadence, retention, and prune rows (`checkOnly == true` for restore tasks).
+  public void init(ServiceSettings current, Map<String, Cadence> cadenceProfiles, boolean checkOnly) {
     this.cadenceProfiles = cadenceProfiles;
+    this.checkOnly = checkOnly;
+
     Map<String, Cadence> nonNull = filterProfiles(cadenceProfiles);
-    if (!nonNull.isEmpty()) {
+    if (!checkOnly && !nonNull.isEmpty()) {
       List<String> keys = new ArrayList<>(nonNull.keySet());
       if (keys.contains("@default")) {
         keys.remove("@default");
@@ -143,21 +182,46 @@ public final class ServiceDialogController {
       profileBar.setManaged(false);
     }
 
+    relayoutGrid(checkOnly);
+
     ServiceSettings effective = current == null ? ServiceSettings.DEFAULTS : current;
-    if (effective.cadence() == null) {
-      hadCadence = false;
-      enabled.setSelected(false);
-      applyThresholds(Cadence.PROFILES.get("default"));
-    } else {
-      hadCadence = true;
-      enabled.setSelected(effective.cadence().enabled());
-      applyThresholds(effective.cadence());
+    if (!checkOnly) {
+      if (effective.cadence() == null) {
+        hadCadence = false;
+        enabled.setSelected(false);
+        applyThresholds(Cadence.PROFILES.get("default"));
+      } else {
+        hadCadence = true;
+        enabled.setSelected(effective.cadence().enabled());
+        applyThresholds(effective.cadence());
+      }
+      initPhase(forgetFlags, effective.forget());
+      initPhase(pruneFlags, effective.prune());
     }
 
     initPhase(checkFlags, effective.check());
-    initPhase(forgetFlags, effective.forget());
-    initPhase(pruneFlags, effective.prune());
     sizeWindow();
+  }
+
+  private void relayoutGrid(boolean checkOnly) {
+    grid.getChildren().clear();
+    if (checkOnly) {
+      GridPane.setRowIndex(checkLabel, 0);
+      GridPane.setColumnIndex(checkLabel, 0);
+      GridPane.setRowIndex(checkRow, 0);
+      GridPane.setColumnIndex(checkRow, 1);
+      grid.getChildren().addAll(checkLabel, checkRow);
+    } else {
+      grid.getChildren().addAll(
+        cadenceLabel, enabled,
+        durationLabel, durationRow,
+        countLabel, countRow,
+        cadenceSeparator,
+        checkLabel, checkRow,
+        forgetLabel, forgetRow,
+        pruneLabel, pruneRow
+      );
+    }
   }
 
   public void init(ServiceSettings current) {
@@ -305,6 +369,8 @@ public final class ServiceDialogController {
 
   /// Validate cadence thresholds and phase option profiles; throws [BitferryError] on invalid values.
   void validate() {
+    resolvePhaseTokens(checkFlags.getText(), Restic.CHECK);
+    if (checkOnly) return;
     if (enabled.isSelected()) {
       if (!durationEnabled.isSelected() && !countEnabled.isSelected()) {
         throw new BitferryError("Enable at least an elapsed time or a backup count threshold, or disable automatic service");
@@ -316,15 +382,17 @@ public final class ServiceDialogController {
         parseCount();
       }
     }
-    resolvePhaseTokens(checkFlags.getText(), Backup.CHECK);
     resolvePhaseTokens(forgetFlags.getText(), Backup.FORGET);
     resolvePhaseTokens(pruneFlags.getText(), Backup.PRUNE);
   }
 
   /// Build the validated [ServiceSettings] from the form controls.
   ServiceSettings settings() {
+    List<String> check = resolvePhaseTokens(checkFlags.getText(), Restic.CHECK);
+    if (checkOnly) {
+      return new ServiceSettings(null, check, null, null);
+    }
     Cadence cadence = cadence();
-    List<String> check = resolvePhaseTokens(checkFlags.getText(), Backup.CHECK);
     List<String> forget = resolvePhaseTokens(forgetFlags.getText(), Backup.FORGET);
     List<String> prune = resolvePhaseTokens(pruneFlags.getText(), Backup.PRUNE);
     return new ServiceSettings(cadence, check, forget, prune);
@@ -380,16 +448,20 @@ public final class ServiceDialogController {
     return count;
   }
 
-  static ServiceDialogController load(ServiceSettings current, Map<String, Cadence> cadenceProfiles) {
+  static ServiceDialogController load(ServiceSettings current, Map<String, Cadence> cadenceProfiles, boolean checkOnly) {
     try {
       FXMLLoader loader = new FXMLLoader(ServiceDialogController.class.getResource("/org/bitferry/gui/service.fxml"));
       loader.load();
       ServiceDialogController controller = loader.getController();
-      controller.init(current, cadenceProfiles);
+      controller.init(current, cadenceProfiles, checkOnly);
       return controller;
     } catch (IOException e) {
       throw new BitferryError("Service dialog form loading failure", e);
     }
+  }
+
+  static ServiceDialogController load(ServiceSettings current, Map<String, Cadence> cadenceProfiles) {
+    return load(current, cadenceProfiles, false);
   }
 
   static ServiceDialogController load(ServiceSettings current) {

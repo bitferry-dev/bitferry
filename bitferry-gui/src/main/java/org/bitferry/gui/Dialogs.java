@@ -256,19 +256,29 @@ final class Dialogs {
         b.setPrune(svc.prune());
         yield b;
       }
-      // The restore resolves its snapshot scope first: the explicit (or uniquely
-      // derived) source backup task whose snapshots it selects from - on a shared
-      // (co-repository) repository the repo-wide fallback would restore whichever
+      // The restore resolves its snapshot scope when targeting 'latest': the explicit
+      // (or uniquely derived) source backup task whose snapshots it selects from - on a
+      // shared (co-repository) repository the repo-wide fallback would restore whichever
       // sibling task's data is the newest
       case "restore" -> {
+        String snapId = form.snapshotId();
+        boolean isLatest = Restore.isLatestSnapshot(snapId);
         String requested = form.snapshotScope();
-        String scope = Restore.resolveSnapshotTag(manager, source, "-".equals(requested) ? null : requested, form.password());
+        String scope = (isLatest || (!requested.isEmpty() && !"-".equals(requested)))
+          ? Restore.resolveSnapshotTag(manager, source, "-".equals(requested) ? null : requested, form.password())
+          : null;
         if (logs != null) {
-          logs.log(scope == null
-            ? "No backup task bound to the repository found; the restore will select the newest bitferry-tagged snapshot repo-wide"
-            : "Restore snapshot scope: backup task " + scope);
+          if (!isLatest) {
+            logs.log("Restore snapshot ID: " + snapId);
+          } else {
+            logs.log(scope == null
+              ? "No backup task bound to the repository found; the restore will select the newest bitferry-tagged snapshot repo-wide"
+              : "Restore snapshot scope: backup task " + scope);
+          }
         }
-        yield new Restore(manager, source, destination, form.password(), execute, include, exclude, keyring, scope);
+        Restore r = new Restore(manager, source, destination, form.password(), execute, include, exclude, keyring, scope, snapId);
+        r.setCheck(form.serviceSettings().check());
+        yield r;
       }
       default -> throw new BitferryError("Unknown task type " + form.type());
     };
@@ -374,20 +384,24 @@ final class Dialogs {
           backup.setCadence(svc.cadence());
         }
 
-        // Restore snapshot scope re-selection: '-' clears the explicit scope (the
-        // default derived selection applies at run time); the explicit tag must name
-        // a live backup task matching the repository
+        // Restore snapshot ID, scope, and check re-selection: '-' clears the explicit
+        // scope (the default derived selection applies at run time); unchanged scopes skip re-probing.
         if (current instanceof Restore restore) {
+          restore.setCheck(form.serviceSettings().check());
+          restore.setSnapshotId(form.snapshotId());
           String requested = form.snapshotScope();
-          String pwd = form.password();
-          if (pwd == null || pwd.isEmpty()) {
-            try {
-              pwd = restore.password();
-            } catch (Exception ignored) {}
+          String nextScope = "-".equals(requested) || requested.isEmpty() ? null : requested;
+          if (!Objects.equals(nextScope, restore.snapshotTag())) {
+            String pwd = form.password();
+            if (pwd == null || pwd.isEmpty()) {
+              try {
+                pwd = restore.password();
+              } catch (Exception ignored) {}
+            }
+            restore.setSnapshotTag("-".equals(requested)
+              ? null
+              : Restore.resolveSnapshotTag(manager, restore.source(), requested.isEmpty() ? null : requested, pwd));
           }
-          restore.setSnapshotTag("-".equals(requested)
-            ? null
-            : Restore.resolveSnapshotTag(manager, restore.source(), requested.isEmpty() ? null : requested, pwd));
         }
 
         // The manual flag (the mass-run participation): the dialog checkbox is the
