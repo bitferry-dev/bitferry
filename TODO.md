@@ -1,9 +1,7 @@
-- "serve": "7d,5" -- structured json entry
+- ensure the resulting volume-relative endpoint paths not escaping the volume root
 
 - restic restore ergonomics - select the snapshot tag (or latest)
 
 - select task id for restore on restore selection
-
-- what about disabling the restic repo sharing altogether?
 
 - sensible application icons on al platforms, including installers

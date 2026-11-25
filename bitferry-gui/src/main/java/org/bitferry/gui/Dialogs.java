@@ -250,8 +250,16 @@ final class Dialogs {
       case "equalize" -> new Equalize(manager, source, destination, execute, include, exclude);
       // The backup carries no include filters (the capability is structurally
       // absent - restic backup filters by exclusion only)
-      case "backup" -> new Backup(manager, source, destination, form.password(), form.format(),
-        execute, form.forget(), form.check(), form.serve(), exclude, keyring);
+      case "backup" -> {
+        ServiceSettings svc = form.serviceSettings();
+        Backup b = new Backup(manager, source, destination, form.password(), form.format(),
+          execute, null, null, null, null, exclude, keyring);
+        b.setCadence(svc.cadence());
+        b.setCheck(svc.check());
+        b.setForget(svc.forget());
+        b.setPrune(svc.prune());
+        yield b;
+      }
       // The restore resolves its snapshot scope first: the explicit (or uniquely
       // derived) source backup task whose snapshots it selects from - on a shared
       // (co-repository) repository the repo-wide fallback would restore whichever
@@ -361,8 +369,14 @@ final class Dialogs {
         // Backend execution options (the resolution rides the task's profile route)
         current.setProcessOptions(form.execute());
 
-        // Backup retention, check, and cadence options
-        current.applyPolicyOptions(form.forget(), form.check(), form.serve());
+        // Backup retention, check, prune, and cadence options
+        if (current instanceof Backup backup) {
+          ServiceSettings svc = form.serviceSettings();
+          backup.setForget(svc.forget());
+          backup.setCheck(svc.check());
+          backup.setPrune(svc.prune());
+          backup.setCadence(svc.cadence());
+        }
 
         // Restore snapshot scope re-selection: '-' clears the explicit scope (the
         // default derived selection applies at run time); the explicit tag must name

@@ -154,31 +154,17 @@
           </Button>
         </HBox>
 
-        <Label fx:id="forgetLabel" text="Retention:" style="-fx-text-fill: #222222;"/>
-        <HBox spacing="6">
-          <TextField fx:id="forget" promptText="retention policy (e.g. @default) (optional)" HBox.hgrow="ALWAYS"/>
-          <Button fx:id="editForget" text="Edit" onAction="#onEditForget">
-            <tooltip>
-              <Tooltip text="Open list editor for item-by-item editing, reordering, and profile presets"/>
-            </tooltip>
-          </Button>
-        </HBox>
-
-        <Label fx:id="checkLabel" text="Check:" style="-fx-text-fill: #222222;"/>
-        <HBox spacing="6">
-          <TextField fx:id="check" promptText="integrity check options (e.g. @default, @full) (optional)" HBox.hgrow="ALWAYS"/>
-          <Button fx:id="editCheck" text="Edit" onAction="#onEditCheck">
-            <tooltip>
-              <Tooltip text="Open list editor for item-by-item editing, reordering, and profile presets"/>
-            </tooltip>
-          </Button>
-        </HBox>
-
         <Label fx:id="formatLabel" text="Format:" style="-fx-text-fill: #222222;"/>
         <CheckBox fx:id="format" text="initialize the repository over the existing data" style="-fx-text-fill: #222222;"/>
 
         <Label fx:id="serveLabel" text="Serve:" style="-fx-text-fill: #222222;"/>
-        <TextField fx:id="serve" promptText="e.g. @default or '&lt;duration&gt;,&lt;count&gt;' (optional)"/>
+        <HBox fx:id="serveControl" spacing="6">
+          <Button fx:id="editServe" text="Service" onAction="#onEditServe">
+            <tooltip>
+              <Tooltip text="Open service editor: cadence thresholds and check, forget, prune options"/>
+            </tooltip>
+          </Button>
+        </HBox>
 
         <Label fx:id="manualLabel" text="Manual:" style="-fx-text-fill: #222222;"/>
         <CheckBox fx:id="manual" text="exclude from mass runs" style="-fx-text-fill: #222222;"/>

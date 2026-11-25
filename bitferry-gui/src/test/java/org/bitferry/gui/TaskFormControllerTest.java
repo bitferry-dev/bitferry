@@ -131,16 +131,15 @@ class TaskFormControllerTest {
         present = rowLabels(form);
         assertFalse(present.contains("Encryption:"), present.toString());
         assertTrue(present.contains("Security:"), present.toString());
-        assertTrue(present.contains("Retention:"), present.toString());
-        assertTrue(present.contains("Check:"), present.toString());
+        assertFalse(present.contains("Retention:"), present.toString());
+        assertFalse(present.contains("Check:"), present.toString());
         assertTrue(present.contains("Serve:"), present.toString());
         assertFalse(present.contains("Snapshot scope:"), present.toString());
 
-        // The restore layout: snapshot scope swaps in, retention/serve hide
+        // The restore layout: snapshot scope swaps in, serve hides
         runFx(() -> typeField.getSelectionModel().select("restore"));
         present = rowLabels(form);
         assertTrue(present.contains("Snapshot scope:"), present.toString());
-        assertFalse(present.contains("Retention:"), present.toString());
         assertFalse(present.contains("Serve:"), present.toString());
     }
 
@@ -636,6 +635,98 @@ class TaskFormControllerTest {
         Task candidate = Dialogs.buildCandidateTask(context, form, null);
         assertDoesNotThrow(candidate::conform);
         assertDoesNotThrow(form::validate);
+    }
+
+    @Test
+    void backupServeDefaultsAndServiceDialogEdit() throws Exception {
+        java.nio.file.Path repoDir = Files.createTempDirectory("bitferry-form-service-repo");
+        TaskFormController form = load(null);
+        ComboBox<String> type = field(form, "type");
+        TextField source = field(form, "source");
+        TextField destination = field(form, "destination");
+        HBox serveControl = field(form, "serveControl");
+        Button editServe = field(form, "editServe");
+
+        runFx(() -> {
+            type.getSelectionModel().select("backup");
+            source.setText(":" + volume.tag() + ":svc-src");
+            destination.setText("local:" + repoDir);
+        });
+
+        var settingsField = TaskFormController.class.getDeclaredField("settings");
+        settingsField.setAccessible(true);
+        settingsField.set(form, new EncryptionSettings(null, "", "secret", "secret", "", "", false));
+
+        assertTrue(rowLabels(form).contains("Serve:"));
+        assertFalse(editServe.isDisable());
+        assertEquals(List.of(editServe), serveControl.getChildren());
+        assertEquals(ServiceSettings.DEFAULTS, form.serviceSettings());
+        assertDoesNotThrow(form::validate);
+        Backup defaultCandidate = (Backup) Dialogs.buildCandidateTask(context, form, null);
+        assertEquals(Backup.CADENCE.get("default"), defaultCandidate.cadence());
+        assertEquals(Backup.FORGET.get("default"), defaultCandidate.forget());
+        assertNull(defaultCandidate.check());
+        assertNull(defaultCandidate.prune());
+
+        // Edit button launches ServiceDialog pre-seeded with cadence + phase lists and stores result on OK
+        var originalPrompter = ServiceDialog.dialogPrompter;
+        try {
+            ServiceDialog.dialogPrompter = dialog -> {
+                var root = dialog.getDialogPane().getContent();
+                var durField = (TextField) root.lookup("#durationAmount");
+                var cntField = (TextField) root.lookup("#countAmount");
+                var checkField = (TextField) root.lookup("#checkFlags");
+                var pruneField = (TextField) root.lookup("#pruneFlags");
+                assertEquals("7", durField.getText());
+                assertEquals("5", cntField.getText());
+                assertEquals("", checkField.getText());
+                assertEquals("", pruneField.getText());
+                durField.setText("14");
+                cntField.setText("10");
+                checkField.setText("--read-data");
+                pruneField.setText("--max-unused, 5%");
+                return java.util.Optional.of(javafx.scene.control.ButtonType.OK);
+            };
+            runFx(() -> {
+                try {
+                    var m = TaskFormController.class.getDeclaredMethod("onEditServe");
+                    m.setAccessible(true);
+                    m.invoke(form);
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+            });
+            assertEquals("14d,10", form.serviceSettings().cadence().format());
+            assertEquals(List.of("--read-data"), form.serviceSettings().check());
+            assertEquals(List.of("--max-unused", "5%"), form.serviceSettings().prune());
+
+            // Unchecking Service cadence preserves check, forget, and prune settings
+            ServiceDialog.dialogPrompter = dialog -> {
+                var root = dialog.getDialogPane().getContent();
+                var enabledBox = (javafx.scene.control.CheckBox) root.lookup("#enabled");
+                var pruneField = (TextField) root.lookup("#pruneFlags");
+                assertFalse(pruneField.isDisable(), "phase fields stay editable when cadence is disabled");
+                enabledBox.setSelected(false);
+                return java.util.Optional.of(javafx.scene.control.ButtonType.OK);
+            };
+            runFx(() -> {
+                try {
+                    var m = TaskFormController.class.getDeclaredMethod("onEditServe");
+                    m.setAccessible(true);
+                    m.invoke(form);
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+            });
+            assertNotNull(form.serviceSettings().cadence());
+            assertFalse(form.serviceSettings().cadence().enabled());
+            assertEquals("14d,10", form.serviceSettings().cadence().format());
+            assertEquals(List.of("--read-data"), form.serviceSettings().check());
+            assertEquals(Backup.FORGET.get("default"), form.serviceSettings().forget());
+            assertEquals(List.of("--max-unused", "5%"), form.serviceSettings().prune());
+        } finally {
+            ServiceDialog.dialogPrompter = originalPrompter;
+        }
     }
 
     // The helpers: the FXML controller is loaded through its factory, the private

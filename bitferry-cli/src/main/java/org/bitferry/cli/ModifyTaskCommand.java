@@ -47,8 +47,11 @@ public class ModifyTaskCommand implements Callable<Integer>, HasCommonOptions {
   @Option(names = "--forget", description = "Snapshot retention policy with profile @|bold,cyan (@default)|@, options, or @|bold,cyan -|@ to disable.", paramLabel = "PROFILE|OPTS")
   String forget;
 
-  @Option(names = "--check", description = "Repository integrity check with profile @|bold,cyan (@default, @full)|@, options, or @|bold,cyan -|@ to disable.", paramLabel = "PROFILE|OPTS")
+  @Option(names = "--check", description = "Repository integrity check with profile @|bold,cyan (@default, @full)|@, options, or @|bold,cyan -|@ to clear extra options.", paramLabel = "PROFILE|OPTS")
   String check;
+
+  @Option(names = "--prune", description = "Repository pruning with profile @|bold,cyan (@default)|@, options, or @|bold,cyan -|@ to clear extra options.", paramLabel = "PROFILE|OPTS")
+  String prune;
 
   @Option(names = "--serve", description = "Serve cadence with profile @|bold,cyan (@default)|@, @|bold,cyan <duration>,<count>|@, or @|bold,cyan -|@ to disable.", paramLabel = "CADENCE")
   String serve;
@@ -109,6 +112,7 @@ public class ModifyTaskCommand implements Callable<Integer>, HasCommonOptions {
 
     boolean hasForget = forget != null;
     boolean hasCheck = check != null;
+    boolean hasPrune = prune != null;
     boolean hasServe = serve != null;
     boolean hasBackupTask = backupTask != null;
     boolean hasInclude = includeCleared || includeSet;
@@ -120,7 +124,7 @@ public class ModifyTaskCommand implements Callable<Integer>, HasCommonOptions {
     Boolean targetKeyring = CliUtils.resolveVaultMigration(vault, bitferryVault, keyring);
     boolean hasVault = targetKeyring != null;
 
-    if (!password && !hasVault && !hasForget && !hasCheck && !hasServe && !hasBackupTask && !hasInclude && !hasExclude && !hasExecute && !hasType && !hasManual) {
+    if (!password && !hasVault && !hasForget && !hasCheck && !hasPrune && !hasServe && !hasBackupTask && !hasInclude && !hasExclude && !hasExecute && !hasType && !hasManual) {
       throw new BitferryError("No modifications specified for task " + tag);
     }
 
@@ -133,9 +137,9 @@ public class ModifyTaskCommand implements Callable<Integer>, HasCommonOptions {
     // so a rejected option after it would leave the half-applied morph behind - the
     // guards' outcomes are identical pre- and post-morph (the morph never leaves the
     // rclone family, and the backup tasks reject the morph itself)
-    if (hasForget || hasCheck || hasServe) {
+    if (hasForget || hasCheck || hasPrune || hasServe) {
       if (!task.supportsRetentionPolicy()) {
-        throw new BitferryError("Forget, check, and serve options are only applicable to backup tasks");
+        throw new BitferryError("Forget, check, prune, and serve options are only applicable to backup tasks");
       }
     }
 
@@ -195,7 +199,7 @@ public class ModifyTaskCommand implements Callable<Integer>, HasCommonOptions {
     }
 
     // The resolved policies
-    task.applyPolicyOptions(forget, check, serve);
+    task.applyPolicyOptions(forget, check, prune, serve);
 
     // The snapshot scope re-selection (restore tasks only, guarded upfront): '-'
     // clears the explicit scope (the default derived selection applies at the run

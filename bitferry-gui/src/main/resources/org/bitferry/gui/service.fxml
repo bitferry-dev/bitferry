@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.CheckBox?>
+<?import javafx.scene.control.ComboBox?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.Separator?>
+<?import javafx.scene.control.TextField?>
+<?import javafx.scene.control.Tooltip?>
+<?import javafx.scene.layout.ColumnConstraints?>
+<?import javafx.scene.layout.GridPane?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.VBox?>
+
+<!-- Unified backup service configuration editor: scheduling cadence thresholds and
+     the three maintenance phases (check, forget, prune), each with its own option
+     entry and item-list editor. -->
+<VBox fx:id="root" spacing="10" xmlns="http://javafx.com/javafx/17" xmlns:fx="http://javafx.com/fxml/1"
+      fx:controller="org.bitferry.gui.ServiceDialogController">
+  <padding>
+    <Insets top="10" right="10" bottom="10" left="10"/>
+  </padding>
+  <children>
+    <VBox fx:id="profileBar" spacing="10">
+      <HBox spacing="8" alignment="CENTER_LEFT">
+        <Label text="Cadence preset:" style="-fx-text-fill: #222222;"/>
+        <ComboBox fx:id="profileCombo" maxWidth="Infinity" HBox.hgrow="ALWAYS"/>
+        <Button fx:id="loadBtn" text="Load" onAction="#onProfileLoad">
+          <tooltip>
+            <Tooltip text="Replace current cadence thresholds with the selected @profile preset"/>
+          </tooltip>
+        </Button>
+      </HBox>
+      <Separator/>
+    </VBox>
+    <GridPane fx:id="grid" hgap="8" vgap="8">
+      <columnConstraints>
+        <ColumnConstraints fx:id="labelColumn" halignment="RIGHT"/>
+        <ColumnConstraints hgrow="ALWAYS"/>
+      </columnConstraints>
+      <children>
+        <Label text="Service:" GridPane.rowIndex="0" GridPane.columnIndex="0" style="-fx-text-fill: #222222;"/>
+        <CheckBox fx:id="enabled" text="Enable automatic repository service" selected="true"
+                  GridPane.rowIndex="0" GridPane.columnIndex="1" style="-fx-text-fill: #222222;"/>
+
+        <Label text="Elapsed time:" GridPane.rowIndex="1" GridPane.columnIndex="0" style="-fx-text-fill: #222222;"/>
+        <HBox fx:id="durationRow" spacing="6" alignment="CENTER_LEFT" GridPane.rowIndex="1" GridPane.columnIndex="1">
+          <CheckBox fx:id="durationEnabled" selected="true"/>
+          <TextField fx:id="durationAmount" prefColumnCount="6" promptText="e.g. 7">
+            <tooltip>
+              <Tooltip text="Maximum elapsed time since the previous service before triggering service again"/>
+            </tooltip>
+          </TextField>
+          <ComboBox fx:id="durationUnit" prefWidth="110"/>
+        </HBox>
+
+        <Label text="Backup count:" GridPane.rowIndex="2" GridPane.columnIndex="0" style="-fx-text-fill: #222222;"/>
+        <HBox fx:id="countRow" spacing="6" alignment="CENTER_LEFT" GridPane.rowIndex="2" GridPane.columnIndex="1">
+          <CheckBox fx:id="countEnabled" selected="true"/>
+          <TextField fx:id="countAmount" prefColumnCount="6" promptText="e.g. 5">
+            <tooltip>
+              <Tooltip text="Maximum number of backup runs since the previous service before triggering service again"/>
+            </tooltip>
+          </TextField>
+          <Label text="backups" style="-fx-text-fill: #222222;"/>
+        </HBox>
+
+        <Separator GridPane.rowIndex="3" GridPane.columnIndex="0" GridPane.columnSpan="2"/>
+
+        <Label text="Check:" GridPane.rowIndex="4" GridPane.columnIndex="0" style="-fx-text-fill: #222222;"/>
+        <HBox fx:id="checkRow" spacing="6" alignment="CENTER_LEFT" GridPane.rowIndex="4" GridPane.columnIndex="1">
+          <TextField fx:id="checkFlags" promptText="extra check options, e.g. --read-data (optional)" prefColumnCount="30" HBox.hgrow="ALWAYS">
+            <tooltip>
+              <Tooltip text="Comma-separated options for restic check (empty = standard structural check)"/>
+            </tooltip>
+          </TextField>
+          <Button fx:id="editCheck" text="Edit" onAction="#onEditCheck">
+            <tooltip>
+              <Tooltip text="Open list editor for item-by-item editing, reordering, and profile presets"/>
+            </tooltip>
+          </Button>
+        </HBox>
+
+        <Label text="Forget:" GridPane.rowIndex="5" GridPane.columnIndex="0" style="-fx-text-fill: #222222;"/>
+        <HBox fx:id="forgetRow" spacing="6" alignment="CENTER_LEFT" GridPane.rowIndex="5" GridPane.columnIndex="1">
+          <TextField fx:id="forgetFlags" promptText="retention policy flags (empty = skip forget)" prefColumnCount="30" HBox.hgrow="ALWAYS">
+            <tooltip>
+              <Tooltip text="Comma-separated options for restic forget (leave empty to skip snapshot retention)"/>
+            </tooltip>
+          </TextField>
+          <Button fx:id="editForget" text="Edit" onAction="#onEditForget">
+            <tooltip>
+              <Tooltip text="Open list editor for item-by-item editing, reordering, and profile presets"/>
+            </tooltip>
+          </Button>
+        </HBox>
+
+        <Label text="Prune:" GridPane.rowIndex="6" GridPane.columnIndex="0" style="-fx-text-fill: #222222;"/>
+        <HBox fx:id="pruneRow" spacing="6" alignment="CENTER_LEFT" GridPane.rowIndex="6" GridPane.columnIndex="1">
+          <TextField fx:id="pruneFlags" promptText="extra prune options (optional)" prefColumnCount="30" HBox.hgrow="ALWAYS">
+            <tooltip>
+              <Tooltip text="Comma-separated options for restic prune (empty = default prune)"/>
+            </tooltip>
+          </TextField>
+          <Button fx:id="editPrune" text="Edit" onAction="#onEditPrune">
+            <tooltip>
+              <Tooltip text="Open list editor for item-by-item editing, reordering, and profile presets"/>
+            </tooltip>
+          </Button>
+        </HBox>
+      </children>
+    </GridPane>
+  </children>
+</VBox>

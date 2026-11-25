@@ -122,7 +122,7 @@ public final class ResticRepositoryState {
   /// disabled cadence is never due; otherwise corrupt or missing state is due
   /// for every task with an active cadence.
   public boolean isDue(String tag, Cadence cadence) {
-    if (cadence == null) return false;
+    if (cadence == null || !cadence.enabled()) return false;
     if (corruptOrMissing) return true;
     Entry entry = entry(tag);
     return cadence.isDue(entry.maintenance, entry.backups);

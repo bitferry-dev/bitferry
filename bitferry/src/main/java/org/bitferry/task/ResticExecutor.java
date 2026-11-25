@@ -585,11 +585,7 @@ final class ResticExecutor {
     forgetCmd.add("forget");
     forgetCmd.add("--tag");
     forgetCmd.add(Tags.MARKER + "," + backup.tag());
-    for (String opt : backup.forget()) {
-      if (!"--prune".equals(opt)) {
-        forgetCmd.add(opt);
-      }
-    }
+    forgetCmd.addAll(backup.forget());
     forgetCmd.addAll(commonOptions(manager));
     if (manager.simulate) {
       forgetCmd.add("--dry-run");
@@ -604,6 +600,9 @@ final class ResticExecutor {
     List<String> pruneCmd = new ArrayList<>();
     pruneCmd.add(resolveExecutable());
     pruneCmd.add("prune");
+    if (backup.prune() != null) {
+      pruneCmd.addAll(backup.prune());
+    }
     pruneCmd.addAll(commonOptions(manager));
     if (manager.simulate) {
       pruneCmd.add("--dry-run");
@@ -779,25 +778,20 @@ final class ResticExecutor {
       state.save(repoDir);
     }
 
-    // Step 1: Structural check (gatekeeper before any retention/prune)
+    boolean[] tokenVerified = {false};
+
+    // Step 1: Structural check (gatekeeper before any retention/prune; runs unconditionally)
     List<String> checkCmd = serveCheckCommand(backup);
     ExecutorSupport.info(manager, output, () -> "Checking repository " + repo);
-    boolean checkOk = ExecutorSupport.execute(commandExecutor, manager, checkCmd, null, environment, backup.tag(), output).isSuccess();
-    if (!checkOk && healStaleToken(backup, repo)) {
-      // The stored token went stale (rotated by a co-repository task while this volume
-      // was absent): the re-synced token carries the rest of the service pass too
-      environment = backup.processEnvironment();
-      if (output != null) output.accept("Retrying the check after the stale token re-sync");
-      checkOk = ExecutorSupport.execute(commandExecutor, manager, checkCmd, null, environment, backup.tag(), output).isSuccess();
-    }
-    if (!checkOk) {
+    if (!executeServiceStep(backup, repo, checkCmd, tokenVerified, "check", output)) {
       String msg = "Service aborted for task " + backup.tag() + ": repository check failed";
       LOG.log(Level.ERROR, () -> msg);
       if (output != null) output.accept(msg);
       return Task.Outcome.FAILURE;
     }
+    environment = backup.processEnvironment();
 
-    // Step 2: Retention per co-repository task (each forget scopes to its own tag)
+    // Step 2: Retention per co-repository task (skipped when forget list is null/empty)
     for (Backup task : coRepo) {
       List<String> forgetCmd = serveForgetCommand(task);
       if (forgetCmd == null) continue; // The task holds no retention policy
@@ -808,11 +802,10 @@ final class ResticExecutor {
       }
     }
 
-    // Step 3: Prune (reclaim space)
+    // Step 3: Prune (reclaim space; runs unconditionally)
     List<String> pruneCmd = pruneCommand(backup);
     ExecutorSupport.info(manager, output, () -> "Pruning repository " + repo);
-    boolean pruneOk = ExecutorSupport.execute(commandExecutor, manager, pruneCmd, null, environment, backup.tag(), output).isSuccess();
-    if (!pruneOk) {
+    if (!executeServiceStep(backup, repo, pruneCmd, tokenVerified, "prune", output)) {
       return Task.Outcome.FAILURE;
     }
 
@@ -823,6 +816,22 @@ final class ResticExecutor {
       fresh.save(repoDir);
     }
     return Task.Outcome.SUCCESS;
+  }
+
+  /// Execute one repository-authenticated service phase, healing a stale rotated password token
+  /// once on the first failing command if Step 1 was skipped or stale.
+  private boolean executeServiceStep(Backup backup, String repo, List<String> cmd,
+      boolean[] tokenVerified, String phaseName, Consumer<String> output) {
+    Manager manager = backup.manager();
+    boolean ok = ExecutorSupport.execute(commandExecutor, manager, cmd, null, backup.processEnvironment(), backup.tag(), output).isSuccess();
+    if (!ok && !tokenVerified[0] && healStaleToken(backup, repo)) {
+      tokenVerified[0] = true;
+      if (output != null) output.accept("Retrying the " + phaseName + " after the stale token re-sync");
+      ok = ExecutorSupport.execute(commandExecutor, manager, cmd, null, backup.processEnvironment(), backup.tag(), output).isSuccess();
+    } else if (ok) {
+      tokenVerified[0] = true;
+    }
+    return ok;
   }
 
   Task.Outcome serveRestore(Restore restore, Consumer<String> output) {

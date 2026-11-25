@@ -21,7 +21,7 @@ public final class Storage {
   // empty, by convention) section omission mirroring the reference implementation's
   // `filter_nones`, and the lenient handling of the unknown descriptor sections
   private static final ObjectMapper MAPPER = JsonMapper.builder()
-    .disable(DateTimeFeature.WRITE_DATES_AS_TIMESTAMPS)
+    .disable(DateTimeFeature.WRITE_DATES_AS_TIMESTAMPS, DateTimeFeature.WRITE_DURATIONS_AS_TIMESTAMPS)
     .changeDefaultPropertyInclusion(incl -> incl.withValueInclusion(JsonInclude.Include.NON_NULL))
     .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
     .addModule(pathsModule())

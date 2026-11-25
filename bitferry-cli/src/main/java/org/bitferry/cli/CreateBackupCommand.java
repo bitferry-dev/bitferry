@@ -37,8 +37,12 @@ public class CreateBackupCommand implements Callable<Integer>, HasCommonOptions 
   String forget = "@default";
 
   @Profiles(value = Backup.class, field = "CHECK")
-  @Option(names = "--check", description = "Repository checking with profile @|bold,cyan (@default, @full)|@, options, or @|bold,cyan -|@ for none (default: @|bold,cyan @default|@).", paramLabel = "PROFILE|OPTS")
+  @Option(names = "--check", description = "Repository checking with profile @|bold,cyan (@default, @full)|@, options, or @|bold,cyan -|@ to clear extra options (default: @|bold,cyan @default|@).", paramLabel = "PROFILE|OPTS")
   String check = "@default";
+
+  @Profiles(value = Backup.class, field = "PRUNE")
+  @Option(names = "--prune", description = "Repository pruning with profile @|bold,cyan (@default)|@, options, or @|bold,cyan -|@ to clear extra options (default: @|bold,cyan @default|@).", paramLabel = "PROFILE|OPTS")
+  String prune = "@default";
 
   @Profiles(value = Backup.class, field = "CADENCE")
   @Option(names = "--serve", description = "Serve cadence with profile @|bold,cyan (@default)|@, @|bold,cyan <duration>,<count>|@, or @|bold,cyan -|@ for none (default: @|bold,cyan @default|@).", paramLabel = "CADENCE")
@@ -91,7 +95,7 @@ public class CreateBackupCommand implements Callable<Integer>, HasCommonOptions 
     Boolean format = opts.force ? Boolean.TRUE : null;
     List<String> exc = CliUtils.parsePatterns(exclude, excludeExts);
     boolean toKeyring = CliUtils.resolveKeyring(vault, bitferryVault, keyring, false);
-    Backup task = new Backup(m, src, repo, password, format, execute, forget, check, serve, exc, toKeyring);
+    Backup task = new Backup(m, src, repo, password, format, execute, forget, check, prune, serve, exc, toKeyring);
     if (Boolean.TRUE.equals(manual)) {
       task.setManual(true);
     }

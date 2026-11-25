@@ -1,18 +1,56 @@
 package org.bitferry.task;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import org.bitferry.BitferryError;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
 
-/// Service cadence dual-threshold specifier: elapsed time and backup count.
-/// Service is triggered whenever either threshold is crossed ("whichever wins").
-public record Cadence(Duration duration, int count) {
+/// Service cadence dual-threshold specifier: enable toggle, elapsed time, and backup count.
+/// Service is triggered whenever [enabled] is true and either threshold is crossed ("whichever wins").
+/// At least one of [duration] or [backups] must be present (non-null).
+public record Cadence(
+  @JsonProperty("enabled") boolean enabled,
+  @JsonProperty("duration") Duration duration,
+  @JsonProperty("backups") Integer backups
+) {
 
-  /// Predefined profiles; the default profile is 7 days or 5 backups.
+  /// Predefined profiles; the default profile is enabled with 7 days or 5 backups.
   public static final Map<String, Cadence> PROFILES = Map.of(
-    "default", new Cadence(Duration.ofDays(7), 5)
+    "default", new Cadence(true, Duration.ofDays(7), 5)
   );
+
+  public Cadence {
+    if (duration == null && backups == null) {
+      throw new BitferryError("Cadence must specify at least a duration or a backup count");
+    }
+    if (duration != null && (duration.isZero() || duration.isNegative())) {
+      throw new BitferryError("Duration must be positive but got: " + duration);
+    }
+    if (backups != null && backups <= 0) {
+      throw new BitferryError("Invalid cadence backup count " + backups + ": must be positive");
+    }
+  }
+
+  /// Convenience constructor defaulting [enabled] to true.
+  public Cadence(Duration duration, Integer backups) {
+    this(true, duration, backups);
+  }
+
+  @JsonCreator
+  static Cadence fromJson(
+    @JsonProperty("enabled") Boolean enabled,
+    @JsonProperty("duration") Duration duration,
+    @JsonProperty("backups") Integer backups
+  ) {
+    return new Cadence(enabled == null || enabled, duration, backups);
+  }
+
+  /// Return a copy with [enabled] updated while keeping the configured thresholds.
+  public Cadence withEnabled(boolean enabled) {
+    return new Cadence(enabled, duration, backups);
+  }
 
   /// Parse a cadence specification string or profile.
   public static Cadence parse(String option) {
@@ -31,7 +69,7 @@ public record Cadence(Duration duration, int count) {
       return profile;
     }
 
-    String[] parts = option.split(",");
+    String[] parts = option.split(",", -1);
     Duration dur = null;
     Integer cnt = null;
 
@@ -39,28 +77,27 @@ public record Cadence(Duration duration, int count) {
       String part = parts[0].trim();
       if (part.matches("^[0-9]+$")) {
         cnt = Integer.parseInt(part);
-        dur = Duration.ofDays(36500); // 100 years (effectively infinite)
       } else {
         dur = parseDuration(part);
-        cnt = Integer.MAX_VALUE;
       }
     } else if (parts.length == 2) {
       String dStr = parts[0].trim();
       String cStr = parts[1].trim();
-      dur = dStr.isEmpty() ? Duration.ofDays(36500) : parseDuration(dStr);
-      try {
-        cnt = cStr.isEmpty() ? Integer.MAX_VALUE : Integer.parseInt(cStr);
-      } catch (NumberFormatException e) {
-        throw new BitferryError("Invalid cadence backup count " + cStr + ": expected integer", e);
-      }
+      dur = dStr.isEmpty() ? null : parseDuration(dStr);
+      cnt = cStr.isEmpty() ? null : parseCount(cStr);
     } else {
       throw new BitferryError("Invalid cadence specification " + option + ": expected '<duration>,<count>', '<duration>' or '<count>'");
     }
 
-    if (cnt <= 0) {
-      throw new BitferryError("Invalid cadence backup count " + cnt + ": must be positive");
-    }
     return new Cadence(dur, cnt);
+  }
+
+  private static int parseCount(String s) {
+    try {
+      return Integer.parseInt(s);
+    } catch (NumberFormatException e) {
+      throw new BitferryError("Invalid cadence backup count " + s + ": expected integer", e);
+    }
   }
 
   /// Parse duration strings such as "7d", "24h", "30m", "2w".
@@ -89,22 +126,18 @@ public record Cadence(Duration duration, int count) {
     };
   }
 
-  /// Format the cadence as a canonical string, e.g. "7d,5".
+  /// Format the cadence as a canonical CLI/UI string, e.g. "7d,5".
   public String format() {
-    String durStr = formatDuration(duration);
-    if (count == Integer.MAX_VALUE) {
-      return durStr;
+    if (duration != null && backups != null) {
+      return formatDuration(duration) + "," + backups;
     }
-    if (duration.toDays() >= 36500) {
-      return String.valueOf(count);
+    if (duration != null) {
+      return formatDuration(duration);
     }
-    return durStr + "," + count;
+    return String.valueOf(backups);
   }
 
-  /// Format a duration into a concise string (e.g. 7d, 24h). Every parseable duration
-  /// round-trips through format→parse: returning an empty string (as the earlier
-  /// effectively-infinite case did) would persist as an unparsable cadence and
-  /// silently drop the task upon the restoration.
+  /// Format a duration into a concise string (e.g. 7d, 24h).
   public static String formatDuration(Duration d) {
     long days = d.toDays();
     if (days > 0 && d.toHoursPart() == 0 && d.toMinutesPart() == 0 && d.toSecondsPart() == 0) {
@@ -123,9 +156,10 @@ public record Cadence(Duration duration, int count) {
 
   /// Check whether serve is due given the last serve timestamp and backup count.
   public boolean isDue(Instant lastServe, int backupsSinceServe) {
+    if (!enabled) return false;
     if (lastServe == null) return true;
-    if (backupsSinceServe >= count) return true;
-    Duration elapsed = Duration.between(lastServe, Instant.now());
-    return elapsed.compareTo(duration) >= 0;
+    if (backups != null && backupsSinceServe >= backups) return true;
+    if (duration != null && Duration.between(lastServe, Instant.now()).compareTo(duration) >= 0) return true;
+    return false;
   }
 }

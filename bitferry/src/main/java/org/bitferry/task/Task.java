@@ -375,10 +375,10 @@ public abstract class Task {
     return false;
   }
 
-  /// Apply the resolved policy options (the retention, the checking and the cadence
+  /// Apply the resolved policy options (the retention, checking, pruning and cadence
   /// specifications; null entries are skipped). The no-op default: only the tasks
   /// carrying the policy options (the backup tasks) consume them.
-  public void applyPolicyOptions(String forget, String check, String serve) {
+  public void applyPolicyOptions(String forget, String check, String prune, String serve) {
   }
 
   public boolean refersVolume(String vtag) {

@@ -19,13 +19,18 @@ public class Backup extends Restic {
 
   /// Snapshot retention policy profiles; the null key denotes the default (skip) profile.
   public static final Map<String, List<String>> FORGET = route(Map.of(
-    "default", List.of("--prune", "--keep-within-hourly", "24h", "--keep-within-daily", "7d", "--keep-within-weekly", "30d", "--keep-within-monthly", "1y", "--keep-within-yearly", "100y")
+    "default", List.of("--keep-within-hourly", "24h", "--keep-within-daily", "7d", "--keep-within-weekly", "30d", "--keep-within-monthly", "1y", "--keep-within-yearly", "100y")
   ), null);
 
-  /// Repository checking profiles; the null key denotes the default (skip) profile.
+  /// Repository checking profiles; the null key denotes the default (no extra flags) profile.
   public static final Map<String, List<String>> CHECK = route(Map.of(
     "default", List.of(),
     "full", List.of("--read-data")
+  ), null);
+
+  /// Repository pruning profiles; the null key denotes the default (no extra flags) profile.
+  public static final Map<String, List<String>> PRUNE = route(Map.of(
+    "default", List.of()
   ), null);
 
   /// Service cadence profiles; default is 7 days or 5 backups.
@@ -37,26 +42,33 @@ public class Backup extends Restic {
 
   protected List<String> forget;
   protected List<String> check;
+  protected List<String> prune;
   protected Cadence cadence;
+
+  /// Constructor for a new task instance with explicit service phase and cadence options.
+  public Backup(Manager manager, Endpoint source, Endpoint destination, String password, Boolean format, String process, String forget, String check, String prune, String serve, Collection<String> exclude, boolean keyring) {
+    super(manager, source, destination, password, process, PROCESS, exclude, keyring);
+    this.format = format;
+    this.forget = optional(forget, FORGET);
+    this.check = optional(check, CHECK);
+    this.prune = optional(prune, PRUNE);
+    this.cadence = Cadence.parse(serve);
+  }
 
   /// Constructor for a new task instance with an explicit service cadence.
   public Backup(Manager manager, Endpoint source, Endpoint destination, String password, Boolean format, String process, String forget, String check, String serve, Collection<String> exclude) {
-    this(manager, source, destination, password, format, process, forget, check, serve, exclude, false);
+    this(manager, source, destination, password, format, process, forget, check, null, serve, exclude, false);
   }
 
   /// Constructor for a new task instance with the explicit keyring storage request:
   /// the repository password travels to the OS keyring when the keyring is usable.
   public Backup(Manager manager, Endpoint source, Endpoint destination, String password, Boolean format, String process, String forget, String check, String serve, Collection<String> exclude, boolean keyring) {
-    super(manager, source, destination, password, process, PROCESS, exclude, keyring);
-    this.format = format;
-    this.forget = optional(forget, FORGET);
-    this.check = optional(check, CHECK);
-    this.cadence = Cadence.parse(serve);
+    this(manager, source, destination, password, format, process, forget, check, null, serve, exclude, keyring);
   }
 
   /// Constructor for a new task instance (cadence defaults to @default).
   public Backup(Manager manager, Endpoint source, Endpoint destination, String password, Boolean format, String process, String forget, String check, Collection<String> exclude) {
-    this(manager, source, destination, password, format, process, forget, check, null, exclude);
+    this(manager, source, destination, password, format, process, forget, check, null, null, exclude, false);
   }
 
   /// Jackson creator restoring an existing task from the storage descriptor;
@@ -80,9 +92,8 @@ public class Backup extends Restic {
     this.format = null;
     this.forget = backendOpts == null ? null : backendOpts.forget();
     this.check = backendOpts == null ? null : backendOpts.check();
-    this.cadence = backendOpts == null || backendOpts.serve() == null
-      ? Cadence.PROFILES.get("default")
-      : Cadence.parse(backendOpts.serve());
+    this.prune = backendOpts == null ? null : backendOpts.prune();
+    this.cadence = backendOpts == null ? null : backendOpts.cadence();
   }
 
   @Override
@@ -123,6 +134,10 @@ public class Backup extends Restic {
     return check == null ? null : java.util.Collections.unmodifiableList(check);
   }
 
+  public List<String> prune() {
+    return prune == null ? null : java.util.Collections.unmodifiableList(prune);
+  }
+
   public Cadence cadence() {
     return cadence;
   }
@@ -132,8 +147,28 @@ public class Backup extends Restic {
     touch();
   }
 
+  public void setForget(List<String> forget) {
+    this.forget = forget == null || forget.isEmpty() ? null : List.copyOf(forget);
+    touch();
+  }
+
   public void setCheck(String check) {
     this.check = optional(check, CHECK);
+    touch();
+  }
+
+  public void setCheck(List<String> check) {
+    this.check = check == null || check.isEmpty() ? null : List.copyOf(check);
+    touch();
+  }
+
+  public void setPrune(String prune) {
+    this.prune = optional(prune, PRUNE);
+    touch();
+  }
+
+  public void setPrune(List<String> prune) {
+    this.prune = prune == null || prune.isEmpty() ? null : List.copyOf(prune);
     touch();
   }
 
@@ -142,28 +177,34 @@ public class Backup extends Restic {
     touch();
   }
 
+  public void setCadence(Cadence cadence) {
+    this.cadence = cadence;
+    touch();
+  }
+
   @Override
   public boolean supportsRetentionPolicy() {
     return true;
   }
 
-  /// Apply the resolved retention/check/cadence specifications (null entries skipped).
+  /// Apply the resolved retention, checking, pruning, and cadence specifications (null entries skipped).
   @Override
-  public void applyPolicyOptions(String forget, String check, String serve) {
+  public void applyPolicyOptions(String forget, String check, String prune, String serve) {
     if (forget != null) setForget(forget);
     if (check != null) setCheck(check);
+    if (prune != null) setPrune(prune);
     if (serve != null) setCadence(serve);
   }
 
   @Override
   @JsonProperty("restic")
   Backend storeBackend() {
-    String s = cadence == null ? "-" : cadence.format();
-    boolean empty = (processOptions == null || processOptions.isEmpty())
-      && (forget == null || forget.isEmpty())
-      && check == null
-      && Cadence.PROFILES.get("default").equals(cadence);
-    return empty ? null : new Backend(orNull(processOptions), orNull(forget), check, s);
+    List<String> exec = orNull(processOptions);
+    List<String> fgt = orNull(forget);
+    List<String> chk = orNull(check);
+    List<String> prn = orNull(prune);
+    boolean empty = exec == null && fgt == null && chk == null && prn == null && cadence == null;
+    return empty ? null : new Backend(exec, fgt, chk, prn, cadence);
   }
 
   /// Initialize the repository upon the task creation.

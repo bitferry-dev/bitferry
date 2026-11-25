@@ -503,7 +503,7 @@ class SystemExecutorTest {
     RecordingCommandExecutor recorder = new RecordingCommandExecutor();
     SystemExecutor executor = new SystemExecutor(recorder);
 
-    Backup backup = new Backup(manager, volumeSource(), destination(), "secret", null, null, "@default", "@default", List.of("*.tmp"));
+    Backup backup = new Backup(manager, volumeSource(), destination(), "secret", null, null, "@default", "@default", "@default", null, List.of("*.tmp"), false);
     manager.registerTask(backup);
     Task.Outcome result = executor.run(backup, null);
 
@@ -609,7 +609,7 @@ class SystemExecutorTest {
     assertTrue(rcmd.contains(Bitferry.STORAGE + "*/**"));
 
     // Backup commands return routine backup command
-    Backup backupDefault = new Backup(manager, volumeSource(), destination(), "secret", null, null, "@default", "@default", List.of("*.tmp"));
+    Backup backupDefault = new Backup(manager, volumeSource(), destination(), "secret", null, null, "@default", "@default", "@default", null, List.of("*.tmp"), false);
     List<List<String>> backupCmds = backupDefault.commands();
     assertEquals(1, backupCmds.size());
     assertEquals("backup", backupCmds.get(0).get(1));
@@ -623,11 +623,13 @@ class SystemExecutorTest {
     assertEquals("forget", serveCmds.get(1).get(1));
     assertEquals("prune", serveCmds.get(2).get(1));
 
-    // Backup skipping check and forget
-    Backup backupSkip = new Backup(manager, volumeSource(), destination(), "secret", null, null, "-", "-", List.of());
+    // Backup skipping forget still runs unconditional check and prune
+    Backup backupSkip = new Backup(manager, volumeSource(), destination(), "secret", null, null, "-", "-", "-", null, List.of(), false);
     List<List<String>> backupSkipCmds = backupSkip.commands();
     assertEquals(1, backupSkipCmds.size());
     assertEquals("backup", backupSkipCmds.get(0).get(1));
+    assertEquals(List.of("check", "prune"),
+      backupSkip.serveCommands().stream().map(c -> c.get(1)).toList());
 
     // Equalize serveCommands strips bisync-only flags from rclone check
     Equalize equalize = new Equalize(manager, source(), destination(), null, List.of(), List.of());
@@ -869,7 +871,7 @@ class SystemExecutorTest {
   // overrides it via the arguments.
   private Backup sharedRepoTask(String sourcePath, String forget, String serve) {
     Endpoint source = sourcePath == null ? volumeSource() : Endpoints.parse(manager, ":" + volume.tag() + ":" + sourcePath);
-    Backup task = new Backup(manager, source, destination(), "secret", null, null, forget, null, serve, List.of());
+    Backup task = new Backup(manager, source, destination(), "secret", null, null, forget, "@default", "@default", serve, List.of(), false);
     manager.registerTask(task);
     return task;
   }
@@ -1515,7 +1517,7 @@ class SystemExecutorTest {
     Files.createDirectories(repoDir);
     Endpoint repo = Endpoints.parse(manager, "local:" + repoDir);
 
-    Backup backup = new Backup(manager, volumeSource(), repo, "secret", null, null, "@default", "@default", "7d,5", List.of());
+    Backup backup = new Backup(manager, volumeSource(), repo, "secret", null, null, "@default", "@default", "@default", "7d,5", List.of(), false);
 
     // Baseline state: service done recently, count low
     ResticRepositoryState state = new ResticRepositoryState();
@@ -1545,7 +1547,7 @@ class SystemExecutorTest {
     Files.createDirectories(repoDir);
     Endpoint repo = Endpoints.parse(manager, "local:" + repoDir);
 
-    Backup backup = new Backup(manager, volumeSource(), repo, "secret", null, null, "@default", "@default", "7d,5", List.of());
+    Backup backup = new Backup(manager, volumeSource(), repo, "secret", null, null, "@default", "@default", "@default", "7d,5", List.of(), false);
     manager.registerTask(backup);
 
     // Threshold crossed: 5 backups done since service
@@ -1580,7 +1582,7 @@ class SystemExecutorTest {
     Files.createDirectories(repoDir);
     Endpoint repo = Endpoints.parse(manager, "local:" + repoDir);
 
-    Backup backup = new Backup(manager, volumeSource(), repo, "secret", null, null, "@default", "@default", "7d,5", List.of());
+    Backup backup = new Backup(manager, volumeSource(), repo, "secret", null, null, "@default", "@default", "@default", "7d,5", List.of(), false);
     Task.Outcome ok = executor.serve(backup, null);
     assertEquals(Task.Outcome.FAILURE, ok);
 
@@ -1620,8 +1622,8 @@ class SystemExecutorTest {
     Files.createDirectories(repo1);
     Files.createDirectories(repo2);
 
-    Backup b1 = new Backup(manager, volumeSource(), Endpoints.parse(manager, "local:" + repo1), "sec1", null, null, null, null, "7d,5", List.of());
-    Backup b2 = new Backup(manager, volumeSource(), Endpoints.parse(manager, "local:" + repo2), "sec2", null, null, null, null, "7d,5", List.of());
+    Backup b1 = new Backup(manager, volumeSource(), Endpoints.parse(manager, "local:" + repo1), "sec1", null, null, null, "@default", "@default", "7d,5", List.of(), false);
+    Backup b2 = new Backup(manager, volumeSource(), Endpoints.parse(manager, "local:" + repo2), "sec2", null, null, null, "@default", "@default", "7d,5", List.of(), false);
     manager.registerTask(b1);
     manager.registerTask(b2);
 
@@ -1846,7 +1848,7 @@ class SystemExecutorTest {
     // color-highlighted command lines
     Path repoDir = Files.createDirectories(dir.resolve("repo"));
     Endpoint repo = Endpoints.parse(manager, "local:" + repoDir);
-    Backup backup = new Backup(manager, volumeSource(), repo, "secret", null, null, null, null, List.of());
+    Backup backup = new Backup(manager, volumeSource(), repo, "secret", null, null, null, "@default", "@default", null, List.of(), false);
     RecordingCommandExecutor recorder = new RecordingCommandExecutor();
     manager.backendExecutor(new SystemExecutor(recorder));
     // The committed (live) task: the serve path must not carry the one-time init
@@ -1873,7 +1875,7 @@ class SystemExecutorTest {
     // step narration and the command echoes stay verbose-gated
     Path repoDir = Files.createDirectories(dir.resolve("repo"));
     Endpoint repo = Endpoints.parse(manager, "local:" + repoDir);
-    Backup backup = new Backup(manager, volumeSource(), repo, "secret", null, null, null, null, List.of());
+    Backup backup = new Backup(manager, volumeSource(), repo, "secret", null, null, null, "@default", "@default", null, List.of(), false);
     RecordingCommandExecutor recorder = new RecordingCommandExecutor();
     manager.backendExecutor(new SystemExecutor(recorder));
     manager.commit(backup);
@@ -1887,5 +1889,31 @@ class SystemExecutorTest {
     assertEquals("check", recorder.invocations.get(1).command().get(1));
     assertEquals("prune", recorder.invocations.get(2).command().get(1));
     assertTrue(output.isEmpty(), () -> "the normal run log must stay quiet: " + output);
+  }
+
+  @Test
+  void checkAndPruneRunUnconditionallyAndForgetSkipsEmptyOrNull() throws IOException {
+    RecordingCommandExecutor recorder = new RecordingCommandExecutor();
+    SystemExecutor executor = new SystemExecutor(recorder);
+
+    Path repoDir = Files.createDirectories(dir.resolve("unconditional-phase-repo"));
+    Endpoint repo = Endpoints.parse(manager, "local:" + repoDir);
+
+    // 1. check == null and prune == "--max-unused,5%": check and prune both run, forget skips when empty/null
+    Backup customPruneNoForget = new Backup(manager, volumeSource(), repo, "secret", null, null, "-", "-", "--max-unused,5%", "7d,5", List.of(), false);
+    manager.registerTask(customPruneNoForget);
+    assertEquals(Task.Outcome.SUCCESS, executor.serve(customPruneNoForget, null));
+    assertEquals(List.of("check", "prune"),
+      recorder.invocations.stream().map(inv -> inv.command().get(1)).toList());
+    List<String> pruneCmd = recorder.invocations.get(1).command();
+    assertTrue(pruneCmd.contains("--max-unused") && pruneCmd.contains("5%"), pruneCmd.toString());
+
+    // 2. With forget set and prune cleared ('-'), all three phases run (bare restic prune)
+    recorder.invocations.clear();
+    customPruneNoForget.setForget("@default");
+    customPruneNoForget.setPrune("-");
+    assertEquals(Task.Outcome.SUCCESS, executor.serve(customPruneNoForget, null));
+    assertEquals(List.of("check", "forget", "prune"),
+      recorder.invocations.stream().map(inv -> inv.command().get(1)).toList());
   }
 }

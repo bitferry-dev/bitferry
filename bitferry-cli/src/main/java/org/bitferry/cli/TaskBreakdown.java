@@ -153,6 +153,8 @@ public final class TaskBreakdown {
     Cadence cadence = backup.cadence();
     if (cadence == null) {
       appendProperty(sb, "Cadence:", "disabled (-)");
+    } else if (!cadence.enabled()) {
+      appendProperty(sb, "Cadence:", cadence.format() + " (disabled)");
     } else {
       String profile = Cadence.PROFILES.get("default").equals(cadence) ? Ansi.AUTO.string(" (profile: @|bold,cyan @default|@)") : "";
       appendProperty(sb, "Cadence:", cadence.format() + profile);
@@ -185,7 +187,7 @@ public final class TaskBreakdown {
     if (state != null && !state.isCorruptOrMissing() && repoDir != null) {
       String repo = repoDir.toString();
       for (Task t : backup.manager().liveTasks().values()) {
-        if (t.isIntact() && t instanceof Backup other && other.cadence() != null
+        if (t.isIntact() && t instanceof Backup other && other.cadence() != null && other.cadence().enabled()
           && Restic.sameRepository(repo, other.destination().processOpts())
           && state.isDue(other.tag(), other.cadence())) {
           dueTask = other;
@@ -206,7 +208,7 @@ public final class TaskBreakdown {
       ResticRepositoryState.Entry due = state.entry(dueTask.tag());
       Cadence dueCadence = dueTask.cadence();
       String attribution = dueTask == backup ? "" : " (co-repository task " + dueTask.tag() + ")";
-      if (dueCadence.count() < Integer.MAX_VALUE && due.backups() >= dueCadence.count()) {
+      if (dueCadence.backups() != null && due.backups() >= dueCadence.backups()) {
         appendProperty(sb, "Status:", Ansi.AUTO.string(String.format(Locale.ROOT, "@|yellow due (threshold reached: %d backups since service)%s|@", due.backups(), attribution)));
       } else if (dueCadence.duration() != null && due.maintenance() != null && Duration.between(due.maintenance(), Instant.now()).compareTo(dueCadence.duration()) >= 0) {
         appendProperty(sb, "Status:", Ansi.AUTO.string("@|yellow due (cadence duration elapsed)" + attribution + "|@"));
@@ -225,8 +227,8 @@ public final class TaskBreakdown {
     }
 
     if (entry != null && entry.maintenance() != null) {
-      String countInfo = cadence != null && cadence.count() < Integer.MAX_VALUE
-        ? String.format(Locale.ROOT, " (%d of %d backups)", entry.backups(), cadence.count())
+      String countInfo = cadence != null && cadence.enabled() && cadence.backups() != null
+        ? String.format(Locale.ROOT, " (%d of %d backups)", entry.backups(), cadence.backups())
         : String.format(Locale.ROOT, " (%d backups)", entry.backups());
       appendProperty(sb, "Last Service:", formatInstant(entry.maintenance()) + " (" + formatElapsed(entry.maintenance(), Instant.now()) + ")" + countInfo);
     } else {
@@ -239,14 +241,18 @@ public final class TaskBreakdown {
       appendProperty(sb, "Retention:", String.join(" ", backup.forget()));
     }
 
-    if (backup.check() == null) {
-      appendProperty(sb, "Check:", "none");
-    } else if (backup.check().isEmpty()) {
+    if (backup.check() == null || backup.check().isEmpty()) {
       appendProperty(sb, "Check:", Ansi.AUTO.string("@|bold,cyan @default|@ (structural)"));
     } else if (backup.check().contains("--read-data")) {
       appendProperty(sb, "Check:", Ansi.AUTO.string("@|bold,cyan @full|@ (--read-data)"));
     } else {
       appendProperty(sb, "Check:", String.join(" ", backup.check()));
+    }
+
+    if (backup.prune() == null || backup.prune().isEmpty()) {
+      appendProperty(sb, "Prune:", Ansi.AUTO.string("@|bold,cyan @default|@"));
+    } else {
+      appendProperty(sb, "Prune:", String.join(" ", backup.prune()));
     }
   }
 

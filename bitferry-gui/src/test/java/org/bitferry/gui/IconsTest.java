@@ -127,8 +127,16 @@ class IconsTest {
                 assertButtonGraphic(taskCtrl, "editExclude", Icons.Symbol.EDIT);
                 assertButtonGraphic(taskCtrl, "editExecute", Icons.Symbol.EDIT);
                 assertButtonGraphic(taskCtrl, "editSecurity", Icons.Symbol.EDIT);
-                assertButtonGraphic(taskCtrl, "editForget", Icons.Symbol.EDIT);
-                assertButtonGraphic(taskCtrl, "editCheck", Icons.Symbol.EDIT);
+                assertButtonGraphic(taskCtrl, "editServe", Icons.Symbol.EDIT);
+
+                // 6. service.fxml (Unified repository service editor)
+                javafx.fxml.FXMLLoader serviceLoader = new javafx.fxml.FXMLLoader(getClass().getResource("/org/bitferry/gui/service.fxml"));
+                serviceLoader.load();
+                ServiceDialogController serviceCtrl = serviceLoader.getController();
+                assertButtonGraphic(serviceCtrl, "loadBtn", Icons.Symbol.LOAD);
+                assertButtonGraphic(serviceCtrl, "editCheck", Icons.Symbol.EDIT);
+                assertButtonGraphic(serviceCtrl, "editForget", Icons.Symbol.EDIT);
+                assertButtonGraphic(serviceCtrl, "editPrune", Icons.Symbol.EDIT);
             } catch (Throwable t) {
                 failure.set(t);
             } finally {

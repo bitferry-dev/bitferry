@@ -118,7 +118,7 @@ class CliTest {
     assertTrue(bHelp.contains("--serve"));
     assertFalse(bHelp.contains("@default: --no-cache"));
     assertFalse(bHelp.contains("@full:    --no-cache"));
-    assertFalse(bHelp.contains("--prune"));
+    assertFalse(bHelp.contains("--keep-within-hourly"));
 
     // Verbose help (--help -v): dumps profile contents
     CommandLine backupVerboseCmd = Main.createCommandLine();
@@ -128,7 +128,7 @@ class CliTest {
     String bVerboseHelp = backupVerboseOut.toString();
     assertTrue(bVerboseHelp.contains("@full:    --read-data"));
     assertTrue(bVerboseHelp.contains("@default:"));
-    assertTrue(bVerboseHelp.contains("@default: --prune"));
+    assertTrue(bVerboseHelp.contains("@default: --keep-within-hourly"));
     assertTrue(bVerboseHelp.contains("7d,5"));
     assertFalse(bVerboseHelp.contains("--no-cache"));
 
@@ -137,7 +137,7 @@ class CliTest {
     StringWriter backupCombinedOut = new StringWriter();
     backupCombinedCmd.setOut(new PrintWriter(backupCombinedOut));
     assertEquals(0, backupCombinedCmd.execute("create", "task", "backup", "-vh"));
-    assertTrue(backupCombinedOut.toString().contains("@default: --prune"));
+    assertTrue(backupCombinedOut.toString().contains("@default: --keep-within-hourly"));
     assertFalse(backupCombinedOut.toString().contains("--no-cache"));
 
     // Verbose help with option before subcommand (-v create task backup -h)
@@ -145,7 +145,7 @@ class CliTest {
     StringWriter backupParentVerboseOut = new StringWriter();
     backupParentVerboseCmd.setOut(new PrintWriter(backupParentVerboseOut));
     assertEquals(0, backupParentVerboseCmd.execute("-v", "create", "task", "backup", "-h"));
-    assertTrue(backupParentVerboseOut.toString().contains("@default: --prune"));
+    assertTrue(backupParentVerboseOut.toString().contains("@default: --keep-within-hourly"));
     assertFalse(backupParentVerboseOut.toString().contains("--no-cache"));
 
     // Replicate help: non-verbose vs verbose
@@ -1192,7 +1192,11 @@ class CliTest {
     m = managerFor(volDir);
     Backup task2 = (Backup) m.selectTasks().values().iterator().next();
     assertEquals(Backup.FORGET.get("default"), Task.strings(task2.serialize().get("restic").get("forget"), false));
-    assertEquals(Backup.CHECK.get("default"), Task.strings(task2.serialize().get("restic").get("check"), false));
+    // Empty @default check and prune omit their JSON keys via orNull
+    assertEquals(Backup.CHECK.get("default"), Task.strings(task2.serialize().get("restic").get("check"), true));
+    assertEquals(Backup.PRUNE.get("default"), Task.strings(task2.serialize().get("restic").get("prune"), true));
+    assertNull(task2.serialize().get("restic").get("check"));
+    assertNull(task2.serialize().get("restic").get("prune"));
     assertEquals("7d,5", task2.cadence().format());
 
     // Delete task2
@@ -1200,13 +1204,12 @@ class CliTest {
 
     // 2b. Create backup with policies explicitly disabled via '-'
     code = executeWithPassword("pass1", 
-      "create", "task", "backup", ":" + vtag + ":", "local:" + repoDir, "--forget", "-", "--check", "-", "--serve", "-");
+      "create", "task", "backup", ":" + vtag + ":", "local:" + repoDir, "--forget", "-", "--check", "-", "--prune", "-", "--serve", "-");
     assertEquals(0, code, () -> "stderr: " + err.toString());
 
     m = managerFor(volDir);
     Backup taskDisabled = (Backup) m.selectTasks().values().iterator().next();
-    assertNull(taskDisabled.serialize().get("restic").get("forget"));
-    assertNull(taskDisabled.serialize().get("restic").get("check"));
+    assertNull(taskDisabled.serialize().get("restic"));
     assertNull(taskDisabled.cadence());
 
     // Delete taskDisabled
@@ -1215,13 +1218,14 @@ class CliTest {
     // 3. Create backup with directly specified raw options without @
     code = executeWithPassword("pass1", 
       "create", "task", "backup", ":" + vtag + ":", "local:" + repoDir,
-      "--forget", "--prune,--keep-daily,7", "--check", "--no-cache,--read-data", "-x", "--no-cache");
+      "--forget", "--prune,--keep-daily,7", "--check", "--no-cache,--read-data", "--prune", "--max-unused,5%", "-x", "--no-cache");
     assertEquals(0, code, () -> "stderr: " + err.toString());
 
     m = managerFor(volDir);
     Backup task3 = (Backup) m.selectTasks().values().iterator().next();
     assertEquals(List.of("--prune", "--keep-daily", "7"), Task.strings(task3.serialize().get("restic").get("forget"), false));
     assertEquals(List.of("--no-cache", "--read-data"), Task.strings(task3.serialize().get("restic").get("check"), false));
+    assertEquals(List.of("--max-unused", "5%"), Task.strings(task3.serialize().get("restic").get("prune"), false));
     assertEquals(List.of("--no-cache"), Task.strings(task3.serialize().get("restic").get("execute"), false));
   }
 
@@ -1314,7 +1318,8 @@ class CliTest {
     Manager m = managerFor(volDir);
     Backup task1 = (Backup) m.selectTasks().values().iterator().next();
     assertEquals("14d,10", task1.cadence().format());
-    assertEquals("14d,10", task1.serialize().get("restic").get("serve").asString());
+    assertEquals("PT336H", task1.serialize().get("restic").get("cadence").get("duration").asString());
+    assertEquals(10, task1.serialize().get("restic").get("cadence").get("backups").asInt());
 
     assertEquals(0, cmd.execute("delete", "--force", "task", task1.tag()));
 
@@ -1337,7 +1342,7 @@ class CliTest {
     m = managerFor(volDir);
     Backup task3 = (Backup) m.selectTasks().values().iterator().next();
     assertNull(task3.cadence());
-    assertEquals("-", task3.serialize().get("restic").get("serve").asString());
+    assertNull(task3.serialize().get("restic").get("cadence"));
 
     assertEquals(0, cmd.execute("delete", "--force", "task", task3.tag()));
 
@@ -1510,8 +1515,9 @@ class CliTest {
     assertTrue(bBreakdown.contains("Status:        due"));
     assertTrue(bBreakdown.contains("Last Backup:   never"));
     assertTrue(bBreakdown.contains("Last Service:  never"));
-    assertTrue(bBreakdown.contains("Retention:     --prune --keep-within-hourly 24h"));
+    assertTrue(bBreakdown.contains("Retention:     --keep-within-hourly 24h"));
     assertTrue(bBreakdown.contains("Check:         @default (structural)"));
+    assertTrue(bBreakdown.contains("Prune:         @default"));
     assertTrue(bBreakdown.contains("# Filters"));
     assertTrue(bBreakdown.contains("Exclude:       *.tmp"));
     assertTrue(bBreakdown.contains("# Commands"));
@@ -1595,20 +1601,21 @@ class CliTest {
 
     Backup task = (Backup) managerFor(volDir).selectTasks().values().iterator().next();
 
-    // 1. Modify task using 'modify task' with --forget @default --check @default --serve @default -X @default
+    // 1. Modify task using 'modify task' with --forget @default --check @default --prune @default --serve @default -X @default
     cmd = Main.createCommandLine();
     out = new StringWriter();
     err = new StringWriter();
     cmd.setOut(new PrintWriter(out));
     cmd.setErr(new PrintWriter(err));
-    code = cmd.execute("modify", "--path", volDir.toString(), "task", task.tag(), "--forget", "@default", "--check", "@default", "--serve", "@default", "-x", "@default");
+    code = cmd.execute("modify", "--path", volDir.toString(), "task", task.tag(), "--forget", "@default", "--check", "@default", "--prune", "@default", "--serve", "@default", "-x", "@default");
     assertEquals(0, code, () -> "stderr: " + err);
     assertTrue(out.toString().contains("modified successfully"));
 
     Manager m = managerFor(volDir);
     Backup updated1 = (Backup) m.selectTasks().get(task.tag());
     assertEquals(Backup.FORGET.get("default"), updated1.forget());
-    assertEquals(Backup.CHECK.get("default"), updated1.check());
+    assertNull(updated1.check());
+    assertNull(updated1.prune());
     assertEquals(Cadence.PROFILES.get("default"), updated1.cadence());
     assertEquals(Backup.PROCESS.get("default"), updated1.processOptions());
 
@@ -1620,7 +1627,7 @@ class CliTest {
     cmd.setOut(new PrintWriter(out));
     cmd.setErr(new PrintWriter(err));
     code = cmd.execute("m", "--path", volDir.toString(), "t", task.tag(),
-      "--forget", "--keep-daily,7", "--check", "--read-data", "--serve", "14d,10", "-x", "--no-cache",
+      "--forget", "--keep-daily,7", "--check", "--read-data", "--prune", "--max-unused,5%", "--serve", "14d,10", "-x", "--no-cache",
       "--include", "src/**", "--exclude", "*.tmp");
     assertEquals(1, code);
     assertTrue(err.toString().toLowerCase().contains("include filters are not applicable to backup tasks"), () -> "stderr: " + err);
@@ -1628,26 +1635,28 @@ class CliTest {
     m = managerFor(volDir);
     Backup unchanged = (Backup) m.selectTasks().get(task.tag());
     assertEquals(Backup.FORGET.get("default"), unchanged.forget());
-    assertEquals(Backup.CHECK.get("default"), unchanged.check());
+    assertNull(unchanged.check());
+    assertNull(unchanged.prune());
     assertEquals(Cadence.PROFILES.get("default"), unchanged.cadence());
     assertEquals(Backup.PROCESS.get("default"), unchanged.processOptions());
     // The backup carries no include state (the capability is structural): the
     // descriptor holds no such section
     assertFalse(unchanged.serialize().has("include"));
 
-    // The exclude filters still apply
+    // The exclude filters and custom prune flags apply cleanly
     cmd = Main.createCommandLine();
     out = new StringWriter();
     err = new StringWriter();
     cmd.setOut(new PrintWriter(out));
     cmd.setErr(new PrintWriter(err));
     code = cmd.execute("m", "--path", volDir.toString(), "t", task.tag(),
-      "-x", "--no-cache", "--exclude", "*.tmp");
+      "-x", "--no-cache", "--prune", "--max-unused,5%", "--exclude", "*.tmp");
     assertEquals(0, code, () -> "stderr: " + err);
 
     m = managerFor(volDir);
     Backup updated2 = (Backup) m.selectTasks().get(task.tag());
     assertEquals(List.of("--no-cache"), updated2.processOptions());
+    assertEquals(List.of("--max-unused", "5%"), updated2.prune());
     assertEquals(List.of("*.tmp"), updated2.exclude());
 
     // 3. Clear/disable options using '-'
@@ -1657,13 +1666,14 @@ class CliTest {
     cmd.setOut(new PrintWriter(out));
     cmd.setErr(new PrintWriter(err));
     code = cmd.execute("m", "--path", volDir.toString(), "t", task.tag(),
-      "--forget", "-", "--check", "-", "--serve", "-", "-x", "-", "--include", "-", "--exclude", "-");
+      "--forget", "-", "--check", "-", "--prune", "-", "--serve", "-", "-x", "-", "--include", "-", "--exclude", "-");
     assertEquals(0, code, () -> "stderr: " + err);
 
     m = managerFor(volDir);
     Backup updated3 = (Backup) m.selectTasks().get(task.tag());
     assertNull(updated3.forget());
     assertNull(updated3.check());
+    assertNull(updated3.prune());
     assertNull(updated3.cadence());
     assertTrue(updated3.processOptions().isEmpty());
     assertFalse(updated3.serialize().has("include"));
@@ -1756,7 +1766,7 @@ class CliTest {
     cmd.setErr(new PrintWriter(err));
     code = cmd.execute("m", "--path", volDir.toString(), "t", task.tag(), "--forget", "@default");
     assertNotEquals(0, code);
-    assertTrue(err.toString().toLowerCase().contains("forget, check, and serve options are only applicable to backup tasks"));
+    assertTrue(err.toString().toLowerCase().contains("forget, check, prune, and serve options are only applicable to backup tasks"));
   }
 
   @Test
@@ -1808,7 +1818,7 @@ class CliTest {
     cmd.setErr(new PrintWriter(err));
     code = cmd.execute("m", "--path", volDir.toString(), "t", task.tag(), "--serve", "@default");
     assertNotEquals(0, code);
-    assertTrue(err.toString().contains("Forget, check, and serve options are only applicable to backup tasks"));
+    assertTrue(err.toString().contains("Forget, check, prune, and serve options are only applicable to backup tasks"));
 
     // 4. Modifying operation type on rclone succeeds
     cmd = Main.createCommandLine();

@@ -110,10 +110,11 @@ public abstract class Restic extends Task {
     @JsonProperty("execute") List<String> execute,
     @JsonProperty("forget") List<String> forget,
     @JsonProperty("check") List<String> check,
-    @JsonProperty("serve") @JsonAlias("maintain") String serve
+    @JsonProperty("prune") List<String> prune,
+    @JsonProperty("cadence") Cadence cadence
   ) {
     public Backend(List<String> execute, List<String> forget, List<String> check) {
-      this(execute, forget, check, null);
+      this(execute, forget, check, null, null);
     }
   }
 

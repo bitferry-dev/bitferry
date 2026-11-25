@@ -26,6 +26,7 @@ class ResticRepositoryStateTest {
     // The corrupt or missing state is due for tasks with active cadence, but never for disabled cadence
     assertTrue(state.isDue("task-a", CADENCE));
     assertFalse(state.isDue("task-a", null));
+    assertFalse(state.isDue("task-a", CADENCE.withEnabled(false)));
   }
 
   @Test
@@ -34,6 +35,7 @@ class ResticRepositoryStateTest {
     state.normalize(List.of("task-a"));
     state.recordServe(List.of("task-a"));
     assertFalse(state.isDue("task-a", null));
+    assertFalse(state.isDue("task-a", CADENCE.withEnabled(false)));
   }
 
   @Test

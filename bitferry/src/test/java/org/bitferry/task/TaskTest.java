@@ -4,6 +4,7 @@ import org.bitferry.*;
 import org.bitferry.endpoint.*;
 import java.io.IOException;
 import java.nio.file.*;
+import java.time.Duration;
 import java.util.*;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.io.*;
@@ -119,22 +120,93 @@ class TaskTest {
 
   @Test
   void resticProfilesFlowIntoTheDescriptors() {
-    Backup backup = new Backup(manager, volumeSource(), destination(), "secret", null, null, "@default", "@full", List.of());
+    Backup backup = new Backup(manager, volumeSource(), destination(), "secret", null, null, "@default", "@full", "@default", null, List.of(), false);
     JsonNode data = backup.serialize();
     assertEquals("restic", data.get("backend").asString());
     assertNull(data.get("restic").get("execute"));
     assertEquals(Backup.FORGET.get("default"), toStringList(data.get("restic").get("forget")));
     assertEquals(Backup.CHECK.get("full"), toStringList(data.get("restic").get("check")));
-    assertEquals("7d,5", data.get("restic").get("serve").asString());
+    // Empty @default prune is omitted from storage via orNull (runs bare restic prune unconditionally)
+    assertNull(data.get("restic").get("prune"));
+    assertEquals("PT168H", data.get("restic").get("cadence").get("duration").asString());
+    assertEquals(5, data.get("restic").get("cadence").get("backups").asInt());
     // The password never travels with the descriptor
     assertFalse(data.has("password"));
 
     Backup restoredBackup = (Backup) Task.restore(manager, data);
     assertEquals("7d,5", restoredBackup.cadence().format());
+    assertNull(restoredBackup.prune());
+
+    // Phase lists are preserved in storage even when cadence is disabled ('-')
+    Backup cadenceOffPhasesOn = new Backup(manager, volumeSource(), destination(), "secret", null, null, "@default", "@full", "--max-unused,5%", "-", List.of(), false);
+    JsonNode offJson = cadenceOffPhasesOn.serialize();
+    assertFalse(offJson.get("restic").has("cadence"));
+    Backup restoredOff = (Backup) Task.restore(manager, offJson);
+    assertNull(restoredOff.cadence());
+    assertEquals(Backup.FORGET.get("default"), restoredOff.forget());
+    assertEquals(List.of("--read-data"), restoredOff.check());
+    assertEquals(List.of("--max-unused", "5%"), restoredOff.prune());
+
+    ObjectNode missingPruneJson = cadenceOffPhasesOn.serialize().deepCopy();
+    ((ObjectNode) missingPruneJson.get("restic")).remove("prune");
+    Backup restoredMissingPrune = (Backup) Task.restore(manager, missingPruneJson);
+    assertNull(restoredMissingPrune.prune());
 
     Restore restore = new Restore(manager, destination(), volumeRestored(), "secret", "@default", List.of(), List.of());
     assertEquals("restic", restore.serialize().get("backend").asString());
     assertEquals(List.of("--sparse"), toStringList(restore.serialize().get("restic").get("execute")));
+  }
+
+  @Test
+  void structuredCadenceSerializationAndOmissionSemantics() throws Exception {
+    // 1. Duration-only omits backups; backups-only omits duration
+    Backup durOnly = new Backup(manager, volumeSource(), destination(), "secret", null, null, "-", "-", "14d", List.of());
+    JsonNode durCadence = durOnly.serialize().get("restic").get("cadence");
+    assertEquals("PT336H", durCadence.get("duration").asString());
+    assertFalse(durCadence.has("backups"));
+    assertEquals("14d", ((Backup) Task.restore(manager, durOnly.serialize())).cadence().format());
+
+    Backup cntOnly = new Backup(manager, volumeSource(), destination(), "secret", null, null, "-", "-", "10", List.of());
+    JsonNode cntCadence = cntOnly.serialize().get("restic").get("cadence");
+    assertFalse(cntCadence.has("duration"));
+    assertEquals(10, cntCadence.get("backups").asInt());
+    assertEquals("10", ((Backup) Task.restore(manager, cntOnly.serialize())).cadence().format());
+
+    // 2. Disabled cadence omits cadence (and omits restic when all fields disabled); load keeps null (no @default fallback)
+    Backup disabled = new Backup(manager, volumeSource(), destination(), "secret", null, null, "-", "-", "-", List.of());
+    ObjectNode disabledJson = disabled.serialize();
+    assertFalse(disabledJson.has("restic"));
+    assertNull(((Backup) Task.restore(manager, disabledJson)).cadence());
+
+    // Hand-edited standard ISO-8601 P7D duration parses cleanly (enabled defaults to true when omitted),
+    // and enabled=false preserves thresholds across serialization
+    ObjectNode p7d = disabledJson.deepCopy();
+    ObjectNode cadenceObj = p7d.putObject("restic").putObject("cadence");
+    cadenceObj.put("duration", "P7D");
+    Cadence restoredP7d = ((Backup) Task.restore(manager, p7d)).cadence();
+    assertTrue(restoredP7d.enabled());
+    assertEquals(Duration.ofDays(7), restoredP7d.duration());
+
+    Backup preservedDisabled = new Backup(manager, volumeSource(), destination(), "secret", null, null, "-", "-", "14d,10", List.of());
+    preservedDisabled.setCadence(preservedDisabled.cadence().withEnabled(false));
+    JsonNode preservedNode = preservedDisabled.serialize();
+    assertFalse(preservedNode.get("restic").get("cadence").get("enabled").asBoolean());
+    Backup reloadedDisabled = (Backup) Task.restore(manager, preservedNode);
+    assertFalse(reloadedDisabled.cadence().enabled());
+    assertEquals("14d,10", reloadedDisabled.cadence().format());
+
+    // 4. Legacy flat-string cadence, empty cadence objects, and legacy count/serve keys fail cleanly (no legacy fallback)
+    ObjectNode legacyFlat = disabledJson.deepCopy();
+    legacyFlat.putObject("restic").put("cadence", "7d,5");
+    assertThrows(RuntimeException.class, () -> Task.restore(manager, legacyFlat));
+
+    ObjectNode emptyCadence = disabledJson.deepCopy();
+    emptyCadence.putObject("restic").putObject("cadence");
+    assertThrows(RuntimeException.class, () -> Task.restore(manager, emptyCadence));
+
+    ObjectNode legacyCount = disabledJson.deepCopy();
+    legacyCount.putObject("restic").putObject("cadence").put("count", 5);
+    assertThrows(RuntimeException.class, () -> Task.restore(manager, legacyCount));
   }
 
   @Test

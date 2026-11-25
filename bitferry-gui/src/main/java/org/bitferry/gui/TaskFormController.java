@@ -193,25 +193,16 @@ public final class TaskFormController {
   private Button editExecute;
 
   @FXML
-  private Button editForget;
+  private HBox serveControl;
 
   @FXML
-  private Button editCheck;
+  private Button editServe;
 
   @FXML
   private CheckBox format;
 
   @FXML
   private CheckBox manual;
-
-  @FXML
-  private TextField forget;
-
-  @FXML
-  private TextField check;
-
-  @FXML
-  private TextField serve;
 
   // The row labels (the visibility toggles and the width pinning need the pairs)
   @FXML
@@ -233,10 +224,6 @@ public final class TaskFormController {
   @FXML
   private Label securityLabel;
   @FXML
-  private Label forgetLabel;
-  @FXML
-  private Label checkLabel;
-  @FXML
   private Label formatLabel;
   @FXML
   private Label serveLabel;
@@ -253,6 +240,10 @@ public final class TaskFormController {
   // password-storage request. The accessors below (and thereby the dialog apply
   // flows in [Dialogs]) read it.
   private EncryptionSettings settings = EncryptionSettings.NONE;
+
+  // The backup service configuration edited via the Service dialog (defaults to
+  // @default for new backups; cadence and phase lists remain independent).
+  private ServiceSettings serviceSettings = ServiceSettings.DEFAULTS;
 
   // The auto-loaded (never user-edited) pre-filled defaults keyed by the field:
   // switching the operation replaces them with the new operation's defaults while
@@ -294,10 +285,8 @@ public final class TaskFormController {
     // The security row (the restic family): the repository password and the storage
     // live in the security dialog (the crypt rows stay hidden there)
     rows.add(new Row(securityLabel, securityControl, restic));
-    rows.add(new Row(forgetLabel, forget.getParent(), backup));
-    rows.add(new Row(checkLabel, check.getParent(), backup));
     rows.add(new Row(formatLabel, format, formatVisible));
-    rows.add(new Row(serveLabel, serve, backup));
+    rows.add(new Row(serveLabel, serveControl, backup));
     rows.add(new Row(manualLabel, manual, () -> true));
 
     // The row buttons are pinned to their pref width: under the viewport squeeze
@@ -334,8 +323,7 @@ public final class TaskFormController {
     Icons.equip(editExecute, Icons.Symbol.EDIT);
     Icons.equip(editSecurity, Icons.Symbol.EDIT);
     Icons.equip(editSecurityRestic, Icons.Symbol.EDIT);
-    Icons.equip(editForget, Icons.Symbol.EDIT);
-    Icons.equip(editCheck, Icons.Symbol.EDIT);
+    Icons.equip(editServe, Icons.Symbol.EDIT);
 
     // The security editor on the radio line sleeps while (none) is chosen: with no
     // crypt mode there is nothing to configure (the restic family uses its own row)
@@ -361,6 +349,9 @@ public final class TaskFormController {
     type.valueProperty().addListener((x, was, now) -> {
       if (isRestic(was) != isRestic(now)) {
         settings = new EncryptionSettings(settings.mode(), settings.profileText(), "", "", "", "", settings.keyring());
+      }
+      if (existing == null && !"backup".equals(was) && "backup".equals(now)) {
+        serviceSettings = ServiceSettings.DEFAULTS;
       }
       loadDefaultProfiles();
       updateTypeDescription();
@@ -456,15 +447,7 @@ public final class TaskFormController {
       manual.setSelected(existing.isManual());
 
       if (existing instanceof Backup backup) {
-        if (backup.forget() != null && !backup.forget().isEmpty()) {
-          forget.setText(String.join(", ", backup.forget()));
-        }
-        if (backup.check() != null && !backup.check().isEmpty()) {
-          check.setText(String.join(", ", backup.check()));
-        }
-        if (backup.cadence() != null) {
-          serve.setText(backup.cadence().format());
-        }
+        serviceSettings = new ServiceSettings(backup.cadence(), backup.check(), backup.forget(), backup.prune());
         format.setDisable(true);
       }
 
@@ -688,8 +671,6 @@ public final class TaskFormController {
   /// Refresh the profile-backed entries with the current operation's defaults
   private void loadDefaultProfiles() {
     loadDefaultProfile(execute, executeProfiles());
-    loadDefaultProfile(forget, Backup.FORGET);
-    loadDefaultProfile(check, Backup.CHECK);
   }
 
   private File browseDirectory(TextField field, File start, String title) {
@@ -771,13 +752,13 @@ public final class TaskFormController {
   }
 
   @FXML
-  private void onEditForget() {
-    editList(forget, "Retention Policy", "Edit snapshot retention policy options", () -> Backup.FORGET);
-  }
-
-  @FXML
-  private void onEditCheck() {
-    editList(check, "Integrity Check", "Edit repository integrity check options", () -> Backup.CHECK);
+  private void onEditServe() {
+    ServiceDialogController dialog = ServiceDialogController.load(serviceSettings, Backup.CADENCE);
+    ServiceDialog.show(context, "Repository Service",
+      existing == null
+        ? "Configure repository service cadence and maintenance phases"
+        : "Manage repository service cadence and maintenance phases for task " + existing.tag(),
+      dialog).ifPresent(s -> serviceSettings = s);
   }
 
   String type() {
@@ -1007,22 +988,8 @@ public final class TaskFormController {
     return "backup".equals(type()) && format.isSelected() ? Boolean.TRUE : null;
   }
 
-  String forget() {
-    String value = forget.getText().trim();
-    if (value.isEmpty()) return existing == null ? null : "-";
-    return value;
-  }
-
-  String check() {
-    String value = check.getText().trim();
-    if (value.isEmpty()) return existing == null ? null : "-";
-    return value;
-  }
-
-  String serve() {
-    String value = serve.getText().trim();
-    if (value.isEmpty()) return existing == null ? null : "-";
-    return value;
+  ServiceSettings serviceSettings() {
+    return serviceSettings;
   }
 
   /// The mass-run participation: the checkbox inverted (checked = manual-only,
