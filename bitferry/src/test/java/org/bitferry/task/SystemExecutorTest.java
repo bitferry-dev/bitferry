@@ -1743,6 +1743,7 @@ class SystemExecutorTest {
 
     BitferryError err = assertThrows(BitferryError.class, () -> executor.passwd(restore, "new-secret"));
     assertTrue(err.getMessage().contains("does not accept the provided password"));
+    assertTrue(err.getMessage().contains("only permitted through backup tasks"));
   }
 
   @Test

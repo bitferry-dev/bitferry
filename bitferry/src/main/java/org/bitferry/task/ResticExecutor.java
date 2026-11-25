@@ -240,7 +240,7 @@ final class ResticExecutor {
     boolean alreadyMatches = testPassword(manager, repo, newPassword);
     if (!alreadyMatches) {
       if (!restic.mayRotateRepositoryKey()) {
-        throw new BitferryError("Restic repository at " + repo + " does not accept the provided password");
+        throw new BitferryError("Restic repository at " + repo + " does not accept the provided password (key rotation is only permitted through backup tasks)");
       }
       boolean currentValid = testPassword(manager, repo, restic.password());
       if (!currentValid) {
