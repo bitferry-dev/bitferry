@@ -1,11 +1,7 @@
 package org.bitferry;
 
-import com.sun.jna.platform.win32.Kernel32;
-import com.sun.jna.platform.win32.User32;
-import com.sun.jna.platform.win32.WinDef;
-import com.sun.jna.platform.win32.WinUser;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
+import com.sun.jna.platform.win32.*;
+import java.util.concurrent.*;
 
 /// The Windows media-change event source: the WM_DEVICECHANGE device messages
 /// delivered to a hidden top-level window pumped on a dedicated thread. Win32

@@ -3,21 +3,17 @@ package org.bitferry.gui;
 import org.bitferry.*;
 import org.bitferry.endpoint.*;
 import org.bitferry.task.*;
-import org.bitferry.vault.KeyringVault;
-import javafx.application.Platform;
+import org.bitferry.vault.*;
+import javafx.application.*;
 import javafx.geometry.*;
-import javafx.scene.Cursor;
-import javafx.scene.Scene;
+import javafx.scene.*;
 import javafx.scene.control.*;
-import javafx.stage.DirectoryChooser;
-import javafx.stage.Screen;
-import javafx.stage.Window;
+import javafx.stage.*;
 
-import java.io.File;
+import java.io.*;
 import java.nio.file.*;
 import java.util.*;
-import java.util.function.BooleanSupplier;
-import java.util.function.Consumer;
+import java.util.function.*;
 
 /// The creation and modification dialogs: the new volume and the unified task forms.
 /// The heavy lifting (endpoint parsing, task construction, mutation, commit) travels

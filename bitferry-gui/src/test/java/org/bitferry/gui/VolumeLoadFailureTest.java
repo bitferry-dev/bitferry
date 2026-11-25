@@ -1,17 +1,11 @@
 package org.bitferry.gui;
 
-import org.bitferry.AnsiFormat;
-import org.bitferry.Bitferry;
-import org.bitferry.Manager;
-import org.junit.jupiter.api.Test;
+import org.bitferry.*;
+import org.junit.jupiter.api.*;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
+import java.nio.file.*;
+import java.util.*;
+import java.util.concurrent.*;
 
 import static org.junit.jupiter.api.Assertions.*;
 

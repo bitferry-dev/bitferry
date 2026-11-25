@@ -2,13 +2,10 @@ package org.bitferry.cli;
 
 import java.lang.reflect.*;
 import java.util.*;
-import picocli.CommandLine;
-import picocli.CommandLine.Help;
-import picocli.CommandLine.Help.ColorScheme;
-import picocli.CommandLine.Help.IOptionRenderer;
-import picocli.CommandLine.IHelpFactory;
-import picocli.CommandLine.Model.CommandSpec;
-import picocli.CommandLine.Model.OptionSpec;
+import picocli.*;
+import picocli.CommandLine.*;
+import picocli.CommandLine.Help.*;
+import picocli.CommandLine.Model.*;
 
 /// Custom help factory and renderer that expands profile contents in option descriptions
 /// only when verbose mode (-v, --verbose) is specified. The help layout adapts to the

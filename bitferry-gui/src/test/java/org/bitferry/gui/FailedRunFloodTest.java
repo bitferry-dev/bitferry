@@ -1,33 +1,22 @@
 package org.bitferry.gui;
 
-import org.bitferry.Manager;
-import org.bitferry.Volume;
-import org.bitferry.endpoint.Endpoints;
-import org.bitferry.task.Copy;
-import org.bitferry.task.Executor;
-import org.bitferry.task.SystemCommandExecutor;
-import org.bitferry.task.Task;
-import javafx.application.Platform;
-import javafx.fxml.FXMLLoader;
-import javafx.scene.Scene;
-import javafx.scene.control.TabPane;
-import javafx.stage.Stage;
-import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.Test;
+import org.bitferry.*;
+import org.bitferry.endpoint.*;
+import org.bitferry.task.*;
+import org.bitferry.task.*;
+import javafx.application.*;
+import javafx.fxml.*;
+import javafx.scene.*;
+import javafx.scene.control.*;
+import javafx.stage.*;
+import org.junit.jupiter.api.*;
 
-import java.io.BufferedWriter;
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.concurrent.CountDownLatch;
-import java.util.function.Consumer;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.atomic.AtomicReference;
+import java.io.*;
+import java.nio.file.*;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.function.*;
+import java.util.concurrent.atomic.*;
 
 import static org.junit.jupiter.api.Assertions.*;
 

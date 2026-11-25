@@ -1,13 +1,11 @@
 package org.bitferry.gui;
 
-import javafx.application.Platform;
-import javafx.beans.InvalidationListener;
-import javafx.stage.Screen;
-import javafx.stage.Stage;
+import javafx.application.*;
+import javafx.beans.*;
+import javafx.stage.*;
 
-import java.lang.System.Logger.Level;
-import java.util.prefs.BackingStoreException;
-import java.util.prefs.Preferences;
+import java.lang.System.Logger.*;
+import java.util.prefs.*;
 
 /// The persisted window status: the placement, the size, the maximized flag plus
 /// the log split divider position and the backend verbosity switch. Backed by the

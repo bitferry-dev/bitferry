@@ -1,11 +1,10 @@
 package org.bitferry;
 
-import java.io.File;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.List;
-import java.util.prefs.Preferences;
-import org.junit.jupiter.api.Test;
+import java.io.*;
+import java.nio.file.*;
+import java.util.*;
+import java.util.prefs.*;
+import org.junit.jupiter.api.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 /// The persisted search-roots helpers: the entry parsing discipline (the shared

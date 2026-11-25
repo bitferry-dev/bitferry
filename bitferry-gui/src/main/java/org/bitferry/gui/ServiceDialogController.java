@@ -1,29 +1,16 @@
 package org.bitferry.gui;
 
-import org.bitferry.BitferryError;
-import org.bitferry.task.Backup;
-import org.bitferry.task.Cadence;
-import javafx.application.Platform;
-import javafx.fxml.FXML;
-import javafx.fxml.FXMLLoader;
-import javafx.scene.control.Button;
-import javafx.scene.control.CheckBox;
-import javafx.scene.control.ComboBox;
-import javafx.scene.control.TextField;
-import javafx.scene.layout.ColumnConstraints;
-import javafx.scene.layout.GridPane;
-import javafx.scene.layout.HBox;
-import javafx.scene.layout.Region;
-import javafx.scene.layout.VBox;
-import javafx.stage.Window;
+import org.bitferry.*;
+import org.bitferry.task.*;
+import javafx.application.*;
+import javafx.fxml.*;
+import javafx.scene.control.*;
+import javafx.scene.layout.*;
+import javafx.stage.*;
 
-import java.io.IOException;
-import java.time.Duration;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import java.io.*;
+import java.time.*;
+import java.util.*;
 
 /// Controller for the unified backup service configuration dialog (`service.fxml`):
 /// manages service scheduling cadence (`cadence`) alongside the per-phase option

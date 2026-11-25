@@ -1,22 +1,18 @@
 package org.bitferry.gui;
 
 import org.bitferry.*;
-import org.bitferry.endpoint.Endpoint;
-import org.bitferry.endpoint.LocalEndpoint;
-import org.bitferry.endpoint.VolumeEndpoint;
+import org.bitferry.endpoint.*;
 import org.bitferry.task.*;
 import javafx.beans.property.*;
-import javafx.fxml.FXML;
-import javafx.geometry.Pos;
+import javafx.fxml.*;
+import javafx.geometry.*;
 import javafx.scene.control.*;
-import javafx.scene.control.cell.CheckBoxTableCell;
-import javafx.scene.layout.HBox;
-import javafx.scene.layout.Priority;
-import javafx.scene.layout.Region;
-import javafx.scene.paint.Color;
+import javafx.scene.control.cell.*;
+import javafx.scene.layout.*;
+import javafx.scene.paint.*;
 
 import java.util.*;
-import java.util.function.Function;
+import java.util.function.*;
 
 /// The tasks tab controller: the management actions (create, execute, service,
 /// delete) over the tasks listing. The execution/service requests travel through

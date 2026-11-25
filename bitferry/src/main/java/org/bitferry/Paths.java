@@ -1,8 +1,7 @@
 package org.bitferry;
 
 import java.io.*;
-import java.nio.file.InvalidPathException;
-import java.nio.file.Path;
+import java.nio.file.*;
 import java.util.*;
 import java.util.prefs.*;
 import java.util.regex.*;

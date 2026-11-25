@@ -1,11 +1,8 @@
 package org.bitferry;
 
-import java.util.SortedSet;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
-import java.util.function.BooleanSupplier;
-import java.util.function.Supplier;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.function.*;
 
 /// The media change watcher: detects the mount-set changes (the media arrival and
 /// removal) and invokes the consumer once per change, coalesced.

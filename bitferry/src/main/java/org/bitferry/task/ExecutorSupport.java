@@ -1,22 +1,12 @@
 package org.bitferry.task;
 
-import org.bitferry.AnsiFormat;
-import org.bitferry.Manager;
+import org.bitferry.*;
 
-import java.io.IOException;
-import java.lang.System.Logger.Level;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.ArrayDeque;
-import java.util.ArrayList;
-import java.util.Deque;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Objects;
-import java.util.function.Consumer;
-import java.util.function.Function;
-import java.util.function.Supplier;
+import java.io.*;
+import java.lang.System.Logger.*;
+import java.nio.file.*;
+import java.util.*;
+import java.util.function.*;
 
 /// Shared plumbing for the backend executors: the command line echo, the command
 /// execution through the executor seam with the outcome mapping, and the backend

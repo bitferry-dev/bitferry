@@ -1,16 +1,12 @@
 package org.bitferry.gui;
 
-import org.bitferry.BitferryError;
-import javafx.application.Platform;
-import javafx.event.ActionEvent;
-import javafx.geometry.Rectangle2D;
-import javafx.scene.control.Button;
-import javafx.scene.control.ButtonType;
-import javafx.scene.control.Dialog;
-import javafx.scene.control.Label;
-import javafx.scene.paint.Color;
-import javafx.stage.Screen;
-import javafx.stage.Window;
+import org.bitferry.*;
+import javafx.application.*;
+import javafx.event.*;
+import javafx.geometry.*;
+import javafx.scene.control.*;
+import javafx.scene.paint.*;
+import javafx.stage.*;
 
 import java.util.Optional;
 

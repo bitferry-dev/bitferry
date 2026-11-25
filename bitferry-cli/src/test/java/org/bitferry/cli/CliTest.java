@@ -1,10 +1,9 @@
 package org.bitferry.cli;
 
 import org.bitferry.*;
-import org.bitferry.endpoint.VolumeEndpoint;
+import org.bitferry.endpoint.*;
 import org.bitferry.task.*;
-import org.bitferry.vault.KeyringVault;
-import org.bitferry.vault.Passwords;
+import org.bitferry.vault.*;
 import java.io.*;
 import java.nio.charset.*;
 import java.nio.file.*;

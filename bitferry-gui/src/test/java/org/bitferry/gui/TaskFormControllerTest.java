@@ -1,36 +1,17 @@
 package org.bitferry.gui;
 
-import org.bitferry.BitferryError;
-import org.bitferry.Manager;
-import org.bitferry.Volume;
-import org.bitferry.endpoint.Endpoint;
-import org.bitferry.endpoint.Endpoints;
-import org.bitferry.task.Backup;
-import org.bitferry.task.Copy;
-import org.bitferry.task.Equalize;
-import org.bitferry.task.IncludeFilters;
-import org.bitferry.task.Replicate;
-import org.bitferry.task.Restore;
-import org.bitferry.task.Task;
+import org.bitferry.*;
+import org.bitferry.endpoint.*;
+import org.bitferry.task.*;
 import javafx.application.Platform;
 import javafx.scene.Node;
-import javafx.scene.control.Button;
-import javafx.scene.control.ComboBox;
-import javafx.scene.control.RadioButton;
-import javafx.scene.control.TextField;
-import javafx.scene.layout.GridPane;
-import javafx.scene.layout.HBox;
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.Assumptions;
-import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.Test;
+import javafx.scene.control.*;
+import javafx.scene.layout.*;
+import org.junit.jupiter.api.*;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
+import java.nio.file.*;
+import java.util.*;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;

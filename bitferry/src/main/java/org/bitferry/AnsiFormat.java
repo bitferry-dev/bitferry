@@ -1,8 +1,6 @@
 package org.bitferry;
 
-import org.bitferry.endpoint.Endpoint;
-import org.bitferry.endpoint.LocalEndpoint;
-import org.bitferry.endpoint.VolumeEndpoint;
+import org.bitferry.endpoint.*;
 import org.bitferry.task.Task;
 
 /// Terminal formatting utilities for colorizing Bitferry log messages, tags,

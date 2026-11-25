@@ -41,7 +41,7 @@
       </columnConstraints>
       <children>
         <Label text="Service:" GridPane.rowIndex="0" GridPane.columnIndex="0" style="-fx-text-fill: #222222;"/>
-        <CheckBox fx:id="enabled" text="Enable automatic repository service" selected="true"
+        <CheckBox fx:id="enabled" text="enable automatic repository service" selected="true"
                   GridPane.rowIndex="0" GridPane.columnIndex="1" style="-fx-text-fill: #222222;"/>
 
         <Label text="Elapsed time:" GridPane.rowIndex="1" GridPane.columnIndex="0" style="-fx-text-fill: #222222;"/>

@@ -1,15 +1,11 @@
 package org.bitferry.gui;
 
-import javafx.application.Platform;
-import javafx.scene.control.ButtonType;
-import javafx.scene.control.Dialog;
-import javafx.scene.control.Label;
-import javafx.scene.paint.Color;
-import javafx.stage.Window;
+import javafx.application.*;
+import javafx.scene.control.*;
+import javafx.scene.paint.*;
+import javafx.stage.*;
 
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 
 /// A reusable dialog for per-argument entry edition, reordering, and profile loading
 /// across include patterns, exclude patterns, and backend execution options. The

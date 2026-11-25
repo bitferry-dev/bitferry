@@ -1,10 +1,9 @@
 package org.bitferry.vault;
 
-import org.bitferry.BitferryError;
-import org.bitferry.task.Task;
-import com.microsoft.credentialstorage.SecretStore;
-import com.microsoft.credentialstorage.StorageProvider;
-import com.microsoft.credentialstorage.model.StoredCredential;
+import org.bitferry.*;
+import org.bitferry.task.*;
+import com.microsoft.credentialstorage.*;
+import com.microsoft.credentialstorage.model.*;
 
 /// OS keyring-backed password vault (Windows Credential Manager, macOS Keychain,
 /// Linux libsecret/GNOME Keyring via the credential-secure-storage adapter): the

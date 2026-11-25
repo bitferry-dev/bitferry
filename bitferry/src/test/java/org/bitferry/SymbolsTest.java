@@ -1,14 +1,12 @@
 package org.bitferry;
 
-import org.bitferry.endpoint.Endpoints;
-import org.bitferry.task.Copy;
-import org.bitferry.task.Task;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
+import org.bitferry.endpoint.*;
+import org.bitferry.task.*;
+import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.io.*;
 
-import java.nio.file.Path;
-import java.util.List;
+import java.nio.file.*;
+import java.util.*;
 
 import static org.junit.jupiter.api.Assertions.*;
 

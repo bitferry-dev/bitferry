@@ -1,15 +1,11 @@
 package org.bitferry;
 
 import java.util.List;
-import org.freedesktop.dbus.connections.impl.DBusConnection;
-import org.freedesktop.dbus.connections.impl.DBusConnectionBuilder;
-import org.freedesktop.dbus.exceptions.DBusException;
-import org.freedesktop.dbus.interfaces.DBusSigHandler;
-import org.freedesktop.dbus.interfaces.ObjectManager;
-import org.freedesktop.dbus.interfaces.Properties;
-import org.freedesktop.dbus.matchrules.DBusMatchRule;
-import org.freedesktop.dbus.matchrules.DBusMatchRuleBuilder;
-import org.freedesktop.dbus.messages.DBusSignal;
+import org.freedesktop.dbus.connections.impl.*;
+import org.freedesktop.dbus.exceptions.*;
+import org.freedesktop.dbus.interfaces.*;
+import org.freedesktop.dbus.matchrules.*;
+import org.freedesktop.dbus.messages.*;
 
 /// The Linux media-change event source: the udisks2 ObjectManager signals
 /// (InterfacesAdded/InterfacesRemoved over the system bus) and PropertiesChanged

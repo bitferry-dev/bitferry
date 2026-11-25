@@ -1,8 +1,7 @@
 package org.bitferry.gui;
 
-import org.bitferry.task.Backup;
-import org.bitferry.task.Cadence;
-import java.util.List;
+import org.bitferry.task.*;
+import java.util.*;
 
 /// Snapshot of a backup task's service configuration edited in the Service dialog:
 /// scheduling cadence plus the per-phase option lists (`check`, `forget`, `prune`).

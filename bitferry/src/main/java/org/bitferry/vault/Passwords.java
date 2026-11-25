@@ -1,14 +1,12 @@
 package org.bitferry.vault;
 
-import org.bitferry.BitferryError;
+import org.bitferry.*;
 
-import javax.crypto.Cipher;
-import javax.crypto.spec.IvParameterSpec;
-import javax.crypto.spec.SecretKeySpec;
-import java.nio.charset.StandardCharsets;
-import java.security.GeneralSecurityException;
-import java.security.SecureRandom;
-import java.util.Base64;
+import javax.crypto.*;
+import javax.crypto.spec.*;
+import java.nio.charset.*;
+import java.security.*;
+import java.util.*;
 
 /// Password obscuring and token codec.
 ///

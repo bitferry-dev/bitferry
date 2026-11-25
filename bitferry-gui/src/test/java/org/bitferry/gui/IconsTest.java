@@ -1,15 +1,12 @@
 package org.bitferry.gui;
 
-import javafx.application.Platform;
-import javafx.scene.control.Button;
-import javafx.scene.paint.Color;
-import javafx.scene.shape.SVGPath;
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.Test;
+import javafx.application.*;
+import javafx.scene.control.*;
+import javafx.scene.paint.*;
+import javafx.scene.shape.*;
+import org.junit.jupiter.api.*;
 
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 
 import static org.junit.jupiter.api.Assertions.*;
 
