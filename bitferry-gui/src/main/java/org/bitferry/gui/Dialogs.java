@@ -111,6 +111,12 @@ final class Dialogs {
 
     runAsync(context, "Create Bitferry volume", () -> {
       Manager manager = context.manager();
+      if (!manager.simulate) {
+        String problem = Volume.storabilityProblem(path);
+        if (problem != null) {
+          throw new BitferryError(problem);
+        }
+      }
       Volume occ = manager.liveVolumes().values().stream()
         .filter(v -> v.root().equals(canonical))
         .findFirst().orElse(null);
@@ -131,10 +137,14 @@ final class Dialogs {
         // persists the rest of the volume set as before
         Volume volume = Volume.create(manager, path);
         manager.commit();
-        logs.log("Bitferry volume " + AnsiFormat.tag(volume.tag()) + " created at " + AnsiFormat.path(volume.root()));
+        if (manager.simulate) {
+          logs.log("Simulated Bitferry volume " + AnsiFormat.tag(volume.tag()) + " creation at " + AnsiFormat.path(volume.root()));
+        } else {
+          logs.log("Bitferry volume " + AnsiFormat.tag(volume.tag()) + " created at " + AnsiFormat.path(volume.root()));
+        }
         // The discovery tri-choice follow-up: the created-and-added location rides
         // the per-site scanned locations list (the next start discovers the volume)
-        if (addOnCreate) {
+        if (addOnCreate && !manager.simulate) {
           List<String> roots = new ArrayList<>(org.bitferry.Paths.load());
           if (!roots.contains(canonical.toString())) {
             roots.add(canonical.toString());
@@ -215,8 +225,8 @@ final class Dialogs {
           Task candidate = buildCandidateTask(context, form, null);
           candidate.conform();
         }
-      } catch (BitferryError e) {
-        alert(context, Alert.AlertType.ERROR, "Validation failed", e.getMessage());
+      } catch (RuntimeException e) {
+        alert(context, Alert.AlertType.ERROR, "Validation failed", e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
         event.consume();
       } finally {
         if (scene != null) scene.setCursor(prevCursor);

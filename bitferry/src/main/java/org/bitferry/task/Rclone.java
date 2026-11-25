@@ -129,6 +129,11 @@ public abstract class Rclone extends Task implements IncludeFilters {
   }
 
   @Override
+  boolean hasPendingCredentials() {
+    return usesVault() && encryption.hasPendingCredentials();
+  }
+
+  @Override
   public void publishCredentials() {
     if (usesVault()) encryption.publishCredentials(manager.simulate);
   }
@@ -166,10 +171,16 @@ public abstract class Rclone extends Task implements IncludeFilters {
   /// The encrypt mode with the explicit keyring storage request: the password pair
   /// travels to the OS keyring when the keyring is usable.
   public Rclone encrypt(String password, String password2, List<String> options, boolean keyring) {
-    this.encryption = new Encrypt(this, options);
-    this.encryption.selectVault(keyring);
-    this.encryption.stagePasswords(password, password2);
-    return this;
+    Encryption prev = this.encryption;
+    try {
+      this.encryption = new Encrypt(this, options);
+      this.encryption.selectVault(keyring);
+      this.encryption.stagePasswords(password, password2);
+      return this;
+    } catch (RuntimeException e) {
+      this.encryption = prev;
+      throw e;
+    }
   }
 
   /// Configure the decrypt mode mirroring [encrypt].
@@ -180,10 +191,16 @@ public abstract class Rclone extends Task implements IncludeFilters {
   /// The decrypt mode with the explicit keyring storage request mirroring [encrypt]
   /// (the keyring honored when usable; the fixedness only hints the default).
   public Rclone decrypt(String password, String password2, List<String> options, boolean keyring) {
-    this.encryption = new Decrypt(this, options);
-    this.encryption.selectVault(keyring);
-    this.encryption.stagePasswords(password, password2);
-    return this;
+    Encryption prev = this.encryption;
+    try {
+      this.encryption = new Decrypt(this, options);
+      this.encryption.selectVault(keyring);
+      this.encryption.stagePasswords(password, password2);
+      return this;
+    } catch (RuntimeException e) {
+      this.encryption = prev;
+      throw e;
+    }
   }
 
   /// Return the environment variables to be set for the task processing.
@@ -286,7 +303,14 @@ public abstract class Rclone extends Task implements IncludeFilters {
     morphed.manual = this.manual;
     morphed.runnable = this.runnable;
     morphed.commitState = this.commitState;
-    morphed.processOptions = this.processOptions;
+    if (Objects.equals(this.processOptions, this.processRoute.get(null))) {
+      // Carry the default profile over as the target operation's own default profile.
+      morphed.processOptions = morphed.processRoute.get(null);
+    } else if (this instanceof Equalize && !(morphed instanceof Equalize)) {
+      morphed.processOptions = Equalize.stripBisyncFlags(this.processOptions);
+    } else {
+      morphed.processOptions = this.processOptions;
+    }
     if (!(this.encryption instanceof NoCrypt) && !(morphed.encryption instanceof NoCrypt)) {
       morphed.encryption.copySecretsFrom(this.encryption);
     }
@@ -431,10 +455,16 @@ public abstract class Rclone extends Task implements IncludeFilters {
     /// The target provider is the one currently holding the credentials, falling back
     /// to the creation-time selection; stale entries in the other provider are dropped.
     private void writePasswords() {
+      resolveHolding();
       Vault target = holding != null ? holding : vault;
       target.store(task(), cachedPassword, cachedPassword2);
       if (target != Vault.volume()) Vault.volume().delete(task());
       if (target != Vault.keyring()) Vault.keyring().delete(task());
+      holding = target;
+    }
+
+    boolean hasPendingCredentials() {
+      return credentialsPending;
     }
 
     void publishCredentials(boolean simulate) {
@@ -548,9 +578,21 @@ public abstract class Rclone extends Task implements IncludeFilters {
       return vault;
     }
 
+    private void resolveHolding() {
+      if (holding != null || credentialsPending) return;
+      try {
+        retrieveCredentials();
+      } catch (BitferryError ignored) {
+        if (KeyringVault.INSTANCE.available() && Vault.keyring().retrieve(task()) != null) {
+          holding = Vault.keyring();
+        }
+      }
+    }
+
     /// The provider currently holding (or, when the token is not yet resolved, the
     /// creation-time designated one).
     Vault vaultProvider() {
+      resolveHolding();
       return holding != null ? holding : vault;
     }
 

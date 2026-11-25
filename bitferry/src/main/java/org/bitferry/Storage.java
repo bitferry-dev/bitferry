@@ -70,9 +70,17 @@ public final class Storage {
     if (target.getParent() != null) Files.createDirectories(target.getParent());
     Path image = target.resolveSibling(target.getFileName().toString() + "~");
     try {
-      try (FileChannel channel = FileChannel.open(image, StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING)) {
+      // Drop any leftover staging file (never a directory) so a fresh owner-only
+      // creation cannot inherit looser permissions from an interrupted prior commit.
+      if (Files.isRegularFile(image, LinkOption.NOFOLLOW_LINKS) || Files.isSymbolicLink(image)) {
+        Files.deleteIfExists(image);
+      }
+      try (FileChannel channel = openOwnerOnly(image)) {
         restrictToOwner(image);
-        channel.write(ByteBuffer.wrap(contents.getBytes(StandardCharsets.UTF_8)));
+        ByteBuffer buf = ByteBuffer.wrap(contents.getBytes(StandardCharsets.UTF_8));
+        while (buf.hasRemaining()) {
+          channel.write(buf);
+        }
         channel.force(true);
       }
       try {
@@ -133,6 +141,18 @@ public final class Storage {
       return WRITER.writeValueAsString(value);
     } catch (JacksonException e) {
       throw new BitferryError("serialization failure: " + e.getMessage(), e);
+    }
+  }
+
+  private static FileChannel openOwnerOnly(Path file) throws IOException {
+    java.util.Set<StandardOpenOption> opts = java.util.Set.of(
+      StandardOpenOption.CREATE_NEW,
+      StandardOpenOption.WRITE);
+    try {
+      var perms = java.nio.file.attribute.PosixFilePermissions.fromString("rw-------");
+      return FileChannel.open(file, opts, java.nio.file.attribute.PosixFilePermissions.asFileAttribute(perms));
+    } catch (UnsupportedOperationException e) {
+      return FileChannel.open(file, StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING);
     }
   }
 

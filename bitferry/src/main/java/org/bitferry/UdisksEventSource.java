@@ -18,7 +18,7 @@ final class UdisksEventSource implements MediaWatch.EventSource {
   private static final String UDISKS2_ROOT = "/org/freedesktop/UDisks2";
   private static final java.lang.System.Logger LOG = java.lang.System.getLogger(UdisksEventSource.class.getName());
 
-  private DBusConnection connection;
+  private volatile DBusConnection connection;
 
   /// Connect to the system bus and register the ObjectManager signal handlers;
   /// returns false when the source is unusable on this host.
@@ -70,18 +70,19 @@ final class UdisksEventSource implements MediaWatch.EventSource {
   /// polling fallback cadence.
   @Override
   public boolean isAlive() {
-    return connection != null && connection.isConnected();
+    DBusConnection conn = connection;
+    return conn != null && conn.isConnected();
   }
 
   @Override
   public void close() {
-    if (connection != null) {
+    DBusConnection conn = connection;
+    connection = null;
+    if (conn != null) {
       try {
-        connection.close();
+        conn.close();
       } catch (Exception ignored) {
         // The shutdown best effort
-      } finally {
-        connection = null;
       }
     }
   }

@@ -240,7 +240,7 @@ public class Manager {
   /// Every tag part must match exactly one task.
   public Map<String, Task> selectTasks(List<String> tags) {
     Map<String, Task> intact = new LinkedHashMap<>();
-    for (Volume volume : volumes().values()) intact.putAll(volume.intactTasks());
+    for (Volume volume : liveVolumes().values()) intact.putAll(volume.intactTasks());
     if (tags == null || tags.isEmpty()) {
       // The mass run: the tasks whose runtime execution status excludes them are
       // skipped (they run when requested specifically by their tags)
@@ -397,6 +397,9 @@ public class Manager {
     // yield "/mnt/data (/mnt/other")
     int open = trailingGroupOpenParen(text);
     if (open > 0) {
+      if (text.startsWith("/")) {
+        return Path.of(text.substring(0, open));
+      }
       String inside = text.substring(open + 2, text.length() - 1);
       if (inside.matches("^[A-Za-z]:.*")) {
         return Path.of(inside.endsWith("\\") ? inside : inside + "\\");

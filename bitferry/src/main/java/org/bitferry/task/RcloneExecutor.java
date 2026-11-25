@@ -248,21 +248,7 @@ final class RcloneExecutor {
     // The backend operation arguments: the rclone subcommand and its modifiers
     cmd.addAll(rclone.operationArgs());
 
-    // Include filters
-    for (String inc : rclone.include()) {
-      cmd.add("--filter");
-      cmd.add("+ " + inc);
-    }
-    // Exclude Bitferry storage files and per-task metadata
-    cmd.add("--filter");
-    cmd.add("- " + Bitferry.STORAGE + "*");
-    cmd.add("--filter");
-    cmd.add("- " + Bitferry.STORAGE + "*/**");
-    // Exclude filters
-    for (String exc : rclone.exclude()) {
-      cmd.add("--filter");
-      cmd.add("- " + exc);
-    }
+    appendFilters(cmd, rclone);
 
     // Common options
     cmd.add("--config");
@@ -331,21 +317,7 @@ final class RcloneExecutor {
     // Subcommand: check
     cmd.add("check");
 
-    // Include filters
-    for (String inc : rclone.include()) {
-      cmd.add("--filter");
-      cmd.add("+ " + inc);
-    }
-    // Exclude Bitferry storage files and per-task metadata
-    cmd.add("--filter");
-    cmd.add("- " + Bitferry.STORAGE + "*");
-    cmd.add("--filter");
-    cmd.add("- " + Bitferry.STORAGE + "*/**");
-    // Exclude filters
-    for (String exc : rclone.exclude()) {
-      cmd.add("--filter");
-      cmd.add("- " + exc);
-    }
+    appendFilters(cmd, rclone);
 
     // Common options
     cmd.add("--config");
@@ -370,6 +342,23 @@ final class RcloneExecutor {
     cmd.addAll(rclone.encryption().processOpts(rclone));
 
     return cmd;
+  }
+
+  /// Emit rclone `--filter` rules in first-match-wins precedence order:
+  /// Bitferry metadata exclusions first, then user exclusions, then user inclusions.
+  private static void appendFilters(List<String> cmd, Rclone rclone) {
+    cmd.add("--filter");
+    cmd.add("- " + Bitferry.STORAGE + "*");
+    cmd.add("--filter");
+    cmd.add("- " + Bitferry.STORAGE + "*/**");
+    for (String exc : rclone.exclude()) {
+      cmd.add("--filter");
+      cmd.add("- " + exc);
+    }
+    for (String inc : rclone.include()) {
+      cmd.add("--filter");
+      cmd.add("+ " + inc);
+    }
   }
 
   List<List<String>> serveCommands(Rclone rclone) {

@@ -196,12 +196,17 @@ public class ModifyTaskCommand implements Callable<Integer>, HasCommonOptions {
       Task.checkProcessOptions(execute, Task.processRouteFor(hasType ? type : task.operation()));
     }
 
-    // Resolve and validate endpoint changes up front before any destructive morph
+    // Resolve and validate endpoint changes, keyring availability, and new password
+    // up front before any destructive morph or baseline cleanup.
     Endpoint nextSource = hasSource ? Endpoints.parse(m, source) : task.source();
     Endpoint nextDestination = hasDestination ? Endpoints.parse(m, destination) : task.destination();
     if (hasSource || hasDestination) {
       task.validateEndpoints(nextSource, nextDestination);
     }
+    if (hasVault && targetKeyring && !org.bitferry.vault.KeyringVault.INSTANCE.available()) {
+      throw new BitferryError("No usable OS keyring on this host - the password storage cannot be migrated");
+    }
+    String newPassword = password ? CliUtils.obtainPassword() : null;
 
     if (hasType) {
       task = task.morph(type);
@@ -212,7 +217,6 @@ public class ModifyTaskCommand implements Callable<Integer>, HasCommonOptions {
     }
 
     if (password) {
-      String newPassword = CliUtils.obtainPassword();
       List<String> stale = m.passwd((Restic) task, newPassword);
       if (!stale.isEmpty()) {
         spec.commandLine().getErr().println(Ansi.AUTO.string("@|bold,yellow Warning:|@ the co-repository task(s) " + String.join(", ", stale)

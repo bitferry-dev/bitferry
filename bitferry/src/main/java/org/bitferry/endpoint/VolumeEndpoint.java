@@ -36,7 +36,7 @@ public final class VolumeEndpoint implements Endpoint {
     // Windows-style backreferences ('..\..') or drive/root prefixes cannot slip
     // through creation/restoration on POSIX hosts.
     String universal = raw.replace('\\', '/');
-    if (universal.startsWith("/") || universal.matches("^[A-Za-z]:.*")) {
+    if (universal.startsWith("/") || universal.matches("(?s)^[A-Za-z]:.*")) {
       throw new BitferryError("Invalid Bitferry volume -relative path " + raw);
     }
     for (String segment : universal.split("/", -1)) {
@@ -65,7 +65,7 @@ public final class VolumeEndpoint implements Endpoint {
     this.path = rendered;
     // Enforce sandbox containment at creation/restoration time whenever the volume is loaded
     Volume registered = manager.volumes().get(vtag);
-    if (registered != null) {
+    if (registered != null && registered.isLive()) {
       resolveInsideVolume(registered, this.path);
     }
   }
@@ -102,7 +102,7 @@ public final class VolumeEndpoint implements Endpoint {
     // generation dance: the operations must succeed in spite of the absence
     // (e.g. the deletion of a task whose peer volume is not restored)
     Volume volume = manager.volumes().get(vtag);
-    return volume == null ? 0 : volume.generation();
+    return volume == null || !volume.isLive() ? 0 : volume.generation();
   }
 
   @Override
@@ -118,14 +118,15 @@ public final class VolumeEndpoint implements Endpoint {
   @Override
   public Volume requireVolume(Manager manager, String message) {
     Volume volume = manager.volumes().get(vtag);
-    if (volume == null) throw new BitferryError("No volume " + vtag + " is registered");
+    if (volume == null || !volume.isLive()) throw new BitferryError("No volume " + vtag + " is registered");
     return volume;
   }
 
   @JsonIgnore
   @Override
   public boolean isIntact() {
-    return manager.volumes().containsKey(vtag); // An intact endpoint has referring volume registered
+    Volume volume = manager.volumes().get(vtag);
+    return volume != null && volume.isLive(); // An intact endpoint has referring live volume registered
   }
 
   @Override
@@ -136,7 +137,7 @@ public final class VolumeEndpoint implements Endpoint {
 
   private Volume volume() {
     Volume volume = manager.volumes().get(vtag);
-    if (volume == null) throw new BitferryError("No volume " + vtag + " is registered");
+    if (volume == null || !volume.isLive()) throw new BitferryError("No volume " + vtag + " is registered");
     return volume;
   }
 }

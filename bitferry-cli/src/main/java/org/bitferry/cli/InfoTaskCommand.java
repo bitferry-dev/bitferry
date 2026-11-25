@@ -40,9 +40,9 @@ public class InfoTaskCommand implements Callable<Integer>, HasCommonOptions {
     PrintWriter err = spec != null ? spec.commandLine().getErr() : new PrintWriter(System.err, true);
     CommonOptions opts = CliUtils.resolveOptions(spec, options);
     Manager m = CliUtils.restoreManager(spec, opts);
-    Map<String, Task> tasks = m.selectTasks(tags);
+    List<Task> tasks = m.selectLiveTasks(tags);
     boolean first = true;
-    for (Task t : tasks.values()) {
+    for (Task t : tasks) {
       if (commandsOnly) {
         // The per-task degradation: a task whose backend cannot build the commands
         // (e.g. a backup on an absent destination volume) reports '(unavailable)'

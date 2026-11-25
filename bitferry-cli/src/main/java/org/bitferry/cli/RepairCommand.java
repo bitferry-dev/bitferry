@@ -43,11 +43,7 @@ public class RepairCommand implements Callable<Integer>, HasCommonOptions {
     PrintWriter err = spec != null ? spec.commandLine().getErr() : new PrintWriter(System.err, true);
     CommonOptions opts = CliUtils.resolveOptions(spec, options);
     Manager m = CliUtils.restoreManager(spec, opts);
-    var selected = m.selectLiveTasks(tags);
-    if (selected.isEmpty()) {
-      err.println(Ansi.AUTO.string("@|faint no task(s) match " + String.join(" ", tags) + "|@"));
-      return 0;
-    }
+    var selected = m.selectTasks(tags).values();
 
     // The resolution and the validation run upfront (mirroring the modify command):
     // a rejected task must not leave the earlier tasks half-repaired
@@ -62,7 +58,7 @@ public class RepairCommand implements Callable<Integer>, HasCommonOptions {
       if (!operations.contains(operation)) {
         throw new BitferryError("Task " + t.tag() + ": the backend provides no '" + operation.id() + "' repair operation");
       }
-      if (operation.destructive() && !m.force) {
+      if (operation.destructive() && !m.force && !m.simulate) {
         throw new BitferryError("Repair operation '" + operation.label() + "' is destructive (it removes the locks of the possibly running clients); it requires --force");
       }
       planned.add(new Planned(t, operation));
@@ -91,6 +87,12 @@ public class RepairCommand implements Callable<Integer>, HasCommonOptions {
         if (!m.quiet) {
           String status = Ansi.AUTO.string(Symbols.unicode() ? "@|red ✗ failure|@" : "@|red x failure|@");
           out.println(status);
+        }
+        continue;
+      }
+      if (m.simulate) {
+        if (!m.quiet) {
+          out.println(Ansi.AUTO.string("@|faint Simulated (nothing was modified)|@"));
         }
         continue;
       }

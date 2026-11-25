@@ -119,6 +119,11 @@ public abstract class Restic extends Task {
     if (check != null) setCheck(check);
   }
 
+  @Override
+  boolean hasPendingCredentials() {
+    return credentialsPending;
+  }
+
   /// The restic tasks keep the repository password within the vault.
   @Override
   public boolean usesVault() {
@@ -182,10 +187,12 @@ public abstract class Restic extends Task {
   }
 
   private void writePassword(String password) {
+    resolveHolding();
     Vault target = holding != null ? holding : vault;
     target.store(this, password, null);
     if (target != Vault.volume()) Vault.volume().delete(this);
     if (target != Vault.keyring()) Vault.keyring().delete(this);
+    holding = target;
   }
 
   @Override
@@ -248,10 +255,24 @@ public abstract class Restic extends Task {
     return null;
   }
 
+  /// Probe which vault provider currently holds a restored task's credentials,
+  /// tolerating absent volumes so stale tasks still resolve keyring entries.
+  private void resolveHolding() {
+    if (holding != null || credentialsPending) return;
+    try {
+      retrieveCredentials();
+    } catch (BitferryError ignored) {
+      if (KeyringVault.INSTANCE.available() && Vault.keyring().retrieve(this) != null) {
+        holding = Vault.keyring();
+      }
+    }
+  }
+
   /// The provider currently holding (or, when the token is not yet resolved, the
   /// creation-time designated one).
   @Override
   public java.util.Optional<Vault> vaultProvider() {
+    resolveHolding();
     return java.util.Optional.ofNullable(holding != null ? holding : vault);
   }
 

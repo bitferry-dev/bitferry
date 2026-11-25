@@ -1023,8 +1023,9 @@ public final class TaskFormController {
       if (resticMode() && settings.password().isEmpty()) {
         throw new BitferryError("Repository password must be specified — set it via the security dialog");
       }
-      // The rclone encryption pair is validated inside the security dialog: the
-      // returned settings carry a matching non-empty pair whenever the mode is set
+      if (!resticMode() && settings.mode() != null && settings.password().isEmpty()) {
+        throw new BitferryError("Encryption password must be specified — set it via the encryption dialog");
+      }
     } else if (context != null && (isSourceEditable() || isDestinationEditable())) {
       Endpoint parsedSource = isSourceEditable() ? Endpoints.parse(context.manager(), source()) : existing.source();
       Endpoint parsedDestination = isDestinationEditable() ? Endpoints.parse(context.manager(), destination()) : existing.destination();

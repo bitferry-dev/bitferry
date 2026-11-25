@@ -46,6 +46,9 @@ public final class SystemCommandExecutor implements CommandExecutor {
     // the task environment here, so the removal is safe for every spawned child.
     builder.environment().remove("RESTIC_PASSWORD_COMMAND");
     builder.environment().remove("RESTIC_PASSWORD_FILE");
+    if (environment == null || !environment.containsKey("RESTIC_PASSWORD")) {
+      builder.environment().remove("RESTIC_PASSWORD");
+    }
 
     if (output == null) {
       if (pumpStderr) {
@@ -74,6 +77,7 @@ public final class SystemCommandExecutor implements CommandExecutor {
             // The stream ends when the process is torn down; nothing to salvage
           }
         });
+        pump.setDaemon(true);
         pump.start();
         try {
           process.waitFor();

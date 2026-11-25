@@ -193,7 +193,11 @@ final class ResticExecutor {
       if (exitCode != 0) {
         throw new BitferryError("Failed to list snapshots for the Restic repository at " + repo);
       }
-      String json = String.join("\n", output);
+      String json = output.stream()
+        .map(line -> AnsiFormat.strip(line).trim())
+        .dropWhile(line -> !line.startsWith("[") && !line.startsWith("{"))
+        .collect(Collectors.joining("\n"));
+      if (json.isEmpty()) return List.of();
       JsonNode root = Storage.mapper().readTree(json);
       if (!root.isArray()) return List.of();
       List<Snapshot> result = new ArrayList<>();
@@ -210,7 +214,7 @@ final class ResticExecutor {
         result.add(new Snapshot(id, shortId, time, paths, hostname, username, tags));
       }
       return result;
-    } catch (IOException | InterruptedException e) {
+    } catch (IOException | InterruptedException | tools.jackson.core.JacksonException e) {
       if (e instanceof InterruptedException) Thread.currentThread().interrupt();
       throw new BitferryError("Failed to read snapshots from the Restic repository at " + repo + ": " + e.getMessage(), e);
     }
@@ -305,6 +309,7 @@ final class ResticExecutor {
   /// the failed invocation).
   private boolean healStaleToken(Restic task, String repo) {
     Manager manager = task.manager();
+    if (manager.simulate) return false;
     String own;
     try {
       own = task.password();

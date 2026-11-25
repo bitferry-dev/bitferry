@@ -35,6 +35,10 @@ class PasswordsTest {
   @Test
   void nullPasswordIsRejected() {
     assertThrows(BitferryError.class, () -> Passwords.bitferryObscure(null));
+    assertThrows(BitferryError.class, () -> Passwords.bitferryObscure(""));
+    assertThrows(BitferryError.class, () -> Passwords.bitferryReveal(null));
+    assertThrows(BitferryError.class, () -> Passwords.rcloneObscure(null));
+    assertThrows(BitferryError.class, () -> Passwords.rcloneReveal(null));
   }
 
   @Test

@@ -136,6 +136,8 @@ class AnsiParserTest {
     // libgen0.conflict1 must be cyan
     Text conflictNode = nodes.stream().filter(t -> t.getText().startsWith("libgen0.conflict1")).findFirst().orElseThrow();
     assertEquals(AnsiParser.CYAN, conflictNode.getFill());
+
+    assertEquals("hello", AnsiParser.stripAnsi("\u001B[?25lhello\u001B[?25h"));
   }
 
   @Test

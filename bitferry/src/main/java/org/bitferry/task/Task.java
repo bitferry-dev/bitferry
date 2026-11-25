@@ -313,6 +313,11 @@ public abstract class Task {
     touch();
   }
 
+  /// Whether credentials are staged in memory awaiting publication on the first real commit.
+  boolean hasPendingCredentials() {
+    return false;
+  }
+
   /// Whether the task keeps a secret within the vault providers (the keyring advisory
   /// gating). The restic tasks keep the repository password; the encrypted rclone tasks
   /// keep the crypt password pair.
@@ -460,7 +465,7 @@ public abstract class Task {
     VaultCredentials creds = null;
     if (usesVault()) {
       newVaultVol = resolveVaultVolume(newSource, newDestination);
-      if (vaultProvider().orElse(Vault.volume()) == Vault.volume()) {
+      if (!hasPendingCredentials() && vaultProvider().orElse(Vault.volume()) == Vault.volume()) {
         oldVaultVol = resolveVaultVolume(source, destination);
         if (!oldVaultVol.tag().equals(newVaultVol.tag())) {
           creds = Vault.volume().retrieve(this);

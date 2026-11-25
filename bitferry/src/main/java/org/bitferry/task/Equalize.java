@@ -307,8 +307,13 @@ public class Equalize extends Rclone {
   /// by rclone check.
   @Override
   public List<String> serveOptions() {
+    return stripBisyncFlags(processOptions());
+  }
+
+  /// Strip bisync-specific flags from an option list so the remainder can be passed
+  /// to non-bisync rclone commands (`rclone check` or morphed one-way tasks).
+  static List<String> stripBisyncFlags(List<String> all) {
     List<String> options = new ArrayList<>();
-    List<String> all = processOptions();
     for (int i = 0; i < all.size(); i++) {
       String opt = all.get(i);
       if (BISYNC_ONLY_FLAGS.contains(opt)) {

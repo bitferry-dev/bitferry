@@ -143,9 +143,10 @@ public final class AnsiFormat {
   /// intact count uncolored).
   public static String tasksSummary(Manager manager) {
     if (manager == null) return "0 task(s)";
-    int total = manager.liveTasks().size();
+    java.util.Map<String, Task> live = manager.liveTasks();
+    int total = live.size();
     if (total == 0) return "0 task(s)";
-    long intact = manager.liveTasks().values().stream().filter(Task::isIntact).count();
+    long intact = live.values().stream().filter(Task::isIntact).count();
     long stale = total - intact;
     String intactPart = intact > 0 ? GREEN + intact + " intact" + RESET : intact + " intact";
     if (stale == 0) {

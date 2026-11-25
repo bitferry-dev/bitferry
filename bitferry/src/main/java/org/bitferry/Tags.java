@@ -25,6 +25,6 @@ public final class Tags {
 
   /// Return true if the tag part matches the tag by the substring rules.
   public static boolean matches(String part, String tag) {
-    return tag.contains(part);
+    return part != null && tag != null && tag.contains(part);
   }
 }

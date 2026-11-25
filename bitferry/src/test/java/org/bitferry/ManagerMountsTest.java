@@ -43,6 +43,8 @@ class ManagerMountsTest {
     assertEquals(Path.of("/mnt/data"), Manager.mountPoint(store("/mnt/data (/mnt/other (x))", "btrfs")));
     // The text without the mount point suffix is rejected
     assertNull(Manager.mountPoint(store("weird", "btrfs")));
+    // POSIX mount sources starting with letter+colon (e.g. rclone/NFS) must not be treated as Windows drives
+    assertEquals(Path.of("/mnt/gdrive"), Manager.mountPoint(store("/mnt/gdrive (g:)", "fuse.rclone")));
   }
 
   @Test

@@ -203,7 +203,7 @@ public final class CliUtils {
   /// Create and configure an unrestored Manager instance.
   public static Manager createManager(CommonOptions opts) {
     Manager m = new Manager();
-    m.quiet = opts.quiet;
+    m.quiet = opts.quiet && !opts.verbose && !opts.debug;
     m.simulate = opts.simulate;
     m.force = opts.force;
     if (opts.debug) {

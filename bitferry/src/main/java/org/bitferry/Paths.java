@@ -27,8 +27,10 @@ public final class Paths {
       if (legacy != null && !legacy.isBlank()) {
         value = legacy;
         prefs.put(KEY, legacy);
+        legacyPrefs.remove(KEY);
         try {
           prefs.flush();
+          legacyPrefs.flush();
         } catch (BackingStoreException ignored) {}
       }
     }

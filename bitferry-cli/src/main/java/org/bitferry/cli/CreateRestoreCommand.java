@@ -101,8 +101,9 @@ public class CreateRestoreCommand implements Callable<Integer>, HasCommonOptions
     // When an explicit concrete snapshot ID is specified without --backup-task, skip
     // ambiguous derivation since --tag is unused for explicit snapshot IDs.
     boolean isLatest = Restore.isLatestSnapshot(snapshot);
-    String scope = (isLatest || backupTask != null)
-      ? Restore.resolveSnapshotTag(m, repo, "-".equals(backupTask) ? null : backupTask, password)
+    String explicitScope = "-".equals(backupTask) ? null : backupTask;
+    String scope = (isLatest || explicitScope != null)
+      ? Restore.resolveSnapshotTag(m, repo, explicitScope, password)
       : null;
     if (!isLatest) {
       spec.commandLine().getOut().println("Snapshot ID: " + Restore.normalizeSnapshotId(snapshot));

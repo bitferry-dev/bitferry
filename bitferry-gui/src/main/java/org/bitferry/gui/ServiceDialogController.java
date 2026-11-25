@@ -333,7 +333,18 @@ public final class ServiceDialogController {
   }
 
   private void editPhaseList(TextField field, String title, String header, Map<String, List<String>> profiles) {
-    List<String> current = resolvePhaseTokens(field.getText(), profiles);
+    List<String> current;
+    try {
+      current = resolvePhaseTokens(field.getText(), profiles);
+    } catch (BitferryError e) {
+      Window window = field.getScene() != null ? field.getScene().getWindow() : null;
+      javafx.scene.control.Alert alert = new javafx.scene.control.Alert(javafx.scene.control.Alert.AlertType.ERROR, e.getMessage());
+      if (window != null) alert.initOwner(window);
+      alert.setTitle("Invalid options");
+      alert.setHeaderText(null);
+      alert.showAndWait();
+      return;
+    }
     Window window = field.getScene() != null ? field.getScene().getWindow() : null;
     ItemListDialog.show(window, title, header, current, profiles)
       .ifPresent(list -> field.setText(String.join(", ", list)));
@@ -429,7 +440,13 @@ public final class ServiceDialogController {
       case UNIT_MINUTES -> Duration.ofMinutes(amount);
       case UNIT_HOURS -> Duration.ofHours(amount);
       case UNIT_DAYS -> Duration.ofDays(amount);
-      case UNIT_WEEKS -> Duration.ofDays(amount * 7);
+      case UNIT_WEEKS -> {
+        try {
+          yield Duration.ofDays(Math.multiplyExact(amount, 7L));
+        } catch (ArithmeticException e) {
+          throw new BitferryError("Elapsed time is too large", e);
+        }
+      }
       default -> throw new BitferryError("Unknown duration unit: " + unit);
     };
   }

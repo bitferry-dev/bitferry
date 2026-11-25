@@ -28,6 +28,7 @@ public final class KeyringVault implements Vault {
 
   // The probed keyring store; null when the host provides none (probed once, cached)
   private volatile SecretStore<StoredCredential> store;
+  private volatile boolean probed;
 
   private KeyringVault() {}
 
@@ -48,14 +49,16 @@ public final class KeyringVault implements Vault {
   // in-memory fallback of the adapter is refused (it would silently lose the tokens
   // upon the exit defeating the storage purpose)
   private SecretStore<StoredCredential> store() {
-    if (store == null) {
+    if (!probed) {
       synchronized (this) {
-        if (store == null) {
+        if (!probed) {
           try {
             store = StorageProvider.getCredentialStorage(true, StorageProvider.SecureOption.REQUIRED);
           } catch (RuntimeException e) {
             // No usable keyring on the host; the volume vault keeps serving
-            return null;
+            store = null;
+          } finally {
+            probed = true;
           }
         }
       }

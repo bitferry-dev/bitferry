@@ -118,6 +118,7 @@ final class WindowsEventSource implements MediaWatch.EventSource {
       LOG.log(java.lang.System.Logger.Level.DEBUG, () -> "Device message pump finished: " + t);
     } finally {
       alive = false;
+      pumpThreadId = 0;
       started.countDown();
       if (window != null) {
         try {

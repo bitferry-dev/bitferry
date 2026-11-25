@@ -94,7 +94,7 @@ public final class ExecutorSupport {
     if (executable == null || backend == null) return false;
     String property = System.getProperty("bitferry." + backend);
     if (property != null && !property.isBlank() && samePath(executable, property)) return true;
-    String override = environment.apply(backend.toUpperCase());
+    String override = environment.apply(backend.toUpperCase(Locale.ROOT));
     if (override != null && !override.isBlank()) return false;
     for (Path dir : bundledDirectories(javaHome)) {
       Path candidate = dir.resolve(executableName(backend));
@@ -200,7 +200,7 @@ public final class ExecutorSupport {
   static String resolveExecutable(String backend, Function<String, String> environment, Path javaHome) {
     String property = System.getProperty("bitferry." + backend);
     if (property != null && !property.isBlank()) return property;
-    String override = environment.apply(backend.toUpperCase());
+    String override = environment.apply(backend.toUpperCase(Locale.ROOT));
     if (override != null && !override.isBlank()) return override;
     for (Path directory : bundledDirectories(javaHome)) {
       Path executable = directory.resolve(executableName(backend));

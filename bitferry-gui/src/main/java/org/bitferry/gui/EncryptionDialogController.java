@@ -175,6 +175,7 @@ public final class EncryptionDialogController {
         // The crypt options are the creation-time choices: the modification keeps
         // the stored ones immutable (mirroring the task form)
         profile.setDisable(true);
+        editProfile.setDisable(true);
       }
     }
 

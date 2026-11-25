@@ -119,11 +119,13 @@ public final class VolumesController {
 
   @FXML
   private void onCreate() {
+    if (locked) return;
     Dialogs.newVolume(context, logs);
   }
 
   @FXML
   private void onDelete() {
+    if (locked) return;
     deleteVolume();
   }
 
@@ -144,6 +146,11 @@ public final class VolumesController {
       Path root = current.root();
       current.delete();
       manager.commit();
+      if (manager.simulate) {
+        logs.log("Simulated Bitferry volume " + AnsiFormat.tag(current.tag()) + " deletion at " + AnsiFormat.path(root));
+        context.fireModelChanged();
+        return;
+      }
       logs.log("Bitferry volume " + AnsiFormat.tag(current.tag()) + " deleted at " + AnsiFormat.path(root));
       // The removal is a filesystem-level change the media watcher cannot observe
       // (the mount set is unchanged): re-probe the manager explicitly. The reload

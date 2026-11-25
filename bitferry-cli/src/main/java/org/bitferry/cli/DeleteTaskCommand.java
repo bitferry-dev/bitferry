@@ -38,7 +38,7 @@ public class DeleteTaskCommand implements Callable<Integer>, HasCommonOptions {
     // referring storages; only the payload data is deliberately preserved) and the
     // selection is fuzzy (a substring match), so the accidental one-keystroke
     // destruction is gated behind --force (the GUI flow confirms interactively instead)
-    if (!m.force) {
+    if (!m.force && !m.simulate) {
       throw new BitferryError("Task deletion requires --force (it tombstones the task in every referring storage); preview the selection with --dry-run");
     }
     var selected = m.selectLiveTasks(tags);

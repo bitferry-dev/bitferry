@@ -106,14 +106,18 @@ public final class AppContext {
   /// probing policy). Runs on the operations thread (or directly before the UI starts).
   public void reload() {
     operations.execute(() -> {
-      Manager restored = restoreNow();
-      for (String err : restored.loadErrors()) {
-        logger.accept(err);
+      try {
+        Manager restored = restoreNow();
+        for (String err : restored.loadErrors()) {
+          logger.accept(err);
+        }
+        manager = restored;
+        logger.accept("Manager update: " + restored.liveVolumes().size() + " volume(s), "
+          + AnsiFormat.tasksSummary(restored));
+        fireModelChanged();
+      } catch (RuntimeException e) {
+        logger.accept("Manager reload failure: " + e.getMessage());
       }
-      manager = restored;
-      logger.accept("Manager update: " + restored.liveVolumes().size() + " volume(s), "
-        + AnsiFormat.tasksSummary(restored));
-      fireModelChanged();
     });
   }
 
@@ -131,52 +135,50 @@ public final class AppContext {
   /// kept outstanding by the watcher and re-fired later.
   private void reloadOnMediaChange() {
     operations.execute(() -> {
-      Manager current = manager;
-      Manager restored = restoreNow();
-      manager = restored;
-      // The no-op suppression: the unrelated mount churn produces the identical
-      // live model - swap silently (the fresh file store identities still matter
-      // for the presence checks) without the log noise nor the table flicker
-      Map<String, Path> currentRoots = new LinkedHashMap<>();
-      if (current != null) {
-        for (Volume v : current.liveVolumes().values()) currentRoots.put(v.tag(), v.root());
-      }
-      Map<String, Path> restoredRoots = new LinkedHashMap<>();
-      for (Volume v : restored.liveVolumes().values()) restoredRoots.put(v.tag(), v.root());
-      if (current != null
-        && currentRoots.equals(restoredRoots)
-        && current.liveTasks().keySet().equals(restored.liveTasks().keySet())
-        && current.selectTasks().keySet().equals(restored.selectTasks().keySet())
-        // The load errors compare as sets: the message set identifies the model
-        // state, the ordering is the probing accident
-        && java.util.Set.copyOf(current.loadErrors()).equals(java.util.Set.copyOf(restored.loadErrors()))) {
-        return;
-      }
-      for (String err : restored.loadErrors()) {
-        if (current == null || !current.loadErrors().contains(err)) {
-          logger.accept(err);
+      try {
+        Manager current = manager;
+        Manager restored = restoreNow();
+        manager = restored;
+        // The no-op suppression: the unrelated mount churn produces the identical
+        // live model - swap silently (the fresh file store identities still matter
+        // for the presence checks) without the log noise nor the table flicker
+        Map<String, Path> currentRoots = new LinkedHashMap<>();
+        if (current != null) {
+          for (Volume v : current.liveVolumes().values()) currentRoots.put(v.tag(), v.root());
         }
+        Map<String, Path> restoredRoots = new LinkedHashMap<>();
+        for (Volume v : restored.liveVolumes().values()) restoredRoots.put(v.tag(), v.root());
+        if (current != null
+          && currentRoots.equals(restoredRoots)
+          && current.liveTasks().keySet().equals(restored.liveTasks().keySet())
+          && current.selectTasks().keySet().equals(restored.selectTasks().keySet())
+          // The load errors compare as sets: the message set identifies the model
+          // state, the ordering is the probing accident
+          && java.util.Set.copyOf(current.loadErrors()).equals(java.util.Set.copyOf(restored.loadErrors()))) {
+          return;
+        }
+        for (String err : restored.loadErrors()) {
+          if (current == null || !current.loadErrors().contains(err)) {
+            logger.accept(err);
+          }
+        }
+        logger.accept("Manager update due to media change: " + restored.liveVolumes().size()
+          + " volume(s), " + AnsiFormat.tasksSummary(restored));
+        fireModelChanged();
+      } catch (RuntimeException e) {
+        logger.accept("Media change reload failure: " + e.getMessage());
       }
-      logger.accept("Manager update due to media change: " + restored.liveVolumes().size()
-        + " volume(s), " + AnsiFormat.tasksSummary(restored));
-      fireModelChanged();
     });
   }
 
   // The extra roots (tested/injected roots) included in probing
-  final List<Path> extraRoots = new ArrayList<>();
+  final List<Path> extraRoots = new java.util.concurrent.CopyOnWriteArrayList<>();
 
   // The shared restore: the probing policy roots + the verbosity carry-over.
   private Manager restoreNow() {
     List<Path> roots = new ArrayList<>();
-    String env = System.getenv("BITFERRY_PATH");
-    if (env != null && !env.isBlank()) {
-      for (String entry : env.split(Pattern.quote(File.pathSeparator))) roots.add(Path.of(entry));
-    }
-    String prop = System.getProperty("bitferry.path");
-    if (prop != null && !prop.isBlank()) {
-      for (String entry : prop.split(Pattern.quote(File.pathSeparator))) roots.add(Path.of(entry));
-    }
+    roots.addAll(org.bitferry.Paths.parseEntries(System.getenv("BITFERRY_PATH")));
+    roots.addAll(org.bitferry.Paths.parseEntries(System.getProperty("bitferry.path")));
     for (String entry : org.bitferry.Paths.load()) {
       try {
         roots.add(Path.of(entry));
@@ -191,6 +193,14 @@ public final class AppContext {
     restored.verbose(verbose);
     restored.simulate(simulate);
     return restored;
+  }
+
+  /// Shut down the media watcher and operations executor cleanly on application exit.
+  public void close() {
+    MediaWatch watch = mediaWatch;
+    mediaWatch = null;
+    if (watch != null) watch.close();
+    operations.shutdown();
   }
 
   /// Notify the UI parts about a model mutation (a committed creation or deletion)

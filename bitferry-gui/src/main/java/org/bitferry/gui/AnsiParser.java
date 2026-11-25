@@ -202,7 +202,7 @@ public final class AnsiParser {
     // payload rides to the end); the truncated (line-split) sequences
     return text
       .replaceAll("\u001B\\][^\u0007\u001B]*(?:\u0007|\u001B\\\\)?", "")
-      .replaceAll("\u001B\\[[0-9;]*[a-zA-Z]?", "");
+      .replaceAll("\u001B\\[[\\u0020-\\u003F]*[\\u0040-\\u007E]?", "");
   }
 
   private static Text createText(String content, boolean bold, boolean dim, boolean italic, boolean underline, Color fgColor) {

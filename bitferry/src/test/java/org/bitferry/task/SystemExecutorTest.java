@@ -1280,7 +1280,7 @@ class SystemExecutorTest {
 
     Restore restore = new Restore(manager, Endpoints.parse(manager, "local:" + notRepo), volumeRestored(), "secret", null, List.of(), List.of());
     BitferryError error = assertThrows(BitferryError.class, () -> executor.conform(restore));
-    assertTrue(error.getMessage().contains("restic repository"));
+    assertTrue(error.getMessage().contains("Restic repository"));
   }
 
   @Test
@@ -1863,8 +1863,8 @@ class SystemExecutorTest {
     assertEquals("init", recorder.invocations.get(0).command().get(1));
     assertEquals("check", recorder.invocations.get(1).command().get(1));
     assertEquals("prune", recorder.invocations.get(2).command().get(1));
-    assertTrue(output.stream().anyMatch(l -> l.contains("Checking repository")), () -> "missing step line: " + output);
-    assertTrue(output.stream().anyMatch(l -> l.contains("Pruning repository")), () -> "missing step line: " + output);
+    assertTrue(output.stream().anyMatch(l -> l.contains("Checking the Restic repository")), () -> "missing step line: " + output);
+    assertTrue(output.stream().anyMatch(l -> l.contains("Pruning the Restic repository")), () -> "missing step line: " + output);
     assertTrue(output.stream().anyMatch(l -> l.startsWith(AnsiFormat.CYAN + "restic check")), () -> "missing check command echo: " + output);
     assertTrue(output.stream().anyMatch(l -> l.startsWith(AnsiFormat.CYAN + "restic prune")), () -> "missing prune command echo: " + output);
     assertTrue(output.stream().anyMatch(l -> l.endsWith(AnsiFormat.RESET)), () -> "the echo must be color-highlighted: " + output);
@@ -1916,5 +1916,23 @@ class SystemExecutorTest {
     assertEquals(Task.Outcome.SUCCESS, executor.serve(customPruneNoForget, null));
     assertEquals(List.of("check", "forget", "prune"),
       recorder.invocations.stream().map(inv -> inv.command().get(1)).toList());
+  }
+
+  @Test
+  void rcloneFiltersPlaceBitferryAndExcludesBeforeIncludes() {
+    RecordingCommandExecutor recorder = new RecordingCommandExecutor();
+    SystemExecutor executor = new SystemExecutor(recorder);
+
+    Replicate task = new Replicate(manager, source(), destination(), null, List.of("**"), List.of("*.tmp"));
+    executor.run(task, null);
+    List<String> cmd = recorder.invocations.get(0).command();
+
+    int storageIdx = cmd.indexOf("- " + Bitferry.STORAGE + "*");
+    int storageTreeIdx = cmd.indexOf("- " + Bitferry.STORAGE + "*/**");
+    int excludeIdx = cmd.indexOf("- *.tmp");
+    int includeIdx = cmd.indexOf("+ **");
+    assertTrue(storageIdx > 0 && storageTreeIdx > storageIdx);
+    assertTrue(excludeIdx > storageTreeIdx);
+    assertTrue(includeIdx > excludeIdx);
   }
 }

@@ -177,17 +177,24 @@ public final class TasksController {
       private final CheckBox checkBox = new CheckBox();
       {
         checkBox.setOnAction(event -> {
+          if (locked) {
+            if (getTableRow() != null && getTableRow().getItem() instanceof Row row) {
+              checkBox.setSelected(row.runnable.get());
+            }
+            return;
+          }
           if (getTableRow() != null && getTableRow().getItem() instanceof Row row) {
             // The model mutation marshals onto the operations executor (the mass runs
             // read the flag there): the direct FX-thread write would race the dispatch.
             // The row's snapshot property still follows the click immediately (the
             // re-renders must not repaint the stale pre-click state over the toggle)
             boolean selected = checkBox.isSelected();
+            row.runnable.set(selected);
             context.operations().execute(() -> {
               Task current = context.manager().task(row.task.tag());
               if (current != null) current.setRunnable(selected);
+              context.fireModelChanged();
             });
-            row.runnable.set(selected);
           }
         });
       }
@@ -200,6 +207,7 @@ public final class TasksController {
           setGraphic(null);
           return;
         }
+        checkBox.setDisable(locked);
         checkBox.setSelected(row.runnable.get());
         setGraphic(checkBox);
       }
@@ -269,6 +277,7 @@ public final class TasksController {
   public void setActionsDisabled(boolean disabled) {
     locked = disabled;
     updateButtons();
+    table.refresh();
   }
 
   private Row selected() {
@@ -372,7 +381,7 @@ public final class TasksController {
   @FXML
   private void onDelete() {
     Row row = selected();
-    if (row == null) return;
+    if (row == null || locked) return;
     Task task = row.task;
     Dialogs.confirmAndRun(context, "Delete task",
       "Delete task " + task.tag() + ":\n  " + task.describe() + "?\n\n"
@@ -385,6 +394,11 @@ public final class TasksController {
         if (current == null) throw new BitferryError("Task " + task.tag() + " is no longer registered");
         current.delete();
         manager.commit();
+        if (manager.simulate) {
+          logs.log("Simulated task " + AnsiFormat.tag(current.tag()) + " deletion");
+          context.fireModelChanged();
+          return;
+        }
         logs.log("Task " + AnsiFormat.tag(current.tag()) + " deleted");
         // Re-probe the manager mirroring the volume deletion flow: the reload's
         // garbage collection retires the tombstone right away when all the referred

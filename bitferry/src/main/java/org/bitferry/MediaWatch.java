@@ -183,7 +183,11 @@ public final class MediaWatch {
   // signals schedules one coalesced check.
   private void markDirty() {
     dirty = true;
-    scheduler.schedule(this::eventCheck, coalesceMs, TimeUnit.MILLISECONDS);
+    if (!closed) {
+      try {
+        scheduler.schedule(this::eventCheck, coalesceMs, TimeUnit.MILLISECONDS);
+      } catch (java.util.concurrent.RejectedExecutionException ignored) {}
+    }
   }
 
   // The coalesced event check (the scheduler thread).
@@ -236,7 +240,11 @@ public final class MediaWatch {
       System.getLogger(MediaWatch.class.getName())
         .log(java.lang.System.Logger.Level.WARNING, "media watch tick failed: " + e);
     } finally {
-      scheduler.schedule(this::tick, sourceAlive ? slowTickMs : fastTickMs, TimeUnit.MILLISECONDS);
+      if (!closed) {
+        try {
+          scheduler.schedule(this::tick, sourceAlive ? slowTickMs : fastTickMs, TimeUnit.MILLISECONDS);
+        } catch (java.util.concurrent.RejectedExecutionException ignored) {}
+      }
     }
   }
 

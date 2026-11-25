@@ -44,7 +44,7 @@ public final class Passwords {
   /// leading null padding, returning the unpadded base64url encoding of the salt followed
   /// by the ciphertext.
   public static String bitferryObscure(String data) {
-    if (data == null) throw new BitferryError("Cannot obscure null password");
+    if (data == null || data.isEmpty()) throw new BitferryError("Cannot obscure null or empty password");
     try {
       byte[] plaintext = data.getBytes(StandardCharsets.UTF_8);
       int padLen = MIN_PAD + RANDOM.nextInt(MAX_PAD - MIN_PAD + 1);
@@ -70,6 +70,7 @@ public final class Passwords {
 
   /// Reveal a value obscured by [obscure].
   public static String bitferryReveal(String obscured) {
+    if (obscured == null) throw new BitferryError("Cannot reveal null password");
     byte[] raw;
     try {
       raw = Base64.getUrlDecoder().decode(obscured);
@@ -106,6 +107,7 @@ public final class Passwords {
 
   /// Obscure the value using rclone's AES-256-CTR scheme for passing to rclone's environment.
   public static String rcloneObscure(String data) {
+    if (data == null) throw new BitferryError("Cannot obscure null password");
     try {
       byte[] plaintext = data.getBytes(StandardCharsets.UTF_8);
       byte[] iv = new byte[IV_LENGTH];
@@ -124,6 +126,7 @@ public final class Passwords {
 
   /// Reveal a value obscured by [rcloneObscure] (or by rclone itself).
   public static String rcloneReveal(String obscured) {
+    if (obscured == null) throw new BitferryError("Cannot reveal null password");
     byte[] payload;
     try {
       payload = Base64.getUrlDecoder().decode(obscured);

@@ -192,18 +192,19 @@ public final class Volume {
   /// registration is needed). The simulation mode registers the volume leaving the
   /// pending write for a following real commit to materialize.
   public static Volume create(Manager manager, Path root) {
-    Volume volume = new Volume(manager, root);
     // The storability enforcement: the root accepting directories while refusing
     // files (the drive roots, the managed shares, the read-only mounts) would fail
     // the storage write mid-commit with the opaque 'saving failure' - the probe
-    // surfaces the restriction upfront with the actionable message; the simulation
-    // skips it (nothing is written).
+    // surfaces the restriction upfront with the actionable message and creates the
+    // root before Volume captures its fileStoreId; the simulation skips it (nothing
+    // is written).
     if (!manager.simulate) {
       String problem = storabilityProblem(root);
       if (problem != null) {
         throw new BitferryError(problem);
       }
     }
+    Volume volume = new Volume(manager, root);
     volume.commit();
     manager.registerVolume(volume);
     return volume;
@@ -430,15 +431,12 @@ public final class Volume {
     synchronized (stateLock) {
       loop:
       while (true) switch (commitState) {
-        case PRISTINE -> { // Format the volume
-          if (Files.exists(storage) && !manager.force) {
+        case PRISTINE, LIVE -> { // Format or dump the volume storage
+          if (commitState == CommitState.PRISTINE && Files.exists(storage) && !manager.force) {
             throw new BitferryError("Refuse to overwrite existing storage file " + storage + " without the force option enabled");
           }
-          commitState = CommitState.LIVE;
-        }
-        case LIVE -> { // Dump the volume storage
-          if (isModified() || manager.force) {
-            if (fileStore == null) {
+          if (isModified() || manager.force || commitState == CommitState.PRISTINE) {
+            if (fileStore == null && (!manager.simulate || Files.isDirectory(root))) {
               // The identity was unresolvable at the discovery time (e.g. the mount
               // was dropped): re-resolve. An existing root whose file system stays
               // unresolvable cannot be verified - the stale mount point would
@@ -451,7 +449,7 @@ public final class Volume {
               if (fileStore != null) {
                 LOG.log(Level.WARNING, () -> "Bitferry volume " + tag + " file system identity was unresolvable at the discovery time; adopted " + fileStore);
               }
-            } else {
+            } else if (fileStore != null) {
               checkPresence();
             }
             try {
@@ -459,14 +457,19 @@ public final class Volume {
                 // Validate serialization in simulation without altering durable mtime or writing to disk.
                 Storage.toJson(this);
                 // The simulation writes nothing and consumes no durable bookkeeping:
-                // the pending mtime/generation/modified state is left for a following
-                // real commit to materialize
+                // the pending mtime/generation/modified/PRISTINE state is left for a
+                // following real commit to materialize
                 LOG.log(Level.INFO, () -> "Simulated Bitferry volume " + tag + " save to " + storage);
               } else {
                 // The actual storage writing time is stored, not the in-memory modification time
                 mtime = OffsetDateTime.now().truncatedTo(java.time.temporal.ChronoUnit.MICROS);
                 String contents = Storage.toJson(this);
                 Storage.writeText(storage, contents);
+                // Refresh fileStore after Storage.writeText creates a new root directory
+                if (fileStore == null) {
+                  fileStore = fileStoreId(root);
+                }
+                commitState = CommitState.LIVE;
                 LOG.log(Level.INFO, () -> "Bitferry volume " + tag + " written to " + storage);
               }
             } catch (IOException e) {

@@ -18,13 +18,14 @@ import java.util.logging.*;
 public final class Main extends Application {
 
   private static final Logger log = Logger.getLogger(Main.class.getName());
+  private AppContext context;
 
   @Override
   public void start(Stage stage) throws Exception {
     boolean train = getParameters().getRaw().contains("--train");
     log.info(() -> "Starting bitferry-gui " + Bitferry.VERSION + " (train mode: " + train + ")");
 
-    AppContext context = new AppContext();
+    context = new AppContext();
     WindowSettings settings = WindowSettings.load();
     FXMLLoader loader = new FXMLLoader(Main.class.getResource("main.fxml"));
     Parent root = loader.load();
@@ -79,6 +80,11 @@ public final class Main extends Application {
       pulse.play();
     }
     log.info("UI ready");
+  }
+
+  @Override
+  public void stop() {
+    if (context != null) context.close();
   }
 
   public static void main(String[] args) {

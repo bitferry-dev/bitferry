@@ -241,4 +241,31 @@ class VolumeTest {
     assertThrows(BitferryError.class, () -> volume.endpoint(dir.resolve("elsewhere")));
     assertThrows(BitferryError.class, () -> manager.endpoint(dir.resolve("elsewhere")));
   }
+
+  @Test
+  void deadVolumeIsNotIntactForVolumeEndpointAndDeferredCreationGuardsExistingStorage() throws IOException {
+    Manager manager = new Manager();
+    manager.simulate = true;
+    Path volRoot = dir.resolve("deferred-vol");
+    Volume volume = Volume.create(manager, volRoot);
+    assertFalse(Files.exists(volRoot.resolve(Bitferry.STORAGE)));
+
+    // If a foreign .bitferry appears before the real commit, PRISTINE overwrite guard still blocks it
+    Files.createDirectories(volRoot);
+    Files.writeString(volRoot.resolve(Bitferry.STORAGE), "{\"bitferry\": \"1\", \"volume\": \"aaaaaaaa\", \"modified\": \"2026-01-01T00:00:00+00:00\"}");
+    manager.simulate = false;
+    assertThrows(BitferryError.class, manager::commit);
+    Files.delete(volRoot.resolve(Bitferry.STORAGE));
+
+    // Real commit materializes and transitions to LIVE, and DEAD volumes are no longer intact in VolumeEndpoint
+    manager.commit();
+    assertTrue(volume.isLive());
+    assertTrue(Files.isRegularFile(volRoot.resolve(Bitferry.STORAGE)));
+    var endpoint = volume.endpoint(volRoot.resolve("sub"));
+    assertTrue(endpoint.isIntact());
+    volume.delete();
+    manager.commit();
+    assertFalse(volume.isLive());
+    assertFalse(endpoint.isIntact());
+  }
 }

@@ -22,8 +22,8 @@ public final class Endpoints {
   // Explicit local: prefixed directory path (allows any path characters including colons)
   private static final Pattern EXPLICIT_LOCAL = Pattern.compile("^\\s*local:(?<root>.*)$");
 
-  // Bare directory path to be resolved against volumes
-  private static final Pattern BARE_LOCAL = Pattern.compile("^\\s*(?<root>([a-zA-Z]:)?[^:]*)$");
+  // Bare directory path to be resolved against volumes (includes POSIX absolute paths with ':')
+  private static final Pattern BARE_LOCAL = Pattern.compile("^\\s*(?<root>/.*|([a-zA-Z]:)?[^:]*)$");
 
   // Explicitly specified path to be resolved against the intact volumes
   private static final Pattern RESOLVE = Pattern.compile("^\\s*:(?:\\s*?):(?<path>.*)$");
@@ -35,6 +35,7 @@ public final class Endpoints {
 
   /// Parse the specified endpoint specifier with respect to the volumes registered in the manager.
   public static Endpoint parse(Manager manager, String specifier) {
+    if (specifier == null) throw new BitferryError("Endpoint specifier must not be null");
     Matcher x = EXPLICIT_LOCAL.matcher(specifier);
     if (x.matches()) {
       return new LocalEndpoint(Path.of(x.group("root")));

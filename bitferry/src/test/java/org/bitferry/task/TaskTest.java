@@ -835,6 +835,45 @@ class TaskTest {
       staleTask.setEndpoints(staleTask.source(), Endpoints.parse(partial, ":" + volume.tag() + ":otherDst")));
   }
 
+  @Test
+  void morphPreservesDefaultProfilesAndStripsBisyncOnlyFlags() {
+    Equalize eqDefault = new Equalize(manager, source(), destination(), null, List.of(), List.of());
+    Rclone rep = eqDefault.morph(Replicate.OPERATION);
+    assertEquals(Rclone.PROCESS.get(null), rep.processOptions());
+    assertFalse(rep.processOptions().contains("--recover"));
+    assertFalse(rep.processOptions().contains("--resilient"));
+
+    Rclone backToEq = rep.morph(Equalize.OPERATION);
+    assertEquals(Equalize.PROCESS.get(null), backToEq.processOptions());
+
+    Equalize eqCustom = new Equalize(manager, source(), destination(), "--metadata,--recover,--bwlimit,1M", List.of(), List.of());
+    Rclone copyCustom = eqCustom.morph(Copy.OPERATION);
+    assertEquals(List.of("--metadata", "--bwlimit", "1M"), copyCustom.processOptions());
+  }
+
+  @Test
+  void failedEncryptCallDoesNotClobberPreviousEncryptionAndPristineRelocationSucceeds() throws Exception {
+    Path vol2Root = dir.resolve("vol2-pristine");
+    Files.createDirectories(vol2Root);
+    Volume volume2 = Volume.create(manager, vol2Root);
+    manager.commit();
+
+    Copy task = new Copy(manager,
+      Endpoints.parse(manager, ":" + volume.tag() + ":src"),
+      Endpoints.parse(manager, "local:" + dir.resolve("dst")),
+      null, List.of(), List.of());
+    task.encrypt("secret", null, null, false);
+    assertThrows(BitferryError.class, () -> task.encrypt("", null, null, false));
+    assertEquals("encrypt", task.encryption().operation());
+    assertEquals("secret", task.encryption().password());
+
+    // Relocating a PRISTINE task with staged credentials across volumes succeeds and commits to the new vault volume
+    task.setEndpoints(Endpoints.parse(manager, ":" + volume2.tag() + ":src2"), task.destination());
+    manager.commit(task);
+    assertNull(volume.readVault(task.tag()));
+    assertNotNull(volume2.readVault(task.tag()));
+  }
+
   private static List<String> toStringList(JsonNode node) {
     return Task.strings(node, false);
   }
