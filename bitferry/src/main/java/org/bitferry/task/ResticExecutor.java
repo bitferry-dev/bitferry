@@ -57,7 +57,7 @@ final class ResticExecutor {
       return; // Repo directory absent: skip conformance
     }
     if (!hasRepository(repo)) {
-      throw new BitferryError("Invalid restic repository at " + repo);
+      throw new BitferryError("Invalid Restic repository at " + repo);
     }
     probeRepository(restore, repo);
   }
@@ -66,7 +66,7 @@ final class ResticExecutor {
   void format(Backup backup) {
     Manager manager = backup.manager();
     if (manager.simulate) {
-      LOG.log(Level.INFO, () -> "Simulated repository initialization for task " + backup.tag());
+      LOG.log(Level.INFO, () -> "Simulated the Restic repository initialization for task " + backup.tag());
       return;
     }
     String repo = backup.destination().processOpts();
@@ -79,7 +79,7 @@ final class ResticExecutor {
       Path repoDir = Path.of(repo);
       if (Files.exists(repoDir)) {
         if (!Files.isDirectory(repoDir)) {
-          throw new BitferryError("Repository path " + repo + " is not a directory");
+          throw new BitferryError("Restic repository path " + repo + " is not a directory");
         }
         Set<String> siblings = new LinkedHashSet<>();
         for (Task t : manager.liveTasks().values()) {
@@ -101,12 +101,12 @@ final class ResticExecutor {
         try {
           empty = isEmptyDirectory(repoDir);
         } catch (IOException e) {
-          throw new BitferryError("Cannot inspect the repository directory " + repo + ": " + e.getMessage(), e);
+          throw new BitferryError("Cannot inspect the Restic repository directory " + repo + ": " + e.getMessage(), e);
         }
         if (!hasRepository(repo) && !empty) {
-          throw new BitferryError("Refusing to wipe " + repo + ": it is not a restic repository (no config file) but is not empty; re-point the task or empty the directory explicitly");
+          throw new BitferryError("Refusing to wipe " + repo + ": it is not a Restic repository (no config file) but is not empty; re-point the task or empty the directory explicitly");
         }
-        LOG.log(Level.INFO, () -> "Wiping existing repository for task " + backup.tag() + " in " + repo);
+        LOG.log(Level.INFO, () -> "Wiping the existing Restic repository for task " + backup.tag() + " in " + repo);
         wipeRepository(repoDir);
       }
     } else if (hasRepository(repo)) {
@@ -114,7 +114,7 @@ final class ResticExecutor {
       LOG.log(Level.INFO, () -> "Existing repository opened; attaching implicitly");
       return;
     }
-    LOG.log(Level.INFO, () -> "Initializing repository for task " + backup.tag() + " in " + repo);
+    LOG.log(Level.INFO, () -> "Initializing the Restic repository for task " + backup.tag() + " in " + repo);
     List<String> cmd = new ArrayList<>();
     cmd.add(resolveExecutable());
     cmd.add("init");
@@ -191,7 +191,7 @@ final class ResticExecutor {
       List<String> output = new ArrayList<>();
       int exitCode = commandExecutor.execute(cmd, null, env, output::add);
       if (exitCode != 0) {
-        throw new BitferryError("Failed to list snapshots for restic repository at " + repo);
+        throw new BitferryError("Failed to list snapshots for the Restic repository at " + repo);
       }
       String json = String.join("\n", output);
       JsonNode root = Storage.mapper().readTree(json);
@@ -212,7 +212,7 @@ final class ResticExecutor {
       return result;
     } catch (IOException | InterruptedException e) {
       if (e instanceof InterruptedException) Thread.currentThread().interrupt();
-      throw new BitferryError("Failed to read snapshots from restic repository at " + repo + ": " + e.getMessage(), e);
+      throw new BitferryError("Failed to read snapshots from the Restic repository at " + repo + ": " + e.getMessage(), e);
     }
   }
 
@@ -291,7 +291,7 @@ final class ResticExecutor {
       .filter(tag -> !registered.contains(tag))
       .toList();
     if (!stale.isEmpty()) {
-      LOG.log(Level.WARNING, () -> "The stored passwords of the co-repository task(s) " + String.join(", ", stale)
+      LOG.log(Level.WARNING, () -> "The stored passwords of the Restic co-repository task(s) " + String.join(", ", stale)
         + " were not updated (their hosting volumes are not restored); the unreachable tasks' runs will fail the authentication until the token is re-synced");
     }
     return stale;
@@ -327,7 +327,7 @@ final class ResticExecutor {
       }
       if (testPassword(manager, repo, candidate)) {
         task.updatePassword(candidate);
-        LOG.log(Level.WARNING, () -> "Task " + task.tag() + " stored a stale repository password (rotated by the co-repository task "
+        LOG.log(Level.WARNING, () -> "Task " + task.tag() + " stored a stale Restic repository password (rotated by the Restic co-repository task "
           + sibling.tag() + "); the token was re-synced automatically");
         return true;
       }
@@ -390,7 +390,7 @@ final class ResticExecutor {
       }
     } catch (IOException | InterruptedException e) {
       if (e instanceof InterruptedException) Thread.currentThread().interrupt();
-      throw new BitferryError("Failed to change repository password: " + e.getMessage(), e);
+      throw new BitferryError("Failed to change the Restic repository password: " + e.getMessage(), e);
     } finally {
       if (tempFile != null) {
         final Path leaked = tempFile;
@@ -730,7 +730,7 @@ final class ResticExecutor {
       }
     }
 
-    ExecutorSupport.info(manager, output, () -> "Backing up " + backup.source().processOpts() + " into repository " + repo);
+    ExecutorSupport.info(manager, output, () -> "Backing up " + backup.source().processOpts() + " into the Restic repository " + repo);
 
     List<String> cmd = backupCommand(backup);
     // The exit code 3 is tolerated: restic reports the snapshot written with some
@@ -762,7 +762,7 @@ final class ResticExecutor {
     String repo = backup.destination().processOpts();
     Map<String, String> environment = backup.processEnvironment();
 
-    ExecutorSupport.info(manager, output, () -> "Servicing repository " + repo);
+    ExecutorSupport.info(manager, output, () -> "Servicing the Restic repository " + repo);
 
     // The co-repository tasks: the service applies every sharing task's retention
     // policy (the per-task forget) and resets every sharing task's entry - whichever
@@ -782,9 +782,9 @@ final class ResticExecutor {
 
     // Step 1: Structural check (gatekeeper before any retention/prune; runs unconditionally)
     List<String> checkCmd = serveCheckCommand(backup);
-    ExecutorSupport.info(manager, output, () -> "Checking repository " + repo);
+    ExecutorSupport.info(manager, output, () -> "Checking the Restic repository " + repo);
     if (!executeServiceStep(backup, repo, checkCmd, tokenVerified, "check", output)) {
-      String msg = "Service aborted for task " + backup.tag() + ": repository check failed";
+      String msg = "Service aborted for task " + backup.tag() + ": Restic repository check failed";
       LOG.log(Level.ERROR, () -> msg);
       if (output != null) output.accept(msg);
       return Task.Outcome.FAILURE;
@@ -795,7 +795,7 @@ final class ResticExecutor {
     for (Backup task : coRepo) {
       List<String> forgetCmd = serveForgetCommand(task);
       if (forgetCmd == null) continue; // The task holds no retention policy
-      ExecutorSupport.info(manager, output, () -> "Applying retention policy of task " + task.tag() + " to repository " + repo);
+      ExecutorSupport.info(manager, output, () -> "Applying retention policy of task " + task.tag() + " to the Restic repository " + repo);
       boolean forgetOk = ExecutorSupport.execute(commandExecutor, manager, forgetCmd, null, environment, backup.tag(), output).isSuccess();
       if (!forgetOk) {
         return Task.Outcome.FAILURE;
@@ -804,7 +804,7 @@ final class ResticExecutor {
 
     // Step 3: Prune (reclaim space; runs unconditionally)
     List<String> pruneCmd = pruneCommand(backup);
-    ExecutorSupport.info(manager, output, () -> "Pruning repository " + repo);
+    ExecutorSupport.info(manager, output, () -> "Pruning the Restic repository " + repo);
     if (!executeServiceStep(backup, repo, pruneCmd, tokenVerified, "prune", output)) {
       return Task.Outcome.FAILURE;
     }
@@ -839,7 +839,7 @@ final class ResticExecutor {
     String repo = restore.source().processOpts();
     Map<String, String> environment = restore.processEnvironment();
 
-    ExecutorSupport.info(manager, output, () -> "Checking repository " + repo);
+    ExecutorSupport.info(manager, output, () -> "Checking the Restic repository " + repo);
 
     List<String> checkCmd = serveCheckCommand(restore);
     Task.Outcome outcome = ExecutorSupport.execute(commandExecutor, manager, checkCmd, null, environment, restore.tag(), output);
@@ -855,14 +855,14 @@ final class ResticExecutor {
     String repo = restore.source().processOpts();
     String target = restore.destination().processOpts();
 
-    ExecutorSupport.info(manager, output, () -> "Restoring repository " + repo + " into " + target);
+    ExecutorSupport.info(manager, output, () -> "Restoring the Restic repository " + repo + " into " + target);
     ExecutorSupport.info(manager, output, () -> {
       String scope = restore.snapshotTag();
       // The scope advisory: the repo-wide fallback may select a sibling task's data
       // on a shared repository - say so instead of restoring silently
       return scope != null && !scope.isBlank()
         ? "Snapshot scope: the newest snapshot of backup task " + scope
-        : "Snapshot scope: the newest " + Tags.MARKER + "-tagged snapshot of the repository (no source backup task configured)";
+        : "Snapshot scope: the newest " + Tags.MARKER + "-tagged snapshot of the Restic repository (no source backup task configured)";
     });
 
     List<String> cmd = restoreCommand(restore);
