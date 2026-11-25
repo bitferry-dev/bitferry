@@ -176,4 +176,63 @@ class EndpointsTest {
     var incomplete = factory.objectNode().set("local", factory.objectNode());
     assertThrows(BitferryError.class, () -> Endpoints.restore(manager, incomplete));
   }
+
+  @Test
+  void escapingPathsAreRejectedOnCreationAndRestoration() throws Exception {
+    var factory = tools.jackson.databind.node.JsonNodeFactory.instance;
+    for (String badPath : java.util.List.of(
+      "..", "../outside", "sub/../../outside", "..\\..\\outside", "sub\\..\\..\\outside",
+      "/etc/passwd", "\\Windows\\System32", "C:escape", "C:/escape", "C:\\escape"
+    )) {
+      assertThrows(BitferryError.class, () -> new VolumeEndpoint(manager, volume.tag(), badPath),
+        () -> "direct construction should reject " + badPath);
+      assertThrows(BitferryError.class, () -> Endpoints.parse(manager, ":" + volume.tag() + ":" + badPath),
+        () -> "parse should reject " + badPath);
+      var tampered = factory.objectNode()
+        .put("endpoint", "bitferry")
+        .put("volume", volume.tag())
+        .put("path", badPath);
+      assertThrows(BitferryError.class, () -> Endpoints.restore(manager, tampered),
+        () -> "restore should reject " + badPath);
+    }
+
+    // Bare paths with '..' resolving outside the volume root are rejected too
+    assertThrows(BitferryError.class, () -> Endpoints.parse(manager, volume.root().resolve("sub/../../outside").toString()));
+    assertThrows(BitferryError.class, () -> Endpoints.parse(manager, "::" + volume.root().resolve("../outside")));
+
+    // Symlink inside the volume pointing outside the volume root is rejected (even for non-existent children)
+    Path outsideDir = Files.createDirectories(dir.resolve("outside-target"));
+    Path linkInVol = volume.root().resolve("escape-link");
+    try {
+      Files.createSymbolicLink(linkInVol, outsideDir);
+    } catch (UnsupportedOperationException | java.io.IOException e) {
+      Assumptions.assumeTrue(false, "symbolic links are not available: " + e);
+    }
+    assertThrows(BitferryError.class, () -> Endpoints.parse(manager, ":" + volume.tag() + ":escape-link"));
+    assertThrows(BitferryError.class, () -> Endpoints.parse(manager, ":" + volume.tag() + ":escape-link/new-child"));
+    assertThrows(BitferryError.class, () -> Endpoints.parse(manager, volume.root().resolve("escape-link/new-child").toString()));
+
+    // Manually altered .bitferry storage file carrying '..' backreferences is refused on volume restore
+    Path tamperedVolDir = Files.createDirectories(dir.resolve("tampered-vol"));
+    String storageJson = """
+      {
+        "bitferry": "0",
+        "volume": "tamp0001",
+        "modified": "2026-01-01T00:00:00Z",
+        "tasks": [
+          {
+            "operation": "copy",
+            "task": "badtask1",
+            "backend": "rclone",
+            "modified": "2026-01-01T00:00:00Z",
+            "source": {"endpoint": "bitferry", "volume": "tamp0001", "path": "a/../../etc"},
+            "destination": {"endpoint": "local", "root": "%s"}
+          }
+        ]
+      }""".formatted(dir.resolve("dst").toString().replace("\\", "\\\\"));
+    Files.writeString(tamperedVolDir.resolve(Bitferry.STORAGE), storageJson);
+    Manager reloaded = new Manager().restore(tamperedVolDir);
+    assertFalse(reloaded.tasks().containsKey("badtask1"));
+    assertFalse(reloaded.loadErrors().isEmpty());
+  }
 }

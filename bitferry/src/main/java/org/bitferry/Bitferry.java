@@ -73,7 +73,22 @@ public final class Bitferry {
     try {
       return path.toRealPath();
     } catch (IOException e) {
-      return path.toAbsolutePath().normalize();
+      Path normalized = path.toAbsolutePath().normalize();
+      Path cur = normalized;
+      java.util.Deque<Path> tail = new java.util.ArrayDeque<>();
+      while (cur != null && !Files.exists(cur)) {
+        Path name = cur.getFileName();
+        if (name != null) tail.addFirst(name);
+        cur = cur.getParent();
+      }
+      if (cur == null) return normalized;
+      try {
+        Path resolved = cur.toRealPath();
+        for (Path part : tail) resolved = resolved.resolve(part);
+        return resolved.normalize();
+      } catch (IOException ignored) {
+        return normalized;
+      }
     }
   }
 }

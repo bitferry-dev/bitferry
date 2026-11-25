@@ -31,23 +31,43 @@ public final class VolumeEndpoint implements Endpoint {
     @JsonProperty("path") String path
   ) {
     if (manager == null || vtag == null) throw new BitferryError("Invalid endpoint descriptor");
-    path = path == null ? "." : path;
-    Path p = Path.of(path);
-    for (Path element : p) {
-      if (element.toString().equals("..")) throw new BitferryError("Invalid Bitferry volume -relative path " + path);
+    String raw = path == null ? "." : path;
+    // Check both '/' and '\' separators upfront so tampered descriptors carrying
+    // Windows-style backreferences ('..\..') or drive/root prefixes cannot slip
+    // through creation/restoration on POSIX hosts.
+    String universal = raw.replace('\\', '/');
+    if (universal.startsWith("/") || universal.matches("^[A-Za-z]:.*")) {
+      throw new BitferryError("Invalid Bitferry volume -relative path " + raw);
     }
-    if (p.isAbsolute()) throw new BitferryError("Invalid Bitferry volume -relative path " + path);
+    for (String segment : universal.split("/", -1)) {
+      if ("..".equals(segment)) {
+        throw new BitferryError("Invalid Bitferry volume -relative path " + raw);
+      }
+    }
+    Path p = Path.of(universal);
+    for (Path element : p) {
+      if (element.toString().equals("..")) throw new BitferryError("Invalid Bitferry volume -relative path " + raw);
+    }
+    if (p.isAbsolute()) throw new BitferryError("Invalid Bitferry volume -relative path " + raw);
     // The rooted relative paths (".../dir", "\\dir", "C:dir") pass the isAbsolute()
     // check on Windows yet resolve() re-anchors them at the volume root's drive (or
     // the given drive), escaping the volume - reject any path carrying a root component
     // (a crafted storage descriptor or a ':tag:/dir' specifier typo must not escape)
-    if (p.getRoot() != null) throw new BitferryError("Invalid Bitferry volume -relative path " + path);
+    if (p.getRoot() != null) throw new BitferryError("Invalid Bitferry volume -relative path " + raw);
     this.manager = manager;
     this.vtag = vtag;
-    // The platform separator (the backslash of the Windows paths) is normalized
-    // into the universal '/'-separated storage form
-    String rendered = p.toString().replace(File.separatorChar, '/');
-    this.path = rendered.isEmpty() ? "." : rendered;
+    // Normalize into universal '/'-separated relative form
+    String rendered = p.normalize().toString().replace(File.separatorChar, '/');
+    if (rendered.isEmpty()) rendered = ".";
+    if ("..".equals(rendered) || rendered.startsWith("../") || rendered.startsWith("/")) {
+      throw new BitferryError("Invalid Bitferry volume -relative path " + raw);
+    }
+    this.path = rendered;
+    // Enforce sandbox containment at creation/restoration time whenever the volume is loaded
+    Volume registered = manager.volumes().get(vtag);
+    if (registered != null) {
+      resolveInsideVolume(registered, this.path);
+    }
   }
 
   public String vtag() {
@@ -60,14 +80,20 @@ public final class VolumeEndpoint implements Endpoint {
 
   @Override
   public String processOpts() {
-    Path resolved = volume().root().resolve(path).normalize();
-    // The defense-in-depth containment check: the creator validation guards the
-    // new descriptors, this one backstops whatever reaches the processing (the
-    // crafted or hand-edited storage descriptors restored from the media)
-    if (!resolved.startsWith(volume().root())) {
-      throw new BitferryError("Invalid Bitferry volume -relative path " + path + ": it escapes the volume root " + volume().root());
+    return resolveInsideVolume(volume(), path).toString();
+  }
+
+  private static Path resolveInsideVolume(Volume volume, String relative) {
+    Path root = volume.root();
+    Path normalized = root.resolve(relative).normalize();
+    if (!normalized.startsWith(root)) {
+      throw new BitferryError("Invalid Bitferry volume -relative path " + relative + ": it escapes the volume root " + root);
     }
-    return resolved.toString();
+    Path canonical = Bitferry.canonicalize(normalized);
+    if (!canonical.startsWith(root)) {
+      throw new BitferryError("Invalid Bitferry volume -relative path " + relative + ": resolved path " + canonical + " escapes the volume root " + root);
+    }
+    return canonical;
   }
 
   @Override
