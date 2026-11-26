@@ -100,8 +100,8 @@ class CliTest {
     assertTrue(help.contains("execute"));
     int projectHome = help.indexOf("Project home: https://bitferry.org");
     int description = help.indexOf("File synchronization/backup automation tool.");
-    assertTrue(projectHome >= 0);
-    assertTrue(description > projectHome, "the project home must precede the description");
+    assertTrue(description >= 0);
+    assertTrue(projectHome > description, "the project home must follow the description");
   }
 
   @Test
@@ -1462,7 +1462,7 @@ class CliTest {
     assertTrue(breakdown.contains("# Commands"));
     assertTrue(breakdown.contains("Execute:"));
     assertTrue(breakdown.contains("Serve:"));
-    assertTrue(breakdown.contains("rclone check"));
+    assertTrue(breakdown.contains("rclone cryptcheck"));
 
     // Bare mode emits only rclone command line
     cmd = Main.createCommandLine();
@@ -2528,7 +2528,7 @@ class CliTest {
     assertFalse(managerFor(vol1).tasks().containsKey(copyTag));
     Task relocatedCopy = managerFor(vol2).task(copyTag);
     assertEquals(":" + vtag2 + ":s2", relocatedCopy.source().describe());
-    assertEquals(dst2.toAbsolutePath().normalize().toString(), relocatedCopy.destination().describe());
+    assertEquals(Bitferry.canonicalize(dst2).toString(), relocatedCopy.destination().describe());
 
     // 2. Backup relocates source across volumes (migrating vault) and rejects repository change
     assertEquals(0, executeWithPassword("bpass", "create", "task", "backup", ":" + vtag1 + ":b1", "local:" + repo1));

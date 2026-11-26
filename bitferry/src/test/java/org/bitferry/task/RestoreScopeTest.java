@@ -87,7 +87,11 @@ class RestoreScopeTest {
     Path realRepo = dir.resolve("realRepo");
     Files.createDirectories(realRepo);
     Path symlinkRepo = dir.resolve("symlinkRepo");
-    Files.createSymbolicLink(symlinkRepo, realRepo);
+    try {
+      Files.createSymbolicLink(symlinkRepo, realRepo);
+    } catch (java.io.IOException | UnsupportedOperationException e) {
+      Assumptions.assumeTrue(false, "symbolic links are not available: " + e);
+    }
 
     Endpoint repoReal = Endpoints.parse(manager, "local:" + realRepo);
     Endpoint repoSymlink = Endpoints.parse(manager, "local:" + symlinkRepo);

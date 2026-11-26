@@ -65,7 +65,7 @@ class TaskFormControllerTest {
         assertEquals("Source:", form.sourceLabel());
         assertEquals("Destination:", form.destinationLabel());
         // The rclone @default profile's concrete options pre-fill the execution entry
-        assertEquals("--metadata", execute(form).getText());
+        assertEquals("--metadata, --modify-window, 1s", execute(form).getText());
         // The mass-run participation defaults to on, the vault keeps the password,
         // and the security state starts unset (no encryption)
         assertFalse(form.manual());
@@ -207,7 +207,7 @@ class TaskFormControllerTest {
         assertEquals("keep/**", include.getText());
         assertEquals("skip/**", exclude.getText());
         // The task's resolved execution options populate the entry
-        assertEquals("--metadata", execute(form).getText());
+        assertEquals("--metadata, --modify-window, 1s", execute(form).getText());
         // The stored manual flag mirrors into the checkbox
         assertFalse(form.manual());
     }
@@ -228,7 +228,7 @@ class TaskFormControllerTest {
         runFx(() -> noneChoice.setSelected(true));
         assertTrue(editSecurity.isDisable());
         TextField exec = execute(form);
-        assertEquals("--metadata", exec.getText());
+        assertEquals("--metadata, --modify-window, 1s", exec.getText());
 
         // Clear execution options in new task dialog
         runFx(() -> exec.setText(""));
@@ -259,13 +259,13 @@ class TaskFormControllerTest {
             Endpoints.parse(manager, "local:" + Files.createTempDirectory("bitferry-edit-copy-src")),
             Endpoints.parse(manager, ":" + volume.tag() + ":edit-copy-dst"),
             null, List.of(), List.of());
-        assertEquals(List.of("--metadata"), task.processOptions());
+        assertEquals(List.of("--metadata", "--modify-window", "1s"), task.processOptions());
         manager.commit(task);
 
         // 1. Change options to custom list
         TaskFormController form1 = load(task);
         TextField exec1 = execute(form1);
-        assertEquals("--metadata", exec1.getText());
+        assertEquals("--metadata, --modify-window, 1s", exec1.getText());
         runFx(() -> exec1.setText("--checkers, 8, --fast-list"));
         task.setProcessOptions(form1.execute());
         assertEquals(List.of("--checkers", "8", "--fast-list"), task.processOptions());
@@ -410,7 +410,7 @@ class TaskFormControllerTest {
       assertEquals("equalize", form.type());
       assertTrue(execute(form).getText().contains("--recover"), execute(form).getText());
       runFx(() -> type.setValue("replicate"));
-      assertEquals("--metadata", execute(form).getText(), "the bisync-only defaults must be replaced by the target operation's default");
+      assertEquals("--metadata, --modify-window, 1s", execute(form).getText(), "the bisync-only defaults must be replaced by the target operation's default");
     } finally {
       defaulted.delete();
     }

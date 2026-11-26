@@ -29,9 +29,8 @@ public final class Main {
     BitferryCommand root = new BitferryCommand();
     CommandLine cmd = new CommandLine(root);
     String[] description = cmd.getCommandSpec().usageMessage().description();
-    String[] descriptionWithProjectHome = new String[description.length + 1];
-    descriptionWithProjectHome[0] = "Project home: " + Bitferry.PROJECT_HOME;
-    System.arraycopy(description, 0, descriptionWithProjectHome, 1, description.length);
+    String[] descriptionWithProjectHome = java.util.Arrays.copyOf(description, description.length + 1);
+    descriptionWithProjectHome[description.length] = "Project home: " + Bitferry.PROJECT_HOME;
     cmd.getCommandSpec().usageMessage().description(descriptionWithProjectHome);
     cmd.setHelpFactory(VerboseHelp.INSTANCE);
     cmd.setExecutionExceptionHandler((ex, commandLine, parseResult) -> {

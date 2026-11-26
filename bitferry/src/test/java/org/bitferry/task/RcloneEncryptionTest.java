@@ -173,13 +173,14 @@ class RcloneEncryptionTest {
     Files.writeString(plainDir.resolve("test.txt"), "hello conformance");
 
     Path encDir = dir.resolve("fixture-enc");
+    String nullConfig = ExecutorSupport.isWindows() ? "NUL" : "/dev/null";
     // Build encrypted fixture with password A and standard base32 encryption
     ProcessBuilder pb = new ProcessBuilder(
       "rclone", "sync", plainDir.toString(), ":crypt:",
       "--crypt-remote", encDir.toString(),
       "--crypt-filename-encryption", "standard",
       "--crypt-filename-encoding", "base32",
-      "--config", "/dev/null"
+      "--config", nullConfig
     );
     pb.environment().put("RCLONE_CRYPT_PASSWORD", Passwords.rcloneObscure("secretA"));
     Process p = pb.start();
@@ -187,12 +188,13 @@ class RcloneEncryptionTest {
 
     Endpoint src = Endpoints.parse(manager, ":" + volume.tag() + ":");
     Endpoint enc = Endpoints.parse(manager, "local:" + encDir);
+    String encPath = Bitferry.canonicalize(encDir).toString();
 
     // 1. Wrong password is refused and task is deregistered
     Replicate wrongPass = new Replicate(manager, src, enc, null, List.of(), List.of());
     wrongPass.encrypt("secretB", null, Rclone.Encryption.options("@default"));
     BitferryError err = assertThrows(BitferryError.class, () -> manager.commit(wrongPass));
-    assertTrue(err.getMessage().contains("the existing encrypted content in '" + encDir + "' is not compatible with the provided encryption options (wrong password or filename encryption mode)"));
+    assertTrue(err.getMessage().contains("the existing encrypted content in '" + encPath + "' is not compatible with the provided encryption options (wrong password or filename encryption mode)"));
     assertFalse(manager.tasks().containsKey(wrongPass.tag()));
 
     Manager restored = new Manager().restore(dir.resolve("volume"));
@@ -202,14 +204,14 @@ class RcloneEncryptionTest {
     Replicate wrongMode = new Replicate(manager, src, enc, null, List.of(), List.of());
     wrongMode.encrypt("secretA", null, Rclone.Encryption.options("@extended"));
     err = assertThrows(BitferryError.class, () -> manager.commit(wrongMode));
-    assertTrue(err.getMessage().contains("the existing encrypted content in '" + encDir + "' is not compatible with the provided encryption options (wrong password or filename encryption mode)"));
+    assertTrue(err.getMessage().contains("the existing encrypted content in '" + encPath + "' is not compatible with the provided encryption options (wrong password or filename encryption mode)"));
     assertFalse(manager.tasks().containsKey(wrongMode.tag()));
 
     // 3. Decrypt task with wrong password is also refused
     Copy wrongDecrypt = new Copy(manager, enc, src, null, List.of(), List.of());
     wrongDecrypt.decrypt("secretB", null, Rclone.Encryption.options("@default"));
     err = assertThrows(BitferryError.class, () -> manager.commit(wrongDecrypt));
-    assertTrue(err.getMessage().contains("the existing encrypted content in '" + encDir + "' is not compatible with the provided encryption options (wrong password or filename encryption mode)"));
+    assertTrue(err.getMessage().contains("the existing encrypted content in '" + encPath + "' is not compatible with the provided encryption options (wrong password or filename encryption mode)"));
     assertFalse(manager.tasks().containsKey(wrongDecrypt.tag()));
 
     // 4. Correct password encrypt task succeeds and persists
@@ -240,12 +242,13 @@ class RcloneEncryptionTest {
     Files.writeString(plainDir.resolve("sample.txt"), "hello filename encryption off content");
 
     Path encDir = dir.resolve("fixture-enc-off");
+    String nullConfig = ExecutorSupport.isWindows() ? "NUL" : "/dev/null";
     // Build encrypted fixture with password A and filename encryption off
     ProcessBuilder pb = new ProcessBuilder(
       "rclone", "sync", plainDir.toString(), ":crypt:",
       "--crypt-remote", encDir.toString(),
       "--crypt-filename-encryption", "off",
-      "--config", "/dev/null"
+      "--config", nullConfig
     );
     pb.environment().put("RCLONE_CRYPT_PASSWORD", Passwords.rcloneObscure("secretA"));
     Process p = pb.start();
@@ -253,13 +256,15 @@ class RcloneEncryptionTest {
 
     Endpoint src = Endpoints.parse(manager, ":" + volume.tag() + ":");
     Endpoint enc = Endpoints.parse(manager, "local:" + encDir);
+    String encPath = Bitferry.canonicalize(encDir).toString();
+    String plainPath = Bitferry.canonicalize(plainDir).toString();
     List<String> encOffOpts = List.of("--crypt-filename-encryption", "off");
 
     // 1. Wrong password is refused even with filename encryption off
     Replicate wrongPass = new Replicate(manager, src, enc, null, List.of(), List.of());
     wrongPass.encrypt("secretB", null, encOffOpts);
     BitferryError err = assertThrows(BitferryError.class, () -> manager.commit(wrongPass));
-    assertTrue(err.getMessage().contains("the existing encrypted content in '" + encDir + "' is not compatible with the provided encryption options (wrong password or filename encryption mode)"));
+    assertTrue(err.getMessage().contains("the existing encrypted content in '" + encPath + "' is not compatible with the provided encryption options (wrong password or filename encryption mode)"));
     assertFalse(manager.tasks().containsKey(wrongPass.tag()));
 
     // 2. Unencrypted plaintext destination is refused
@@ -267,7 +272,7 @@ class RcloneEncryptionTest {
     Replicate plainTarget = new Replicate(manager, src, plainEndpoint, null, List.of(), List.of());
     plainTarget.encrypt("secretA", null, encOffOpts);
     err = assertThrows(BitferryError.class, () -> manager.commit(plainTarget));
-    assertTrue(err.getMessage().contains("the existing encrypted content in '" + plainDir + "' is not compatible with the provided encryption options (wrong password or filename encryption mode)"));
+    assertTrue(err.getMessage().contains("the existing encrypted content in '" + plainPath + "' is not compatible with the provided encryption options (wrong password or filename encryption mode)"));
     assertFalse(manager.tasks().containsKey(plainTarget.tag()));
 
     // 3. Correct password succeeds and persists
