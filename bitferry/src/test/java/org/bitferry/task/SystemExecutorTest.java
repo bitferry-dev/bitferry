@@ -24,6 +24,8 @@ class SystemExecutorTest {
 
   @BeforeEach
   void setUp() {
+    // Windows may expose @TempDir through an 8.3 alias while endpoints canonicalize it.
+    dir = Bitferry.canonicalize(dir);
     manager = new Manager();
     volume = Volume.create(manager, dir.resolve("volume"));
   }

@@ -19,6 +19,8 @@ class ManagerTest {
 
   @BeforeEach
   void setUp() {
+    // Windows may expose @TempDir through an 8.3 alias while volumes canonicalize it.
+    dir = Bitferry.canonicalize(dir);
     manager = new Manager();
     first = Volume.create(manager, dir.resolve("first"));
     second = Volume.create(manager, dir.resolve("second"));

@@ -14,6 +14,12 @@ class ResticFormatTest {
   @TempDir
   Path dir;
 
+  @BeforeEach
+  void setUp() {
+    // Windows may expose @TempDir through an 8.3 alias while endpoints canonicalize it.
+    dir = Bitferry.canonicalize(dir);
+  }
+
   @Test
   void formatWithForceAgainstNonExistentRepositoryDir() {
     Manager manager = new Manager();
