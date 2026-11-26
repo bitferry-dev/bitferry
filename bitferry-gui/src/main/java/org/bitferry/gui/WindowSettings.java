@@ -72,20 +72,41 @@ final class WindowSettings {
   void apply(Stage stage) {
     width = Math.max(MIN_WIDTH, width);
     height = Math.max(MIN_HEIGHT, height);
+    double restoredX = x;
+    double restoredY = y;
+    double restoredWidth = width;
+    double restoredHeight = height;
     // The placement must keep the draggable title-bar strip on a real screen: the
     // union-bounds 1-px-overlap test accepted windows whose only visible pixel sat
     // in a dead zone between the screens (the bottom-right corner on a phantom edge)
     // WINDOWS: verify on multi-monitor + DPI-scaled screens there (the strip check
     // must reject the dead-zone placements without rejecting the valid ones)
-    if (!Double.isNaN(x) && !Double.isNaN(y)
+    boolean restorePlacement = !Double.isNaN(x) && !Double.isNaN(y)
       && Double.isFinite(x) && Double.isFinite(y)
-      && !Screen.getScreensForRectangle(x, y, width, Math.min(height, 60)).isEmpty()) {
+      && !Screen.getScreensForRectangle(x, y, width, Math.min(height, 60)).isEmpty();
+    if (restorePlacement) {
       stage.setX(x);
       stage.setY(y);
     }
     stage.setWidth(width);
     stage.setHeight(height);
     stage.setMaximized(maximized);
+    // macOS may replace the pre-show bounds while creating the native window.
+    // Reassert the requested normal bounds once, without affecting later hide/show cycles.
+    javafx.event.EventHandler<WindowEvent> restore = new javafx.event.EventHandler<>() {
+      @Override
+      public void handle(WindowEvent event) {
+        stage.removeEventHandler(WindowEvent.WINDOW_SHOWN, this);
+        if (stage.isMaximized() || stage.isFullScreen()) return;
+        if (restorePlacement) {
+          stage.setX(restoredX);
+          stage.setY(restoredY);
+        }
+        stage.setWidth(restoredWidth);
+        stage.setHeight(restoredHeight);
+      }
+    };
+    stage.addEventHandler(WindowEvent.WINDOW_SHOWN, restore);
   }
 
   /// Track the normal bounds of the stage: the geometry is recorded continuously
