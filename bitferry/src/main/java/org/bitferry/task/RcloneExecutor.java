@@ -314,8 +314,12 @@ final class RcloneExecutor {
     List<String> cmd = new ArrayList<>();
     cmd.add(ExecutorSupport.resolveExecutable("rclone"));
 
-    // Subcommand: check
-    cmd.add("check");
+    // The integrity check dispatches by the encryption mode: the plain check on the
+    // crypt sides carries no hashes and degrades to the size-only comparison, while
+    // the cryptcheck re-encrypts the plaintext with the stored nonce and compares the
+    // ciphertext hashes (real content verification); the cryptcheck refuses the
+    // non-crypt endpoints outright, so the unencrypted tasks keep the plain check
+    cmd.add(rclone.encryption() instanceof Rclone.NoCrypt ? "check" : "cryptcheck");
 
     appendFilters(cmd, rclone);
 
@@ -338,8 +342,9 @@ final class RcloneExecutor {
     // Process options
     cmd.addAll(rclone.serveOptions());
 
-    // The endpoints (or the crypt tail placing the ':crypt:' remote for the encrypted tasks)
-    cmd.addAll(rclone.encryption().processOpts(rclone));
+    // The plaintext endpoint first and the ':crypt:'-wrapped encrypted side second
+    // (the cryptcheck argument contract); the plain endpoint pair otherwise
+    cmd.addAll(rclone.encryption().serveOpts(rclone));
 
     return cmd;
   }

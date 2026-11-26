@@ -86,7 +86,7 @@ class TaskTest {
     assertEquals(volume.tag(), data.get("destination").get("volume").asString());
     assertEquals("backup", data.get("destination").get("path").asString());
     // The backend section with the default processing options is present
-    assertEquals(List.of("--metadata"), toStringList(data.get("rclone").get("execute")));
+    assertEquals(List.of("--metadata", "--modify-window", "1s"), toStringList(data.get("rclone").get("execute")));
     // Empty include/exclude sections are omitted
     assertFalse(data.has("include"));
     assertFalse(data.has("exclude"));
@@ -474,19 +474,19 @@ class TaskTest {
   @Test
   void equalizeProcessProfilesResolveCorrectly() {
     Equalize def = new Equalize(manager, source(), destination(), null, List.of(), List.of());
-    assertEquals(List.of("--metadata", "--recover", "--resilient", "--force"), def.processOptions());
+    assertEquals(List.of("--metadata", "--modify-window", "1s", "--recover", "--resilient", "--force"), def.processOptions());
 
     Equalize explicitDefault = new Equalize(manager, source(), destination(), "@default", List.of(), List.of());
-    assertEquals(List.of("--metadata", "--recover", "--resilient", "--force"), explicitDefault.processOptions());
+    assertEquals(List.of("--metadata", "--modify-window", "1s", "--recover", "--resilient", "--force"), explicitDefault.processOptions());
 
     Equalize safe = new Equalize(manager, source(), destination(), "@safe", List.of(), List.of());
-    assertEquals(List.of("--metadata", "--recover", "--resilient"), safe.processOptions());
+    assertEquals(List.of("--metadata", "--modify-window", "1s", "--recover", "--resilient"), safe.processOptions());
 
     def.setProcessOptions("@safe");
-    assertEquals(List.of("--metadata", "--recover", "--resilient"), def.processOptions());
+    assertEquals(List.of("--metadata", "--modify-window", "1s", "--recover", "--resilient"), def.processOptions());
 
     def.setProcessOptions("@default");
-    assertEquals(List.of("--metadata", "--recover", "--resilient", "--force"), def.processOptions());
+    assertEquals(List.of("--metadata", "--modify-window", "1s", "--recover", "--resilient", "--force"), def.processOptions());
   }
 
   @Test

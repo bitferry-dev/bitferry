@@ -17,12 +17,15 @@ public class Equalize extends Rclone {
   private static final System.Logger LOG = System.getLogger(Equalize.class.getName());
 
   /// Processing options profiles for equalize; the null key denotes the default profile.
+  // The modify window mirrors [Rclone.PROCESS]: the bisync equality check rides the
+  // same default size+modtime comparison and drifts past the 1ns default window on
+  // the coarse destination filesystems (see there for the why).
   public static final Map<String, List<String>> PROCESS = route(
     Map.of(
-      "default", List.of("--metadata", "--recover", "--resilient", "--force"),
-      "safe", List.of("--metadata", "--recover", "--resilient")
+      "default", List.of("--metadata", "--modify-window", "1s", "--recover", "--resilient", "--force"),
+      "safe", List.of("--metadata", "--modify-window", "1s", "--recover", "--resilient")
     ),
-    List.of("--metadata", "--recover", "--resilient", "--force")
+    List.of("--metadata", "--modify-window", "1s", "--recover", "--resilient", "--force")
   );
 
   /// Constructor for a new task instance.

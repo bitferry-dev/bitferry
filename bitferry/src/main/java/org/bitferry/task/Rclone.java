@@ -23,8 +23,15 @@ public abstract class Rclone extends Task implements IncludeFilters {
   public static final String DIRECTOR = "-->";
 
   /// Processing options profiles; the null key denotes the default profile.
+  // The modify window rides the default: the rclone default equality check is the
+  // size+modtime comparison alone (the hashes are examined only under --checksum,
+  // never requested here), so every task targeting a coarse destination filesystem
+  // drifts past the 1ns default window - e.g. the Linux ntfs3 mounts quantize the
+  // mtimes to 100ns unrecognized by the rclone, making every file appear changed
+  // every run and re-copied whole. 1s mirrors the rclone's own coarse-filesystem
+  // practice (the auto-applied FAT window is 2s).
   public static final Map<String, List<String>> PROCESS =
-    route(Map.of("default", List.of("--metadata")), List.of("--metadata"));
+    route(Map.of("default", List.of("--metadata", "--modify-window", "1s")), List.of("--metadata", "--modify-window", "1s"));
 
   protected Encryption encryption = NoCrypt.INSTANCE;
 
@@ -250,7 +257,7 @@ public abstract class Rclone extends Task implements IncludeFilters {
     return DIRECTOR;
   }
 
-  /// Return options to pass to the integrity check command (rclone check).
+  /// Return options to pass to the integrity check command (rclone check/cryptcheck).
   public List<String> serveOptions() {
     return processOptions();
   }
@@ -427,6 +434,11 @@ public abstract class Rclone extends Task implements IncludeFilters {
 
     /// The command line tail placing the ':crypt:' remote against the endpoints.
     public abstract List<String> processOpts(Rclone task);
+
+    /// The command line tail for the service (integrity) checking: the plaintext
+    /// endpoint rides first and the ':crypt:'-wrapped encrypted side second for the
+    /// cryptcheck dispatch (the cryptcheck contract); the plain endpoint pair otherwise.
+    public abstract List<String> serveOpts(Rclone task);
 
     /// The backend-side path carrying the encrypted content for the specified endpoints;
     /// null for the no-encryption mode.
@@ -643,6 +655,11 @@ public abstract class Rclone extends Task implements IncludeFilters {
     }
 
     @Override
+    public List<String> serveOpts(Rclone task) {
+      return List.of(task.source().processOpts(), "--crypt-remote", task.destination().processOpts(), ":crypt:");
+    }
+
+    @Override
     public String encryptedSide(Endpoint source, Endpoint destination) {
       return destination.processOpts();
     }
@@ -677,6 +694,11 @@ public abstract class Rclone extends Task implements IncludeFilters {
     }
 
     @Override
+    public List<String> serveOpts(Rclone task) {
+      return List.of(task.destination().processOpts(), "--crypt-remote", task.source().processOpts(), ":crypt:");
+    }
+
+    @Override
     public String encryptedSide(Endpoint source, Endpoint destination) {
       return source.processOpts();
     }
@@ -703,6 +725,11 @@ public abstract class Rclone extends Task implements IncludeFilters {
 
     @Override
     public List<String> processOpts(Rclone task) {
+      return List.of(task.source().processOpts(), task.destination().processOpts());
+    }
+
+    @Override
+    public List<String> serveOpts(Rclone task) {
       return List.of(task.source().processOpts(), task.destination().processOpts());
     }
 

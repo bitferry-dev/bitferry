@@ -163,7 +163,7 @@ class CliTest {
     String sVerboseHelp = syncVerboseOut.toString();
     assertTrue(sVerboseHelp.contains("@default:  --crypt-filename-encoding base32"));
     assertTrue(sVerboseHelp.contains("@extended: --crypt-filename-encoding base32768"));
-    assertTrue(sVerboseHelp.contains("@default: --metadata"));
+    assertTrue(sVerboseHelp.contains("@default: --metadata --modify-window 1s"));
 
     // The legacy names are gone ('mirror'/'m'/'synchronize'/'sync' for replicate,
     // 'bisync' for equalize): the unknown names are rejected as subcommands, and
@@ -231,7 +231,7 @@ class CliTest {
     String helpText = verboseOut.toString();
     assertTrue(helpText.contains("@full:    --read-data"));
     assertTrue(helpText.contains("@default:"));
-    assertTrue(helpText.contains("@default: --metadata"));
+    assertTrue(helpText.contains("@default: --metadata --modify-window 1s"));
     assertFalse(helpText.contains("--no-cache"));
   }
 

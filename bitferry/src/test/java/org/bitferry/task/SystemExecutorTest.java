@@ -1155,6 +1155,38 @@ class SystemExecutorTest {
   }
 
   @Test
+  void rcloneServeDispatchesCryptcheckForTheCryptSides() {
+    RecordingCommandExecutor recorder = new RecordingCommandExecutor();
+    SystemExecutor executor = new SystemExecutor(recorder);
+
+    // The encrypt task: the plaintext source rides first, the ':crypt:'-wrapped destination second
+    Replicate encryptTask = new Replicate(manager, volumeSource(), destination(), null, List.of(), List.of());
+    encryptTask.encrypt("secret", null, Rclone.Encryption.options("@default"));
+    executor.serve(encryptTask, null);
+    RecordingCommandExecutor.Invocation encInv = recorder.invocations.get(0);
+    List<String> encCmd = encInv.command();
+    assertEquals("cryptcheck", encCmd.get(1));
+    int remote = encCmd.indexOf("--crypt-remote");
+    assertEquals(volumeSource().processOpts(), encCmd.get(remote - 1));
+    assertEquals(destination().processOpts(), encCmd.get(remote + 1));
+    assertEquals(":crypt:", encCmd.get(encCmd.size() - 1));
+    assertEquals("secret", Passwords.rcloneReveal(encInv.environment().get("RCLONE_CRYPT_PASSWORD")));
+
+    // The decrypt task: the order flips - the plaintext destination first, the encrypted source second
+    Copy decryptTask = new Copy(manager, destination(), volumeRestored(), null, List.of(), List.of());
+    decryptTask.decrypt("secret", "second", Rclone.Encryption.options("@default"));
+    executor.serve(decryptTask, null);
+    RecordingCommandExecutor.Invocation decInv = recorder.invocations.get(1);
+    List<String> decCmd = decInv.command();
+    assertEquals("cryptcheck", decCmd.get(1));
+    remote = decCmd.indexOf("--crypt-remote");
+    assertEquals(volumeRestored().processOpts(), decCmd.get(remote - 1));
+    assertEquals(destination().processOpts(), decCmd.get(remote + 1));
+    assertEquals(":crypt:", decCmd.get(remote + 2));
+    assertEquals("second", Passwords.rcloneReveal(decInv.environment().get("RCLONE_CRYPT_PASSWORD2")));
+  }
+
+  @Test
   void realRcloneCryptRoundTripRestoresThePlaintext() throws IOException {
     Assumptions.assumeTrue(available("rclone"), "rclone not available for the integration check");
     Path volDir = dir.resolve("crypt-vol");
