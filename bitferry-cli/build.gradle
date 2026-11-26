@@ -16,6 +16,9 @@ dependencies {
 
 tasks.named('test') {
     useJUnitPlatform()
+    // Serialize test JVMs across subprojects because PathsTest / CliTest / SearchRootsTest
+    // share the host-global java.util.prefs.Preferences store.
+    mustRunAfter ':bitferry:test'
     // Force picocli's ANSI detection off for every CommandLine instance (the shared one
     // only disables it explicitly): markup rendered as escapes would embed inside the
     // asserted phrases in ANSI-capable terminals and break the output assertions

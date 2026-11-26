@@ -9,6 +9,11 @@ allprojects {
     version = resolvedVersion
 
     repositories {
+        // Prefer Google's CDN mirror of Maven Central so concurrent CI runners avoid
+        // repo.maven.apache.org HTTP 429 rate limits; fall back to mavenCentral() if absent.
+        maven {
+            url = uri('https://maven-central.storage-download.googleapis.com/maven2')
+        }
         mavenCentral()
     }
 }

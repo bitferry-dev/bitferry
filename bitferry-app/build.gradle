@@ -185,21 +185,20 @@ tasks.named('jpackageImage') {
     onlyIf { !cross }
     // The plugin maps {{BIN_DIR}} to "$APPDIR\.." (Windows) or "$APPDIR/.." (Unix) in
     // jpackage launcher configs. On Windows (<image>/app) and macOS (bitferry.app/Contents/app),
-    // {{BIN_DIR}}/.. resolves above the app container and misses the in-image targets.
-    // Rewrite the generated configs to root relative lookups at $APPDIR (where ../bin and ../lib
-    // sit next to app/, matching our packaged layout); Linux (<image>/lib/app) already resolves
-    // cleanly via $APPDIR/.. -> <image>/lib -> ../bin & ../lib/aot.
+    // the parent of $APPDIR is the image root containing bin/ and lib/. Normalize the Windows
+    // separator variants and collapse the plugin's extra parent traversal, leaving exactly one;
+    // Linux (<image>/lib/app) already resolves cleanly via $APPDIR/.. -> <image>/lib -> ../bin & ../lib/aot.
     if (OperatingSystem.current().windows || OperatingSystem.current().macOsX) {
         doLast {
             def cfgDir = new File(jpackageRootDir, 'app')
             cfgDir.listFiles()?.findAll { it.name.endsWith('.cfg') }?.each { cfg ->
                 cfg.text = cfg.text
                         // top-level --java-options (main launcher): the backslash survives
-                        .replace('$APPDIR\\..', '$APPDIR')
-                        // Unix / add-launcher java-options
-                        .replace('$APPDIR/..', '$APPDIR')
+                        .replace('$APPDIR\\..', '$APPDIR/..')
                         // Windows add-launcher java-options (properties parsing drops backslash)
-                        .replace('$APPDIR..', '$APPDIR')
+                        .replace('$APPDIR..', '$APPDIR/..')
+                        // {{BIN_DIR}}/../ already contains two parent traversals for these layouts
+                        .replace('$APPDIR/../../', '$APPDIR/../')
             }
             // On macOS, bitferry is the primary jlink launcher (CLI), while Finder/Dock
             // launches CFBundleExecutable from Info.plist. Point the bundle at bitferry-gui

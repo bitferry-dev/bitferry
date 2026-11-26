@@ -46,6 +46,7 @@ dependencies {
 
 tasks.named('test') {
     useJUnitPlatform()
+    mustRunAfter ':bitferry:test', ':bitferry-cli:test'
 }
 
 application {

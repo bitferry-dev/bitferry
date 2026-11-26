@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     tags:
-      - 'v[0-9]+.[0-9]+.[0-9]+'
+      - 'v*.*.*'
   workflow_dispatch:
     inputs:
       version:
@@ -61,16 +61,16 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Azul Zulu JDK 25
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: zulu
           java-version: '25'
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
 
       - name: Install Linux Xvfb and JavaFX system libraries
         if: runner.os == 'Linux'
@@ -86,18 +86,40 @@ jobs:
         shell: pwsh
         run: dotnet tool install --global wix --version "7.*"
 
-      - name: Fetch pinned rclone and restic for tests
-        run: ./gradlew --no-daemon :bitferry-app:fetchTools
+      - name: Resolve dependencies and fetch pinned rclone and restic
+        shell: bash
+        run: |
+          for attempt in 1 2 3; do
+            if ./gradlew --no-daemon -Pversion=${{ needs.prepare.outputs.version }} testClasses :bitferry-app:fetchTools; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              exit 1
+            fi
+            delay=$((attempt * 15))
+            echo "Gradle fetch failed (attempt $attempt); retrying in ${delay}s..."
+            sleep "$delay"
+          done
 
-      - name: Add fetched engines to PATH (Unix)
+      - name: Expose fetched engines on PATH (Unix)
         if: runner.os != 'Windows'
         shell: bash
-        run: echo "${GITHUB_WORKSPACE}/bitferry-app/build/image/bitferry-${{ matrix.target }}/bin" >> "$GITHUB_PATH"
+        run: |
+          tools_dir="${RUNNER_TEMP}/bitferry-tools"
+          mkdir -p "$tools_dir"
+          ln -sf "${GITHUB_WORKSPACE}/bitferry-app/build/image/bitferry-${{ matrix.target }}/bin/rclone" "$tools_dir/rclone"
+          ln -sf "${GITHUB_WORKSPACE}/bitferry-app/build/image/bitferry-${{ matrix.target }}/bin/restic" "$tools_dir/restic"
+          echo "$tools_dir" >> "$GITHUB_PATH"
 
-      - name: Add fetched engines to PATH (Windows)
+      - name: Expose fetched engines on PATH (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
-        run: Add-Content -Path $env:GITHUB_PATH -Value "${{ github.workspace }}\bitferry-app\build\image\bitferry-${{ matrix.target }}\bin"
+        run: |
+          $toolsDir = Join-Path $env:RUNNER_TEMP "bitferry-tools"
+          New-Item -ItemType Directory -Force -Path $toolsDir | Out-Null
+          $binDir = "${{ github.workspace }}\bitferry-app\build\image\bitferry-${{ matrix.target }}\bin"
+          Copy-Item -Force (Join-Path $binDir "rclone.exe"), (Join-Path $binDir "restic.exe") $toolsDir
+          Add-Content -Path $env:GITHUB_PATH -Value $toolsDir
 
       - name: Run checks and build native packages (Linux)
         if: runner.os == 'Linux'
@@ -123,6 +145,13 @@ jobs:
             -Pversion=${{ needs.prepare.outputs.version }} `
             check :bitferry-app:dist
 
+      - name: Smoke-test Windows app-image
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          & "./bitferry-app/src/packaging/verifyWindowsImage.ps1" `
+            -ImageDir "./bitferry-app/build/jpackage/bitferry"
+
       - name: Stage release assets
         shell: bash
         run: |
@@ -143,7 +172,7 @@ jobs:
           ls -la release-assets
 
       - name: Upload target release assets
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-${{ matrix.target }}
           path: release-assets/*
@@ -157,7 +186,7 @@ jobs:
       contents: write
     steps:
       - name: Download all release assets
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: release-*
           path: dist
@@ -172,7 +201,7 @@ jobs:
 
       - name: Publish GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           name: Bitferry v${{ needs.prepare.outputs.version }}
           files: dist/*
@@ -180,7 +209,7 @@ jobs:
 
       - name: Upload consolidated dry-run bundle
         if: github.event_name == 'workflow_dispatch'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: bitferry-v${{ needs.prepare.outputs.version }}-all
           path: dist/*
