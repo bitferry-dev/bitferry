@@ -30,6 +30,10 @@ public final class KeyringVault implements Vault {
   private volatile SecretStore<StoredCredential> store;
   private volatile boolean probed;
 
+  // The probe lock: the one-shot store probing (the double-checked idiom) rides it,
+  // a dedicated monitor keeps the public singleton instance out of the protocol
+  private final Object sentinel = new Object();
+
   private KeyringVault() {}
 
   public static String passwordKey(String tag) {
@@ -50,7 +54,7 @@ public final class KeyringVault implements Vault {
   // upon the exit defeating the storage purpose)
   private SecretStore<StoredCredential> store() {
     if (!probed) {
-      synchronized (this) {
+      synchronized (sentinel) {
         if (!probed) {
           try {
             store = StorageProvider.getCredentialStorage(true, StorageProvider.SecureOption.REQUIRED);

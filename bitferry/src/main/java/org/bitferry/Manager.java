@@ -26,7 +26,7 @@ public class Manager {
   /// The registry lock: the mutations and the snapshot iterations are serialized so
   /// that a concurrent reader (a GUI table rebuild on the FX thread) never observes a
   /// structurally mutating map (ConcurrentModificationException, hung iteration).
-  private final Object registryLock = new Object();
+  private final Object sentinel = new Object();
 
   /// Allow potentially dangerous operations.
   public volatile boolean force = false;
@@ -47,7 +47,7 @@ public class Manager {
   /// Return the registered volumes keyed by their tags. The returned map is an
   /// immutable snapshot: a subsequent registry mutation does not change it.
   public Map<String, Volume> volumes() {
-    synchronized (registryLock) {
+    synchronized (sentinel) {
       return java.util.Collections.unmodifiableMap(new LinkedHashMap<>(volumes));
     }
   }
@@ -55,21 +55,21 @@ public class Manager {
   /// Return the registered tasks keyed by their tags. The returned map is an
   /// immutable snapshot: a subsequent registry mutation does not change it.
   public Map<String, Task> tasks() {
-    synchronized (registryLock) {
+    synchronized (sentinel) {
       return java.util.Collections.unmodifiableMap(new LinkedHashMap<>(tasks));
     }
   }
 
   /// Return the volume matched by the exact tag or null.
   public Volume volume(String tag) {
-    synchronized (registryLock) {
+    synchronized (sentinel) {
       return volumes.get(tag);
     }
   }
 
   /// Return any error messages recorded during volume loading / restoration.
   public List<String> loadErrors() {
-    synchronized (registryLock) {
+    synchronized (sentinel) {
       return List.copyOf(loadErrors);
     }
   }
@@ -88,7 +88,7 @@ public class Manager {
 
   /// Return the task matched by the exact tag or null.
   public Task task(String tag) {
-    synchronized (registryLock) {
+    synchronized (sentinel) {
       return tasks.get(tag);
     }
   }
@@ -135,7 +135,7 @@ public class Manager {
   /// the task tombstones: the deletions must never lose a conflict.
   public void registerVolume(Volume volume) {
     boolean volumePending = volume.pendingDeletion();
-    synchronized (registryLock) {
+    synchronized (sentinel) {
       Volume existing = volumes.get(volume.tag());
       if (existing == null) {
         LOG.log(Level.INFO, () -> "Bitferry volume " + volume.tag() + " registered in " + this);
@@ -157,7 +157,7 @@ public class Manager {
   /// ties prefer the deletion tombstone: the deletions must never lose a conflict (a
   /// resurrected task would restore the deleted data).
   public void registerTask(Task task) {
-    synchronized (registryLock) {
+    synchronized (sentinel) {
       Task existing = tasks.get(task.tag());
       if (existing == null) {
         LOG.log(Level.INFO, () -> "Task " + task.tag() + " registered in " + this);
@@ -194,14 +194,14 @@ public class Manager {
   /// task the simulated one accepted), or a frontend's cleanup of an entity it is
   /// about to replace.
   public void deregisterTask(Task task) {
-    synchronized (registryLock) {
+    synchronized (sentinel) {
       tasks.remove(task.tag());
     }
   }
 
   /// Replace an existing task in the registry (e.g. upon an operation type change).
   public void replaceTask(Task task) {
-    synchronized (registryLock) {
+    synchronized (sentinel) {
       tasks.put(task.tag(), task);
       LOG.log(Level.INFO, () -> "Task " + task.tag() + " replaced in " + this);
     }
@@ -212,14 +212,14 @@ public class Manager {
   /// itself needs no rollback anymore: the registration rides the successful
   /// pristine commit only (see [Volume#create]).
   public void deregisterVolume(Volume volume) {
-    synchronized (registryLock) {
+    synchronized (sentinel) {
       volumes.remove(volume.tag());
     }
   }
 
   /// Return the registered live volumes.
   public Map<String, Volume> liveVolumes() {
-    synchronized (registryLock) {
+    synchronized (sentinel) {
       return volumes.values().stream()
         .filter(Volume::isLive)
         .collect(Collectors.toMap(Volume::tag, v -> v, (a, b) -> a, LinkedHashMap::new));
@@ -229,7 +229,7 @@ public class Manager {
   /// Return the registered live tasks. The deletion tombstones are excluded: they are
   /// invisible for all the operations until the garbage collection removes them.
   public Map<String, Task> liveTasks() {
-    synchronized (registryLock) {
+    synchronized (sentinel) {
       return tasks.values().stream()
         .filter(t -> t.isLive() && !t.isDeleted())
         .collect(Collectors.toMap(Task::tag, t -> t, (a, b) -> a, LinkedHashMap::new));
@@ -340,7 +340,7 @@ public class Manager {
         // surface both uniformly
         List<String> errors = volume.restoreErrors();
         if (!errors.isEmpty()) {
-          synchronized (registryLock) {
+          synchronized (sentinel) {
             loadErrors.addAll(errors);
           }
         }
@@ -350,7 +350,7 @@ public class Manager {
         // frontends' concern
         String message = "Failed to restore Bitferry volume from " + root + ": " + e.getMessage();
         LOG.log(Level.ERROR, () -> message);
-        synchronized (registryLock) {
+        synchronized (sentinel) {
           loadErrors.add(message);
         }
         if (errorConsumer != null) errorConsumer.accept(message);

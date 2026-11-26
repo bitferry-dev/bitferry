@@ -81,7 +81,7 @@ public final class Volume {
   // a torn state, and the vault writes cannot interleave with the dump iteration. The
   // manager's registryLock stays for the registry maps only; the lock order is always
   // this lock first and the registry lock second (never the reverse).
-  private final Object stateLock = new Object();
+  private final Object sentinel = new Object();
 
   /// Constructor for a new volume instance. The registration is deferred to
   /// [create]: it rides the successfully committed volume, not the constructor -
@@ -246,7 +246,7 @@ public final class Volume {
 
   @JsonIgnore
   public boolean isLive() {
-    synchronized (stateLock) {
+    synchronized (sentinel) {
       return live;
     }
   }
@@ -290,7 +290,7 @@ public final class Volume {
 
   /// Mark the volume out-of-date rewinding the generation so that every referring task gets flagged.
   public void touch() {
-    synchronized (stateLock) {
+    synchronized (sentinel) {
       modified = true;
       mtime = OffsetDateTime.now().truncatedTo(java.time.temporal.ChronoUnit.MICROS);
       var ts = tasks();
@@ -301,7 +301,7 @@ public final class Volume {
   /// Mark the volume for deletion: the storage file is removed upon the commit while
   /// the volume directory contents are kept.
   public void delete() {
-    synchronized (stateLock) {
+    synchronized (sentinel) {
       this.commitState = CommitState.DELETED;
       // The referring tasks are tombstoned with the volume: the deletion markers ride
       // the commit into the storages of the surviving volumes the tasks also refer to
@@ -316,14 +316,14 @@ public final class Volume {
   /// Return true if the volume is out-of-date either by itself or by any of the referring tasks.
   @JsonIgnore
   public boolean isModified() {
-    synchronized (stateLock) {
+    synchronized (sentinel) {
       return modified || tasks().values().stream().anyMatch(t -> t.generation() > generation);
     }
   }
 
   /// Return the current volume's generation used for the out-of-date flagging.
   public int generation() {
-    synchronized (stateLock) {
+    synchronized (sentinel) {
       return generation;
     }
   }
@@ -428,7 +428,7 @@ public final class Volume {
     // iteration, and the concurrent GUI readers cannot observe a torn state.
     // The task commits above stay deliberately outside the lock (their backend
     // side effects must not hold the volume's readers hostage).
-    synchronized (stateLock) {
+    synchronized (sentinel) {
       loop:
       while (true) switch (commitState) {
         case PRISTINE, LIVE -> { // Format or dump the volume storage
@@ -617,7 +617,7 @@ public final class Volume {
   /// unclean removals would otherwise silently materialize the volume files on the
   /// parent file system.
   public void checkPresence() {
-    synchronized (stateLock) {
+    synchronized (sentinel) {
       String current = fileStoreId(root);
       if (fileStore != null && !fileStore.equals(current))
         throw new BitferryError("Bitferry volume " + tag + " root " + root + " has disappeared (its file system is no longer " + fileStore + ")");
@@ -628,7 +628,7 @@ public final class Volume {
   /// Return the vault entry of the task stored in the volume vault
   /// (used by the vault providers).
   public VaultEntry readVault(String tag) {
-    synchronized (stateLock) {
+    synchronized (sentinel) {
       return vault.get(tag);
     }
   }
@@ -636,7 +636,7 @@ public final class Volume {
   /// Store the vault entry of the task in the volume vault
   /// marking the volume out-of-date (used by the vault providers).
   public void writeVault(String tag, VaultEntry entry) {
-    synchronized (stateLock) {
+    synchronized (sentinel) {
       vault.put(tag, entry);
       touch();
     }
@@ -645,7 +645,7 @@ public final class Volume {
   /// Drop the vault entry of the task from the volume vault marking
   /// the volume out-of-date when something was dropped (used by the vault providers).
   public void removeVault(String tag) {
-    synchronized (stateLock) {
+    synchronized (sentinel) {
       if (vault.remove(tag) != null) touch();
     }
   }
