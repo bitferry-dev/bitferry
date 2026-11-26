@@ -11,7 +11,7 @@ class PasswordsTest {
 
   @Test
   void obscureRevealRoundTrips() {
-    for (String secret : List.of("Our secret password", "p@$$w0rd !#", "пароль с юникодом", "x", "\0leading-null", "a".repeat(100))) {
+    for (String secret : List.of("Our secret password", "p@$$w0rd !#", "пароль с юникодом", "x", "\0leading-null", "", "a".repeat(100))) {
       assertEquals(secret, Passwords.bitferryReveal(Passwords.bitferryObscure(secret)));
     }
   }
@@ -33,6 +33,7 @@ class PasswordsTest {
 
   @Test
   void plaintextLengthRoundsUpToPayloadBlocks() {
+    assertRawTokenLength(0, 60);
     assertRawTokenLength(1, 60);
     assertRawTokenLength(28, 60);
     assertRawTokenLength(29, 92);
@@ -48,7 +49,7 @@ class PasswordsTest {
       modified[offset] ^= 1;
       String token = Base64.getUrlEncoder().withoutPadding().encodeToString(modified);
       BitferryError error = assertThrows(BitferryError.class, () -> Passwords.bitferryReveal(token));
-      assertEquals("Invalid obscured password - is it obscured?", error.getMessage());
+      assertEquals("Invalid Bitferry obscured password - bad format", error.getMessage());
     }
   }
 
@@ -69,7 +70,6 @@ class PasswordsTest {
   @Test
   void nullPasswordIsRejected() {
     assertThrows(BitferryError.class, () -> Passwords.bitferryObscure(null));
-    assertThrows(BitferryError.class, () -> Passwords.bitferryObscure(""));
     assertThrows(BitferryError.class, () -> Passwords.bitferryReveal(null));
     assertThrows(BitferryError.class, () -> Passwords.rcloneObscure(null));
     assertThrows(BitferryError.class, () -> Passwords.rcloneReveal(null));

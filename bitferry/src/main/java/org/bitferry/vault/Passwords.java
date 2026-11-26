@@ -99,7 +99,7 @@ public final class Passwords {
       new GCMParameterSpec(GCM_TAG_BITS, raw, 0, BITFERRY_IV_LENGTH));
     byte[] decrypted = cipher.doFinal(raw, BITFERRY_IV_LENGTH, raw.length - BITFERRY_IV_LENGTH);
     int plaintextLength = ByteBuffer.wrap(decrypted, 0, LENGTH_PREFIX_LENGTH).getInt();
-    if (plaintextLength <= 0 || plaintextLength > decrypted.length - LENGTH_PREFIX_LENGTH) {
+    if (plaintextLength < 0 || plaintextLength > decrypted.length - LENGTH_PREFIX_LENGTH) {
       throw new BitferryError("Invalid Bitferry obscured password - invalid plaintext length");
     }
     return decodeUtf8(decrypted, LENGTH_PREFIX_LENGTH, plaintextLength);
