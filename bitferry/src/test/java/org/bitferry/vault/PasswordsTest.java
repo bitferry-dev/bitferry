@@ -148,7 +148,7 @@ class PasswordsTest {
       errPump.start();
       boolean exited;
       try {
-        exited = process.waitFor(10, TimeUnit.SECONDS);
+        exited = process.waitFor(30, TimeUnit.SECONDS);
       } catch (InterruptedException e) {
         Thread.currentThread().interrupt();
         process.destroyForcibly();

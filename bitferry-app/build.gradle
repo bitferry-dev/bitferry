@@ -168,8 +168,12 @@ jlink {
         if (windowsTarget) {
             imageOptions = ['--win-console']
         } else if (macTarget) {
+            // jpackage rejects a zero major version on macOS. Give its internal bundle
+            // version a positive major; jpackageImage restores the visible version below.
+            def macAppVersion = project.version.toString().replaceFirst(/^0\./, '1.')
             imageOptions = ['--mac-package-identifier', 'org.bitferry',
-                            '--mac-package-name', 'Bitferry']
+                            '--mac-package-name', 'Bitferry',
+                            '--app-version', macAppVersion]
         }
     }
 }
@@ -203,13 +207,14 @@ tasks.named('jpackageImage') {
             // On macOS, bitferry is the primary jlink launcher (CLI), while Finder/Dock
             // launches CFBundleExecutable from Info.plist. Point the bundle at bitferry-gui
             // so opening bitferry.app starts the GUI while Contents/MacOS/bitferry stays
-            // available for CLI users. (signMacApp re-signs the modified bundle afterwards.)
+            // available for CLI users. Restore the user-visible version after satisfying
+            // jpackage's positive-major constraint. signMacApp re-signs the bundle afterwards.
             if (OperatingSystem.current().macOsX) {
                 def infoPlist = new File(jpackageRootDir, 'Info.plist')
                 if (infoPlist.isFile()) {
                     providers.exec {
                         commandLine '/usr/libexec/PlistBuddy', '-c', 'Set :CFBundleExecutable bitferry-gui',
-                                infoPlist.absolutePath
+                                '-c', "Set :CFBundleShortVersionString ${project.version}", infoPlist.absolutePath
                     }.result.get().assertNormalExitValue()
                 }
             }
@@ -445,9 +450,9 @@ tasks.register('copyToolsToJpackageImage') {
 def jansiNatives = [
     'windows-x64'   : [jarEntry: 'Windows/x86_64/jansi.dll',   tree: 'bin',                   jpackage: 'runtime/bin'],
     'linux-x64'     : [jarEntry: 'Linux/x86_64/libjansi.so',   tree: 'lib',                   jpackage: 'lib/runtime/lib'],
-    'linux-aarch64' : [jarEntry: 'Linux/aarch64/libjansi.so',  tree: 'lib',                   jpackage: 'lib/runtime/lib'],
+    'linux-aarch64' : [jarEntry: 'Linux/arm64/libjansi.so',    tree: 'lib',                   jpackage: 'lib/runtime/lib'],
     'macos-x64'     : [jarEntry: 'Mac/x86_64/libjansi.jnilib', tree: 'lib',                   jpackage: 'Contents/runtime/Contents/Home/lib'],
-    'macos-aarch64' : [jarEntry: 'Mac/aarch64/libjansi.jnilib', tree: 'lib',                  jpackage: 'Contents/runtime/Contents/Home/lib'],
+    'macos-aarch64' : [jarEntry: 'Mac/arm64/libjansi.jnilib',   tree: 'lib',                  jpackage: 'Contents/runtime/Contents/Home/lib'],
 ]
 
 tasks.register('copyJansiNative') {
@@ -768,21 +773,24 @@ tasks.register('signMacApp') {
     }
 }
 
+def dmgAppDir = new File(dmgStagingDir, jpackageImageDir.name)
+
 tasks.register('prepareDmgStaging') {
     group = 'bitferry'
     description = 'Stages bitferry.app and an /Applications symlink for macOS DMG creation.'
     dependsOn 'signMacApp'
     onlyIf { !cross && OperatingSystem.current().macOsX }
     inputs.dir jpackageImageDir
-    outputs.dir dmgStagingDir
+    // Do not track the staging root: its Applications symlink points outside the
+    // project and Gradle would recursively hash the host's /Applications directory.
+    outputs.dir dmgAppDir
     doLast {
         project.delete(dmgStagingDir)
         dmgStagingDir.mkdirs()
         // Use ditto (not Gradle Copy) so macOS bundle symlinks, Info.plist, and Mach-O
         // executable bits inside bitferry.app remain intact.
         providers.exec {
-            commandLine 'ditto', jpackageImageDir.absolutePath,
-                    new File(dmgStagingDir, jpackageImageDir.name).absolutePath
+            commandLine 'ditto', jpackageImageDir.absolutePath, dmgAppDir.absolutePath
         }.result.get().assertNormalExitValue()
         java.nio.file.Files.createSymbolicLink(
                 new File(dmgStagingDir, 'Applications').toPath(),
@@ -795,7 +803,7 @@ tasks.register('dmg', Exec) {
     description = 'Builds the macOS .dmg disk image from bitferry.app.'
     dependsOn 'prepareDmgStaging'
     onlyIf { !cross && OperatingSystem.current().macOsX }
-    inputs.dir dmgStagingDir
+    inputs.dir dmgAppDir
     outputs.file dmgFile
     doFirst {
         dmgFile.parentFile.mkdirs()

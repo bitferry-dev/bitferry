@@ -569,7 +569,10 @@ public final class Volume {
     String os = System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT);
     try {
       if (os.contains("windows")) return isFixedWindows(directory);
-      if (os.contains("mac os") || os.contains("darwin")) return !directory.startsWith("/Volumes");
+      if (os.contains("mac os") || os.contains("darwin")) {
+        Files.getFileStore(directory);
+        return !directory.startsWith("/Volumes");
+      }
       return isFixedLinux(directory);
     } catch (IOException | RuntimeException e) {
       LOG.log(Level.DEBUG, () -> "Storage fixedness classification failed for " + directory + ": " + e);
