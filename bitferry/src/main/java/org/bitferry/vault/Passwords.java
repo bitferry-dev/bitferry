@@ -4,27 +4,26 @@ import org.bitferry.*;
 
 import javax.crypto.*;
 import javax.crypto.spec.*;
+import java.nio.*;
 import java.nio.charset.*;
 import java.security.*;
 import java.util.*;
 
 /// Password obscuring and token codec.
 ///
-/// Features length-masking stream obfuscation (ARCFOUR-drop256 with random salt and
-/// leading null padding) for concealing plaintexts in volume storage, alongside the
-/// rclone-compatible AES-256-CTR obscure/reveal for rclone process environments.
+/// Features length-bucketed AES-GCM obfuscation with a random IV and zero padding for
+/// concealing plaintexts in volume storage, alongside the rclone-compatible AES-256-CTR
+/// obscure/reveal for rclone process environments.
 public final class Passwords {
 
-  // The 16-byte shared static key of the Bitferry stream obfuscation
-  private static final byte[] BITFERRY_KEY = {
-    (byte) 0x2b, (byte) 0x7e, (byte) 0x15, (byte) 0x16, (byte) 0x28, (byte) 0xae, (byte) 0xd2, (byte) 0xa6,
-    (byte) 0xab, (byte) 0xf7, (byte) 0x15, (byte) 0x88, (byte) 0x09, (byte) 0xcf, (byte) 0x4f, (byte) 0x3c
-  };
+  // Public obfuscation material derived from a domain-separation label, not a secret key
+  private static final SecretKey BITFERRY_KEY_SPEC = new SecretKeySpec(bitferryKey(), "AES");
 
-  private static final int SALT_LENGTH = 8;
-  private static final int MIN_PAD = 16;
-  private static final int MAX_PAD = 32;
-  private static final int DROP_BYTES = 256;
+  private static final int BITFERRY_IV_LENGTH = 12;
+  private static final int GCM_TAG_BITS = 128;
+  private static final int GCM_TAG_LENGTH = GCM_TAG_BITS / Byte.SIZE;
+  private static final int LENGTH_PREFIX_LENGTH = Integer.BYTES;
+  private static final int PAYLOAD_BLOCK_SIZE = 32;
 
   // The shared static key of the rclone obscured format
   private static final byte[] RCLONE_KEY = {
@@ -34,75 +33,96 @@ public final class Passwords {
     (byte) 0xf4, (byte) 0xde, (byte) 0x16, (byte) 0x2b, (byte) 0x8b, (byte) 0x95, (byte) 0xf6, (byte) 0x38
   };
 
-  private static final int IV_LENGTH = 16;
+  private static final SecretKey RCLONE_KEY_SPEC = new SecretKeySpec(RCLONE_KEY, "AES");
+
+  private static final int RCLONE_IV_LENGTH = 16;
 
   private static final SecureRandom RANDOM = new SecureRandom();
 
   private Passwords() {}
 
-  /// Obscure a secret value using ARCFOUR-drop256 with a fresh random salt and randomized
-  /// leading null padding, returning the unpadded base64url encoding of the salt followed
-  /// by the ciphertext.
+  /// Obscure a secret value as a 12-byte IV followed by AES-GCM of a big-endian plaintext
+  /// length, the plaintext and zero padding. The encrypted payload is rounded up to a
+  /// 32-byte boundary and the result uses unpadded base64url encoding.
   public static String bitferryObscure(String data) {
-    if (data == null || data.isEmpty()) throw new BitferryError("Cannot obscure null or empty password");
+    if (data == null) throw new BitferryError("Cannot obscure null password");
     try {
       byte[] plaintext = data.getBytes(StandardCharsets.UTF_8);
-      int padLen = MIN_PAD + RANDOM.nextInt(MAX_PAD - MIN_PAD + 1);
-      byte[] payload = new byte[padLen + plaintext.length];
-      System.arraycopy(plaintext, 0, payload, padLen, plaintext.length);
+      int contentLength = LENGTH_PREFIX_LENGTH + plaintext.length;
+      int paddedLength = ((contentLength + PAYLOAD_BLOCK_SIZE - 1) / PAYLOAD_BLOCK_SIZE) * PAYLOAD_BLOCK_SIZE;
+      byte[] payload = new byte[paddedLength];
+      ByteBuffer.wrap(payload).putInt(plaintext.length);
+      System.arraycopy(plaintext, 0, payload, LENGTH_PREFIX_LENGTH, plaintext.length);
 
-      byte[] salt = new byte[SALT_LENGTH];
-      RANDOM.nextBytes(salt);
-
-      Cipher cipher = Cipher.getInstance("ARCFOUR");
-      cipher.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(deriveBitferryKey(salt), "ARCFOUR"));
-      cipher.update(new byte[DROP_BYTES]);
+      byte[] iv = new byte[BITFERRY_IV_LENGTH];
+      RANDOM.nextBytes(iv);
+      Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+      cipher.init(Cipher.ENCRYPT_MODE, BITFERRY_KEY_SPEC, new GCMParameterSpec(GCM_TAG_BITS, iv));
       byte[] ciphertext = cipher.doFinal(payload);
 
-      byte[] result = new byte[SALT_LENGTH + ciphertext.length];
-      System.arraycopy(salt, 0, result, 0, SALT_LENGTH);
-      System.arraycopy(ciphertext, 0, result, SALT_LENGTH, ciphertext.length);
+      byte[] result = new byte[BITFERRY_IV_LENGTH + ciphertext.length];
+      System.arraycopy(iv, 0, result, 0, BITFERRY_IV_LENGTH);
+      System.arraycopy(ciphertext, 0, result, BITFERRY_IV_LENGTH, ciphertext.length);
       return Base64.getUrlEncoder().withoutPadding().encodeToString(result);
     } catch (GeneralSecurityException e) {
-      throw new BitferryError("Password obscuring failure: " + e.getMessage(), e);
+      throw new BitferryError("Bitferry password obscuring failure: " + e.getMessage(), e);
     }
   }
 
-  /// Reveal a value obscured by [obscure].
+  /// Reveal a value obscured by [bitferryObscure].
   public static String bitferryReveal(String obscured) {
     if (obscured == null) throw new BitferryError("Cannot reveal null password");
     byte[] raw;
     try {
       raw = Base64.getUrlDecoder().decode(obscured);
     } catch (IllegalArgumentException e) {
-      throw new BitferryError("Invalid obscured password - is it obscured?", e);
+      throw new BitferryError("Invalid Bitferry obscured password - bad format", e);
     }
-    if (raw.length <= SALT_LENGTH + MIN_PAD) throw new BitferryError("Obscured password too short - is it obscured?");
+    if (!hasGcmShape(raw)) throw new BitferryError("Invalid Bitferry obscured password - invalid token length");
     try {
-      byte[] salt = new byte[SALT_LENGTH];
-      System.arraycopy(raw, 0, salt, 0, SALT_LENGTH);
-      byte[] ciphertext = new byte[raw.length - SALT_LENGTH];
-      System.arraycopy(raw, SALT_LENGTH, ciphertext, 0, ciphertext.length);
-
-      Cipher cipher = Cipher.getInstance("ARCFOUR");
-      cipher.init(Cipher.DECRYPT_MODE, new SecretKeySpec(deriveBitferryKey(salt), "ARCFOUR"));
-      cipher.update(new byte[DROP_BYTES]);
-      byte[] decrypted = cipher.doFinal(ciphertext);
-
-      int start = 0;
-      while (start < decrypted.length && decrypted[start] == 0) start++;
-      if (start >= decrypted.length) throw new BitferryError("Invalid obscured password - empty payload");
-      return new String(decrypted, start, decrypted.length - start, StandardCharsets.UTF_8);
+      return revealGcm(raw);
+    } catch (AEADBadTagException e) {
+      throw new BitferryError("Invalid Bitferry obscured password - bad format", e);
     } catch (GeneralSecurityException e) {
-      throw new BitferryError("Password revealing failure: " + e.getMessage(), e);
+      throw new BitferryError("Bitferry password revealing failure: " + e.getMessage(), e);
     }
   }
 
-  private static byte[] deriveBitferryKey(byte[] salt) {
-    byte[] key = new byte[BITFERRY_KEY.length + salt.length];
-    System.arraycopy(BITFERRY_KEY, 0, key, 0, BITFERRY_KEY.length);
-    System.arraycopy(salt, 0, key, BITFERRY_KEY.length, salt.length);
-    return key;
+  private static boolean hasGcmShape(byte[] raw) {
+    return raw.length >= BITFERRY_IV_LENGTH + PAYLOAD_BLOCK_SIZE + GCM_TAG_LENGTH
+      && (raw.length - BITFERRY_IV_LENGTH - GCM_TAG_LENGTH) % PAYLOAD_BLOCK_SIZE == 0;
+  }
+
+  private static String revealGcm(byte[] raw) throws GeneralSecurityException {
+    Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+    cipher.init(Cipher.DECRYPT_MODE, BITFERRY_KEY_SPEC,
+      new GCMParameterSpec(GCM_TAG_BITS, raw, 0, BITFERRY_IV_LENGTH));
+    byte[] decrypted = cipher.doFinal(raw, BITFERRY_IV_LENGTH, raw.length - BITFERRY_IV_LENGTH);
+    int plaintextLength = ByteBuffer.wrap(decrypted, 0, LENGTH_PREFIX_LENGTH).getInt();
+    if (plaintextLength <= 0 || plaintextLength > decrypted.length - LENGTH_PREFIX_LENGTH) {
+      throw new BitferryError("Invalid Bitferry obscured password - invalid plaintext length");
+    }
+    return decodeUtf8(decrypted, LENGTH_PREFIX_LENGTH, plaintextLength);
+  }
+
+  private static String decodeUtf8(byte[] data, int offset, int length) {
+    try {
+      return StandardCharsets.UTF_8.newDecoder()
+        .onMalformedInput(CodingErrorAction.REPORT)
+        .onUnmappableCharacter(CodingErrorAction.REPORT)
+        .decode(ByteBuffer.wrap(data, offset, length))
+        .toString();
+    } catch (CharacterCodingException e) {
+      throw new BitferryError("Invalid obscured password - invalid UTF-8 payload", e);
+    }
+  }
+
+  private static byte[] bitferryKey() {
+    try {
+      return MessageDigest.getInstance("SHA-256").digest("bitferry-static-0".getBytes(StandardCharsets.UTF_8));
+    } catch (NoSuchAlgorithmException e) {
+      throw new ExceptionInInitializerError(e);
+    }
   }
 
   /// Obscure the value using rclone's AES-256-CTR scheme for passing to rclone's environment.
@@ -110,17 +130,17 @@ public final class Passwords {
     if (data == null) throw new BitferryError("Cannot obscure null password");
     try {
       byte[] plaintext = data.getBytes(StandardCharsets.UTF_8);
-      byte[] iv = new byte[IV_LENGTH];
+      byte[] iv = new byte[RCLONE_IV_LENGTH];
       RANDOM.nextBytes(iv);
       Cipher cipher = Cipher.getInstance("AES/CTR/NoPadding");
-      cipher.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(RCLONE_KEY, "AES"), new IvParameterSpec(iv));
+      cipher.init(Cipher.ENCRYPT_MODE, RCLONE_KEY_SPEC, new IvParameterSpec(iv));
       byte[] ciphertext = cipher.doFinal(plaintext);
-      byte[] payload = new byte[IV_LENGTH + ciphertext.length];
-      System.arraycopy(iv, 0, payload, 0, IV_LENGTH);
-      System.arraycopy(ciphertext, 0, payload, IV_LENGTH, ciphertext.length);
+      byte[] payload = new byte[RCLONE_IV_LENGTH + ciphertext.length];
+      System.arraycopy(iv, 0, payload, 0, RCLONE_IV_LENGTH);
+      System.arraycopy(ciphertext, 0, payload, RCLONE_IV_LENGTH, ciphertext.length);
       return Base64.getUrlEncoder().withoutPadding().encodeToString(payload);
     } catch (GeneralSecurityException e) {
-      throw new BitferryError("Password obscuring failure: " + e.getMessage(), e);
+      throw new BitferryError("Rclone password obscuring failure: " + e.getMessage(), e);
     }
   }
 
@@ -131,16 +151,16 @@ public final class Passwords {
     try {
       payload = Base64.getUrlDecoder().decode(obscured);
     } catch (IllegalArgumentException e) {
-      throw new BitferryError("Invalid obscured password - is it obscured?", e);
+      throw new BitferryError("Invalid Rclone obscured password - is it obscured?", e);
     }
-    if (payload.length < IV_LENGTH) throw new BitferryError("Obscured password too short - is it obscured?");
+    if (payload.length < RCLONE_IV_LENGTH) throw new BitferryError("Obscured Rclone password too short - is it obscured?");
     try {
       Cipher cipher = Cipher.getInstance("AES/CTR/NoPadding");
-      cipher.init(Cipher.DECRYPT_MODE, new SecretKeySpec(RCLONE_KEY, "AES"), new IvParameterSpec(payload, 0, IV_LENGTH));
-      byte[] plaintext = cipher.doFinal(payload, IV_LENGTH, payload.length - IV_LENGTH);
+      cipher.init(Cipher.DECRYPT_MODE, RCLONE_KEY_SPEC, new IvParameterSpec(payload, 0, RCLONE_IV_LENGTH));
+      byte[] plaintext = cipher.doFinal(payload, RCLONE_IV_LENGTH, payload.length - RCLONE_IV_LENGTH);
       return new String(plaintext, StandardCharsets.UTF_8);
     } catch (GeneralSecurityException e) {
-      throw new BitferryError("Password revealing failure: " + e.getMessage(), e);
+      throw new BitferryError("Rclone password revealing failure: " + e.getMessage(), e);
     }
   }
 }

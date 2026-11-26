@@ -11,14 +11,13 @@ class PasswordsTest {
 
   @Test
   void obscureRevealRoundTrips() {
-    for (String secret : List.of("Our secret password", "p@$$w0rd !#", "пароль с юникодом", "x", "a".repeat(100))) {
+    for (String secret : List.of("Our secret password", "p@$$w0rd !#", "пароль с юникодом", "x", "\0leading-null", "a".repeat(100))) {
       assertEquals(secret, Passwords.bitferryReveal(Passwords.bitferryObscure(secret)));
     }
   }
 
   @Test
-  void obscuringIsRandomizedAndJittered() {
-    // The fresh random salt and dynamic padding make each obscured form distinct
+  void obscuringIsRandomizedAndLengthBucketed() {
     String first = Passwords.bitferryObscure("same-secret");
     String second = Passwords.bitferryObscure("same-secret");
     assertNotEquals(first, second);
@@ -29,7 +28,42 @@ class PasswordsTest {
     for (int i = 0; i < 20; i++) {
       lengths.add(Passwords.bitferryObscure("same-secret").length());
     }
-    assertTrue(lengths.size() > 1, "Dynamic null padding must produce varying token lengths");
+    assertEquals(1, lengths.size(), "Block padding must not leak variation within a length bucket");
+  }
+
+  @Test
+  void plaintextLengthRoundsUpToPayloadBlocks() {
+    assertRawTokenLength(1, 60);
+    assertRawTokenLength(28, 60);
+    assertRawTokenLength(29, 92);
+    assertRawTokenLength(60, 92);
+    assertRawTokenLength(61, 124);
+  }
+
+  @Test
+  void modifiedTokensAreRejected() {
+    byte[] raw = Base64.getUrlDecoder().decode(Passwords.bitferryObscure("authentication-secret"));
+    for (int offset : new int[] {0, 12, raw.length - 1}) {
+      byte[] modified = raw.clone();
+      modified[offset] ^= 1;
+      String token = Base64.getUrlEncoder().withoutPadding().encodeToString(modified);
+      BitferryError error = assertThrows(BitferryError.class, () -> Passwords.bitferryReveal(token));
+      assertEquals("Invalid obscured password - is it obscured?", error.getMessage());
+    }
+  }
+
+  @Test
+  void legacyTokensAreRejected() {
+    assertThrows(BitferryError.class, () -> Passwords.bitferryReveal(
+      "8bLIbHH3xWlZGcoUznIdX-Ji7cUowmncwTDvj_sjJplIw1Hucq4edd5Tx3U"));
+    assertThrows(BitferryError.class, () -> Passwords.bitferryReveal(
+      "kkOPfP0PqbQrnPQvF9rAhPXN7GunBfYLRn7mdoCBGEHB0ipUV0n-RkfbJ-yqcG4sB4ccRiCEH0z-rgFb"));
+  }
+
+  private static void assertRawTokenLength(int plaintextLength, int expected) {
+    String token = Passwords.bitferryObscure("a".repeat(plaintextLength));
+    assertEquals(expected, Base64.getUrlDecoder().decode(token).length);
+    assertEquals("a".repeat(plaintextLength), Passwords.bitferryReveal(token));
   }
 
   @Test
