@@ -2,9 +2,11 @@ plugins {
     id 'base'
 }
 
+def resolvedVersion = providers.gradleProperty('version').getOrElse('0.1.0')
+
 allprojects {
     group = 'org.bitferry'
-    version = '0.1.0'
+    version = resolvedVersion
 
     repositories {
         mavenCentral()
